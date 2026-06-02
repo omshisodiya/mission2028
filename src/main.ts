@@ -6,6 +6,7 @@ import { supabase } from './data/supabase'
 import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
 import { mountPlannerUI, loadLectures } from './features/lectures-planner'
+import { initRoutine } from './features/routine-ui'
 
 // Mount the planner toolbar (filter tabs + Import Excel + Add) immediately.
 // This is synchronous and needs no auth — lectures load separately after login.
@@ -49,10 +50,13 @@ async function syncWithSupabase(userId: string): Promise<void> {
 
     // Load real lectures into the already-mounted planner UI
     await loadLectures()
+    // Routine tracker: auto-creates today's row, feeds rankSim/heatmap/donuts/barCharts
+    await initRoutine()
   } catch (err) {
     console.error('[main] syncWithSupabase failed:', err)
     // Still try to load lectures even if pull/store patch failed
     await loadLectures().catch(e => console.error('[main] loadLectures failed:', e))
+    await initRoutine().catch(e => console.error('[main] initRoutine failed:', e))
   }
 }
 

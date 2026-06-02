@@ -228,6 +228,29 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ============================================================
+-- ROUTINE FEATURE (pre-Phase 3) — run this block in SQL Editor
+-- ============================================================
+
+create table if not exists public.routine_days (
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  day           date not null,
+  day_type      text not null default 'College',
+  study_hours   numeric,
+  mains_written int,
+  attempted     int,
+  correct       int,
+  wrong         int,
+  notes         text,
+  updated_at    timestamptz default now(),
+  primary key (user_id, day)
+);
+alter table public.routine_days enable row level security;
+drop policy if exists owner_all on public.routine_days;
+create policy owner_all on public.routine_days
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create index if not exists routine_days_user_idx on public.routine_days(user_id, day);
+
+-- ============================================================
 -- v2 / v3 ADDITIONS — run this block separately in SQL Editor
 -- after the initial schema is already in place (idempotent).
 -- ============================================================

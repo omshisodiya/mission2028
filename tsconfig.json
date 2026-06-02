@@ -12,7 +12,8 @@
     "noEmit": true,
     "strict": true,
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
+    "resolveJsonModule": true
   },
   "include": ["src"]
 }

@@ -164,8 +164,8 @@ function setup(): void {
     })
     emblem.addEventListener('mouseleave', () => {
       if (!running) return
-      if (esCore)  esCore.style.opacity  = '0.12'
-      if (esRing)  esRing.style.opacity  = '0.12'
+      if (esCore)  esCore.style.opacity  = '0'
+      if (esRing)  esRing.style.opacity  = '0.35'
       if (esMotto) esMotto.style.opacity = '0'
       if (emblemDisplay) emblemDisplay.style.opacity = '1'
     })
@@ -175,8 +175,8 @@ function setup(): void {
     if (!emblemDisplay) return
     emblemDisplay.textContent = `${mm}:${ss}`
     emblemDisplay.style.opacity = '1'
-    if (esCore)  esCore.style.opacity  = '0.12'
-    if (esRing)  esRing.style.opacity  = '0.12'
+    if (esCore)  esCore.style.opacity  = '0'      // photo completely gone
+    if (esRing)  esRing.style.opacity  = '0.35'   // ring faintly visible
     if (esMotto) esMotto.style.opacity = '0'
   }
 

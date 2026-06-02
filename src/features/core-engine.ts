@@ -118,6 +118,8 @@ function bindWidgets(s: CoreState): void {
   bindStreak(s)
   bindCountUps(s)
   bindBriefing(s)
+  bindAutoTodos(s)
+  upgradeAIPlannerInput(s)
   // Push subject context into the planner so today's lectures surface first
   setPlannerSubjectContext(s.today.subject, todaySubjectKeywords())
 }
@@ -283,64 +285,179 @@ function bindStreak(s: CoreState): void {
   }
 }
 
-// count-ups in the Intelligence stat row
+// Intelligence stat row — wire to real CoreState numbers
 function bindCountUps(s: CoreState): void {
-  // Mocks attempted
-  updateCountUp('[data-to]', '.stat:nth-child(1) .count-up', s.cumulative.testsTaken)
-  // Avg prelims score (as accuracy %, capped at 200)
-  const avgPre = s.performance.prelimsAvg
-  updateCountUp('[data-to]', '.stat:nth-child(2) .count-up',
-    avgPre != null ? Math.round(avgPre * 2) : 0)   // map 0-100% → 0-200 scale
-  // Accuracy %
-  updateCountUp('[data-to]', '.stat:nth-child(3) .count-up',
-    avgPre != null ? Math.round(avgPre) : 0)
-  // Active study days (from heatmap active count)
   const activeDays = Object.values(s.hours.byDay).filter(h => h > 0).length
-  const heatActiveEl = document.getElementById('heat-active')
-  if (heatActiveEl) heatActiveEl.textContent = String(activeDays)
-  // Also update data-to on all stat count-ups for engine's countUp animation
-  const statEls = document.querySelectorAll<HTMLElement>('.grid.g-4 .stat')
-  const vals = [s.cumulative.testsTaken,
-    avgPre != null ? Math.round(avgPre * 2) : 0,
-    avgPre != null ? Math.round(avgPre) : 0,
-    activeDays]
-  statEls.forEach((el, i) => {
-    const cu = el.querySelector<HTMLElement>('.count-up')
-    if (cu && vals[i] != null) {
-      cu.setAttribute('data-to', String(vals[i]))
-      cu.textContent = String(vals[i])
+  const avgPre     = s.performance.prelimsAvg
+  const avgScore   = avgPre != null ? Math.round(avgPre * 2) : 0  // % → /200 proxy
+
+  // Find the 4 stat cards inside #intel (by their .k label text, robust to ordering)
+  document.querySelectorAll<HTMLElement>('#intel .stat').forEach(card => {
+    const label = card.querySelector('.k')?.textContent?.toLowerCase() ?? ''
+    const cu = card.querySelector<HTMLElement>('.count-up')
+    if (!cu) return
+    let val: number | null = null
+    if (label.includes('mock')) val = s.cumulative.testsTaken
+    else if (label.includes('score')) val = avgScore
+    else if (label.includes('accuracy')) val = avgPre != null ? Math.round(avgPre) : null
+    else if (label.includes('study')) val = activeDays
+    if (val != null) { cu.setAttribute('data-to', String(val)); cu.textContent = String(val) }
+  })
+
+  // heat-active element (used by heatmap)
+  const ha = document.getElementById('heat-active')
+  if (ha) ha.textContent = String(activeDays)
+
+  // Trend labels — update to reflect real data
+  document.querySelectorAll<HTMLElement>('#intel .stat .trend').forEach(tr => {
+    const parentLabel = tr.closest('.stat')?.querySelector('.k')?.textContent?.toLowerCase() ?? ''
+    if (parentLabel.includes('mock') && s.cumulative.testsTaken > 0) {
+      tr.textContent = `${s.cumulative.testsTaken} total graded`
+      tr.className = 'trend up'
+    } else if (parentLabel.includes('accuracy') && avgPre != null) {
+      tr.textContent = `${avgPre.toFixed(1)}% prelims avg`
+      tr.className = avgPre >= 60 ? 'trend up' : 'trend'
+    } else if (parentLabel.includes('study')) {
+      tr.textContent = `${s.hours.cumulative.toFixed(0)}h total`
+      tr.className = 'trend up'
     }
   })
 }
 
-function updateCountUp(selector: string, containerSel: string, value: number): void {
-  const el = document.querySelector<HTMLElement>(containerSel)
-  if (!el) return
-  el.setAttribute('data-to', String(value))
-  el.textContent = String(value)
-}
-
-// daily briefing — one-line summary
+// daily briefing — one-line summary in the routine section
 function bindBriefing(s: CoreState): void {
   const el = document.getElementById('rtn-briefing')
   if (!el) return
-
   const parts: string[] = []
-  if (s.hours.today > 0) parts.push(`${s.hours.today.toFixed(1)}h studied today`)
-  if (s.consistencyPct != null) parts.push(`consistency ${s.consistencyPct}%`)
+  if (s.hours.today > 0)              parts.push(`${s.hours.today.toFixed(1)}h today`)
+  if (s.consistencyPct != null)       parts.push(`consistency ${s.consistencyPct}%`)
   if (s.performance.prelimsAvg != null) parts.push(`prelims avg ${s.performance.prelimsAvg.toFixed(1)}%`)
   if (s.selectionProbabilityPct != null) parts.push(`SP ${s.selectionProbabilityPct.toFixed(1)}%`)
-  if (s.backlogRemaining > 0) parts.push(`${s.backlogRemaining} lectures remaining`)
-
-  el.textContent = parts.length
-    ? parts.join(' · ')
-    : 'Log today\'s inputs to see your briefing.'
+  if (s.backlogRemaining > 0)         parts.push(`${s.backlogRemaining} lectures left`)
+  el.textContent = parts.length ? parts.join(' · ') : 'Log today\'s inputs to see your briefing.'
 }
 
-// routine card — patch hours display after optimistic update
+// routine card — patch hours display after focus timer fires
 function patchHoursDisplay(s: CoreState): void {
   const el = document.getElementById('rtn-study-hours') as HTMLInputElement | null
   if (el && !el.value) el.value = s.hours.today.toFixed(1)
+}
+
+// Auto-populate today's command-menu todos from the routine plan
+function bindAutoTodos(s: CoreState): void {
+  const mission = (window as {
+    MISSION?: { store: { data: Record<string, unknown>; set(k: string, v: unknown): void } }
+  }).MISSION
+  if (!mission?.store) return
+
+  const today = s.today.date
+  const raw   = mission.store.data['todos'] as Record<string, { t: string; done: boolean }[]> ?? {}
+  const list  = [...(raw[today] ?? [])]
+  const existing = new Set(list.map(x => x.t))
+
+  const suggestions: string[] = []
+  const subj = s.today.subject
+
+  if (subj.includes('PW Full Test'))        suggestions.push('Full Length Prelims Test + Analysis')
+  else if (subj.includes('PW Optional'))    suggestions.push('Maths Sectional Test + Error Log')
+  else {
+    if (s.today.topicLabel)                 suggestions.push(s.today.topicLabel)
+    if (subj.includes('Mathematics'))       suggestions.push('Maths Practice (DPP)')
+    if (s.today.mainsTarget >= 1)           suggestions.push(`Mains Answer Writing (${s.today.mainsTarget} answer)`)
+  }
+  if (s.today.targetQuestions > 0)         suggestions.push(`MCQ Target: ${s.today.targetQuestions} questions`)
+
+  let changed = false
+  for (const t of suggestions) {
+    if (!existing.has(t)) { list.push({ t, done: false }); existing.add(t); changed = true }
+  }
+  if (changed) {
+    raw[today] = list
+    mission.store.set('todos', raw)
+    // Refresh todo count badge in the command menu
+    const countEl = document.getElementById('cm-todo-count')
+    if (countEl) countEl.textContent = String(list.filter(x => !x.done).length)
+  }
+}
+
+// Replace the AI hours range slider with a clean ±1 stepper
+let _aiUpgraded = false
+function upgradeAIPlannerInput(s: CoreState): void {
+  if (_aiUpgraded) return
+  const rangeEl = document.getElementById('ai-hours') as HTMLInputElement | null
+  if (!rangeEl) return
+  _aiUpgraded = true
+
+  // Hide the original range slider
+  rangeEl.style.cssText = 'position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;'
+
+  // Build the stepper
+  const stepper = document.createElement('div')
+  stepper.id = 'ai-hours-stepper'
+  stepper.style.cssText =
+    'display:flex;align-items:center;gap:6px;font-family:var(--font-display);'
+  stepper.innerHTML =
+    `<button class="ai-step" data-d="-1" style="width:28px;height:28px;border-radius:50%;` +
+    `border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink);` +
+    `cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;` +
+    `transition:border-color .15s;">−</button>` +
+    `<span id="ai-hours-val" style="font-size:22px;font-weight:700;color:var(--accent);` +
+    `min-width:28px;text-align:center;">${rangeEl.value}</span>` +
+    `<button class="ai-step" data-d="1" style="width:28px;height:28px;border-radius:50%;` +
+    `border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink);` +
+    `cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;` +
+    `transition:border-color .15s;">+</button>`
+
+  rangeEl.insertAdjacentElement('afterend', stepper)
+
+  stepper.querySelectorAll<HTMLButtonElement>('.ai-step').forEach(btn => {
+    btn.addEventListener('mouseover', () => (btn.style.borderColor = 'var(--accent)'))
+    btn.addEventListener('mouseout',  () => (btn.style.borderColor = 'var(--line-2)'))
+    btn.addEventListener('click', () => {
+      const d   = parseInt(btn.dataset.d ?? '0')
+      const cur = parseInt(rangeEl.value)
+      const nv  = Math.max(+rangeEl.min, Math.min(+rangeEl.max, cur + d))
+      rangeEl.value = String(nv)
+      const valEl = document.getElementById('ai-hours-val')
+      if (valEl) valEl.textContent = String(nv)
+      rangeEl.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  })
+
+  // Replace "Generate plan" with real CoreState summary
+  const genBtn = document.getElementById('ai-gen')
+  if (genBtn) {
+    const newBtn = genBtn.cloneNode(true) as HTMLElement  // clone without engine listeners
+    genBtn.replaceWith(newBtn)
+    newBtn.addEventListener('click', () => {
+      const out   = document.getElementById('ai-out')
+      const hours = parseInt(rangeEl.value)
+      if (!out) return
+
+      // Show spinner briefly, then show real CoreState summary
+      out.innerHTML = '<span style="opacity:.6;font-size:13px;">Generating…</span>'
+      setTimeout(() => {
+        const sp = s.selectionProbabilityPct
+        const pre = s.performance.prelimsAvg
+        const kws = todaySubjectKeywords()
+        const lines = [
+          `<b style="color:var(--accent-ink)">📅 ${s.today.dayName} · ${s.today.dayType}</b>`,
+          `<b>Today's subject:</b> ${s.today.subject}`,
+          `<b>Topic:</b> ${s.today.topicLabel}`,
+          `<b>Target:</b> ${s.today.targetQuestions} MCQs · ${s.today.mainsTarget} mains answer`,
+          `<b>Planned study:</b> ${hours}h/day`,
+          `─────`,
+          `<b>Cumulative:</b> ${s.cumulative.testsTaken} tests · ${s.cumulative.attempted} attempted · ${s.hours.cumulative.toFixed(0)}h total`,
+          pre != null ? `<b>Prelims avg:</b> ${pre.toFixed(1)}%` : '',
+          sp  != null ? `<b>Selection Probability:</b> ${sp.toFixed(1)}% → ${s.rankProjection}` : '',
+          `<b>Backlog:</b> ${s.backlogRemaining} lectures remaining`,
+          sp  != null ? `<span style="opacity:.55;font-size:11px;">${s.disclaimer}</span>` : '',
+        ].filter(Boolean)
+
+        out.innerHTML = lines.map(l => `<div style="margin-bottom:4px;">${l}</div>`).join('')
+      }, 600)
+    })
+  }
 }
 
 // ── rank inputs for store ─────────────────────────────────────────────────────

@@ -151,15 +151,34 @@ function render(): void {
     return 0
   }
 
+  // For "today" filter: pick first undone lecture from each routine subject keyword
+  const todayPickIds = new Set<string>()
+  if (_filter === 'today' && subjectKws.length) {
+    // Explicitly marked 'today'
+    _cache.filter(l => l.status === 'today' && !l.done).forEach(l => todayPickIds.add(l.id))
+    // First undone lecture from each subject keyword (sorted by sequence)
+    const bySeq = [..._cache].sort((a, b) => (a.sequence ?? 9999) - (b.sequence ?? 9999))
+    for (const kw of subjectKws) {
+      const kwL = kw.toLowerCase()
+      const pick = bySeq.find(l => {
+        if (l.done) return false
+        const name  = (l.subjects?.name ?? '').toLowerCase()
+        const title = l.title.toLowerCase()
+        return name.includes(kwL) || title.includes(kwL)
+      })
+      if (pick) todayPickIds.add(pick.id)
+    }
+  }
+
   const visible = _cache
     .filter(l => {
-      if (_filter === 'today')   return l.status === 'today' && !l.done
+      if (_filter === 'today')   return todayPickIds.size ? todayPickIds.has(l.id) : (l.status === 'today' && !l.done)
       if (_filter === 'backlog') return l.status === 'backlog' && !l.done
       if (_filter === 'done')    return l.done
       return true
     })
     .sort((a, b) => {
-      // Today's subject lectures surface first (highest priority = 1)
+      // Today's subject lectures surface first
       const pa = subjectPriority(a), pb = subjectPriority(b)
       if (pa !== pb) return pb - pa
       const ao = STATUS_ORDER[a.done ? 'done' : a.status] ?? 99
@@ -169,9 +188,12 @@ function render(): void {
     })
 
   if (visible.length === 0) {
-    container.innerHTML = total === 0
-      ? '<p class="lp-empty mono muted">No lectures yet — click <b>Import Excel</b> or <b>+ Add</b> above.</p>'
-      : '<p class="lp-empty mono muted">No lectures in this filter.</p>'
+    const emptyMsg = _filter === 'today' && subjectKws.length === 0
+      ? '<p class="lp-empty mono muted">Log today\'s routine to see recommended lectures here.</p>'
+      : total === 0
+        ? '<p class="lp-empty mono muted">No lectures yet — click <b>Import Excel</b> or <b>+ Add</b> above.</p>'
+        : '<p class="lp-empty mono muted">No lectures in this filter.</p>'
+    container.innerHTML = emptyMsg
     return
   }
 

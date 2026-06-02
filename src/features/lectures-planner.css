@@ -53,6 +53,44 @@
   text-align: center;
 }
 
+/* Scrollable lecture list — prevents 724-row DOM freeze */
+#planner {
+  max-height: 420px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+#planner::-webkit-scrollbar { width: 3px; }
+#planner::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 2px;
+}
+
+/* Pagination footer */
+.lp-pagination {
+  text-align: center;
+  padding: 10px 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+}
+.lp-more-btn {
+  background: none;
+  border: 1px solid var(--line-2);
+  border-radius: 20px;
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  padding: 4px 14px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: border-color .15s;
+}
+.lp-more-btn:hover { border-color: var(--accent); }
+
 /* Today tag colour */
 .pl-tag.lp-today {
   color: var(--good);

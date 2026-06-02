@@ -3,8 +3,11 @@ import './lectures-planner.css'
 
 type Filter = 'all' | 'today' | 'backlog' | 'done'
 
+const PAGE_SIZE = 25
+
 let _cache: LectureWithSubject[] = []
 let _filter: Filter = 'all'
+let _page = 1                        // how many pages of PAGE_SIZE to show
 // Set by core-engine after CoreState is computed — no import needed
 let _subjectKws: string[]  = []
 let _todaySubject           = ''
@@ -54,6 +57,7 @@ export function mountPlannerUI(): void {
           toolbar.querySelectorAll('.lp-filter').forEach(b => b.classList.remove('active'))
           btn.classList.add('active')
           _filter = btn.dataset.f as Filter
+          _page = 1   // reset to first page when filter changes
           render()
         })
       })
@@ -171,6 +175,10 @@ function render(): void {
     return
   }
 
+  // Paginate — only render PAGE_SIZE * _page rows at a time
+  const showing   = Math.min(_page * PAGE_SIZE, visible.length)
+  const pageSlice = visible.slice(0, showing)
+
   // Banner showing today's subject from routine
   const banner = todaySubject && subjectKws.length
     ? `<div class="lp-subject-banner">
@@ -179,7 +187,7 @@ function render(): void {
        </div>`
     : ''
 
-  container.innerHTML = banner + visible.map(l => {
+  const rows = pageSlice.map(l => {
     const subjectName = l.subjects?.name ?? ''
     const isToday     = subjectPriority(l) === 1 && !l.done
     const status      = l.done ? 'done' : l.status
@@ -202,6 +210,26 @@ function render(): void {
         <span class="pl-tag ${tagClass}">${tagLabel}</span>
       </div>`
   }).join('')
+
+  const moreCount = visible.length - showing
+  const pagination = moreCount > 0
+    ? `<div class="lp-pagination">
+         Showing ${showing} of ${visible.length}
+         <br><button class="lp-more-btn" id="lp-more">
+           Show ${Math.min(moreCount, PAGE_SIZE)} more
+         </button>
+       </div>`
+    : showing > PAGE_SIZE
+      ? `<div class="lp-pagination">All ${visible.length} shown</div>`
+      : ''
+
+  container.innerHTML = banner + rows + pagination
+
+  // "Show more" handler
+  document.getElementById('lp-more')?.addEventListener('click', () => {
+    _page++
+    render()
+  })
 
   container.querySelectorAll<HTMLElement>('.plan-row').forEach(row => {
     row.querySelector('.check')?.addEventListener('click', async () => {

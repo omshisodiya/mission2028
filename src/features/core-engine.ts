@@ -37,7 +37,7 @@ export async function loadAndBind(): Promise<void> {
   safeRun('caFeed',        () => { void bindCAFeed() })
   // Engine's count-up animation runs for ~900ms after elements enter viewport.
   // Re-apply count-up values after 1200ms so real data wins over the animation.
-  setTimeout(() => { if (_state) safeRun('count-ups-delayed', () => bindCountUps(_state!)) }, 1200)
+  // bindCountUps now uses its own internal interval — no external delay needed
 }
 
 /** Re-run after any input write. Debounced 400ms so rapid inputs don't thrash. */
@@ -305,48 +305,71 @@ function bindStreak(s: CoreState): void {
 }
 
 // Intelligence stat row — wire to real CoreState numbers.
-// Also called with 1200ms delay from loadAndBind() to win over engine's animation.
+// The engine's count-up animation runs for 900ms after elements enter viewport.
+// We override aggressively: immediately + every 150ms for 2s to win over it.
 function bindCountUps(s: CoreState): void {
   const activeDays = Object.values(s.hours.byDay).filter(h => h > 0).length
   const avgPre     = s.performance.prelimsAvg
-  const avgScore   = avgPre != null ? Math.round(avgPre * 2) : 0   // % → /200 proxy
+  const avgScore   = avgPre != null ? Math.round(avgPre * 2) : 0
 
-  // Card value map keyed by fragment of the .k label text
-  const MAP: Record<string, number> = {
-    mock:     s.cumulative.testsTaken,
-    score:    avgScore,
-    accuracy: avgPre != null ? Math.round(avgPre) : 0,
-    study:    activeDays,
+  // If no real data yet, show placeholder dashes so user knows to add data
+  const hasData = s.cumulative.testsTaken > 0 || avgPre != null
+
+  const VALS: Record<string, string> = {
+    mock:     hasData ? String(s.cumulative.testsTaken) : '—',
+    score:    hasData && avgScore > 0 ? String(avgScore) : '—',
+    accuracy: hasData && avgPre != null ? String(Math.round(avgPre)) : '—',
+    study:    activeDays > 0 ? String(activeDays) : '0',
   }
 
-  document.querySelectorAll<HTMLElement>('#intel .stat').forEach(card => {
-    const label = (card.querySelector('.k')?.textContent ?? '').toLowerCase()
-    const cu    = card.querySelector<HTMLElement>('.count-up')
-    if (!cu) return
-    const key = Object.keys(MAP).find(k => label.includes(k))
-    if (key == null) return
-    const val = MAP[key]
-    cu.setAttribute('data-to', String(val))
-    cu.textContent = String(val)   // direct set — engine animation already finished
-  })
+  const FLOATS: Record<string, boolean> = { accuracy: true }
 
-  // Update heat-active (used by heatmap section)
-  const ha = document.getElementById('heat-active')
-  if (ha) ha.textContent = String(activeDays)
+  function applyOnce(): void {
+    document.querySelectorAll<HTMLElement>('#intel .stat').forEach(card => {
+      const label = (card.querySelector('.k')?.textContent ?? '').toLowerCase()
+      const cu    = card.querySelector<HTMLElement>('.count-up')
+      if (!cu) return
+      const key = Object.keys(VALS).find(k => label.includes(k))
+      if (!key) return
+      const val = VALS[key]
+      cu.setAttribute('data-to', val === '—' ? '0' : val)
+      cu.textContent = val
+      // Hide float decoration when no data
+      if (FLOATS[key] && val === '—') {
+        const small = cu.nextElementSibling as HTMLElement | null
+        if (small?.tagName === 'SMALL') small.style.display = 'none'
+      }
+    })
+    const ha = document.getElementById('heat-active')
+    if (ha) ha.textContent = activeDays > 0 ? String(activeDays) : '0'
+  }
 
-  // Trend sub-labels
+  // Apply immediately, then keep overriding every 150ms for 2s to beat animation
+  applyOnce()
+  let n = 0
+  const iv = setInterval(() => { applyOnce(); if (++n >= 13) clearInterval(iv) }, 150)
+
+  // Trend sub-labels — always set so hardcoded values are replaced
   const trendMap: Record<string, string> = {
-    mock:     s.cumulative.testsTaken > 0  ? `${s.cumulative.testsTaken} total graded`            : '',
-    score:    avgPre != null               ? `avg accuracy ${avgPre.toFixed(1)}%`                 : '',
-    accuracy: avgPre != null               ? avgPre >= 60 ? '≥ 60% — target met' : 'Below 60%'   : '',
-    study:    `${s.hours.cumulative.toFixed(0)}h total`,
+    mock:     s.cumulative.testsTaken > 0
+      ? `${s.cumulative.testsTaken} graded total`
+      : 'Add scores via command menu',
+    score:    avgPre != null
+      ? `from ${s.cumulative.testsTaken} test${s.cumulative.testsTaken !== 1 ? 's' : ''}`
+      : 'No scores yet',
+    accuracy: avgPre != null
+      ? avgPre >= 60 ? '≥ 60% prelims target' : 'Keep improving'
+      : 'No MCQ data yet',
+    study:    activeDays > 0
+      ? `${s.hours.cumulative.toFixed(0)}h cumulative`
+      : 'Start focus timer',
   }
   document.querySelectorAll<HTMLElement>('#intel .stat .trend').forEach(tr => {
     const label = (tr.closest('.stat')?.querySelector('.k')?.textContent ?? '').toLowerCase()
     const key   = Object.keys(trendMap).find(k => label.includes(k))
-    if (!key || !trendMap[key]) return
+    if (!key) return
     tr.textContent = trendMap[key]
-    tr.className = 'trend up'
+    tr.className = hasData ? 'trend up' : 'trend'
   })
 }
 

@@ -1,11 +1,20 @@
 import { listLectures, markDone, type LectureWithSubject } from '../data/repositories/lectures'
-import { todaySubjectKeywords, getCurrentState } from './core-engine'
 import './lectures-planner.css'
 
 type Filter = 'all' | 'today' | 'backlog' | 'done'
 
 let _cache: LectureWithSubject[] = []
 let _filter: Filter = 'all'
+// Set by core-engine after CoreState is computed — no import needed
+let _subjectKws: string[]  = []
+let _todaySubject           = ''
+
+/** Called by core-engine.ts after CoreState is computed. */
+export function setPlannerSubjectContext(subject: string, keywords: string[]): void {
+  _todaySubject = subject
+  _subjectKws   = keywords
+  render()   // re-render immediately with new priority
+}
 let _mounted = false
 let _authed = false
 
@@ -122,10 +131,9 @@ function render(): void {
   const cntEl = document.getElementById('plan-count')
   if (cntEl) cntEl.textContent = `${doneCount} / ${total}`
 
-  // Today's subject keywords (from CoreState) — used to priority-sort lectures
-  const subjectKws = todaySubjectKeywords()  // e.g. ['Economy', 'Mathematics']
-  const coreState  = getCurrentState()
-  const todaySubject = coreState?.today.subject ?? ''
+  // Today's subject keywords — pushed in from core-engine via setPlannerSubjectContext()
+  const subjectKws   = _subjectKws
+  const todaySubject = _todaySubject
 
   const STATUS_ORDER: Record<string, number> = { today: 0, backlog: 1, upcoming: 2, done: 3 }
 

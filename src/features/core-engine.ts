@@ -8,6 +8,7 @@ import { listRoutineDays } from '../data/repositories/routine'
 import { listScores } from '../data/repositories/scores'
 import { listSessionDays } from '../data/repositories/sessions'
 import { listLectures } from '../data/repositories/lectures'
+import { setPlannerSubjectContext } from './lectures-planner'
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
@@ -117,6 +118,8 @@ function bindWidgets(s: CoreState): void {
   bindStreak(s)
   bindCountUps(s)
   bindBriefing(s)
+  // Push subject context into the planner so today's lectures surface first
+  setPlannerSubjectContext(s.today.subject, todaySubjectKeywords())
 }
 
 // Headline metrics strip (in the routine section)
@@ -250,17 +253,21 @@ function bindHeatmap(s: CoreState): void {
   setText('heat-active', String(active))
 }
 
-// streak — re-render the 14-day grid AND counter from CoreState hours.byDay
+// streak — update counter and re-render grid only when we have real hour data
 function bindStreak(s: CoreState): void {
-  // Update the streak counter
+  // Always update the streak counter number
   const numEl = document.getElementById('streak-num')
-  if (numEl) numEl.textContent = String(s.streak)
+  if (numEl && s.streak > 0) numEl.textContent = String(s.streak)
 
-  // Re-render the 14-cell streak grid using real study hours
+  // Only override the grid if we actually have hours data —
+  // otherwise leave the engine's focusLog-based rendering intact.
+  const hasHours = Object.values(s.hours.byDay).some(h => h > 0)
+  if (!hasHours) return
+
   const grid = document.getElementById('streak')
   if (!grid) return
 
-  const today = s.today.date
+  const today  = s.today.date
   const [ty, tm, td] = today.split('-').map(Number)
 
   grid.innerHTML = ''
@@ -268,7 +275,6 @@ function bindStreak(s: CoreState): void {
     const ms  = Date.UTC(ty, tm - 1, td - i)
     const key = new Date(ms).toISOString().slice(0, 10)
     const hrs = s.hours.byDay[key] ?? 0
-    // Map hours → level class (mirrors the engine's session-count thresholds)
     const lvl = hrs >= 6 ? 4 : hrs >= 4 ? 3 : hrs >= 2 ? 2 : hrs > 0 ? 1 : 0
     const cell = document.createElement('div')
     cell.className = 'streak-cell' + (lvl ? ` l${lvl}` : '')

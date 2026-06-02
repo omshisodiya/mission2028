@@ -57,6 +57,28 @@ export function onSessionComplete(minutes: number): void {
 
 export function getCurrentState(): CoreState | null { return _state }
 
+/** Extract subject keywords from today's subject string for lecture routing. */
+export function todaySubjectKeywords(): string[] {
+  const subject = _state?.today.subject ?? ''
+  // Config subject_rotation weekday values contain + separated keywords
+  const KEYWORD_MAP: Record<string, string> = {
+    'SJS':         'Polity',
+    'Geography':   'Geography',
+    'Environment': 'Environment',
+    'Medieval':    'History',
+    'Economy':     'Economy',
+    'Mathematics': 'Mathematics',
+  }
+  const found: string[] = []
+  for (const [kw, label] of Object.entries(KEYWORD_MAP)) {
+    if (subject.includes(kw)) {
+      found.push(kw)
+      if (label !== kw) found.push(label)  // match both "SJS" and "Polity"
+    }
+  }
+  return found
+}
+
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
 async function fetchInputs(): Promise<CoreInputs> {
@@ -228,10 +250,31 @@ function bindHeatmap(s: CoreState): void {
   setText('heat-active', String(active))
 }
 
-// streak — consecutive days with hours > 0
+// streak — re-render the 14-day grid AND counter from CoreState hours.byDay
 function bindStreak(s: CoreState): void {
-  const el = document.getElementById('streak-num')
-  if (el) el.textContent = String(s.streak)
+  // Update the streak counter
+  const numEl = document.getElementById('streak-num')
+  if (numEl) numEl.textContent = String(s.streak)
+
+  // Re-render the 14-cell streak grid using real study hours
+  const grid = document.getElementById('streak')
+  if (!grid) return
+
+  const today = s.today.date
+  const [ty, tm, td] = today.split('-').map(Number)
+
+  grid.innerHTML = ''
+  for (let i = 13; i >= 0; i--) {
+    const ms  = Date.UTC(ty, tm - 1, td - i)
+    const key = new Date(ms).toISOString().slice(0, 10)
+    const hrs = s.hours.byDay[key] ?? 0
+    // Map hours → level class (mirrors the engine's session-count thresholds)
+    const lvl = hrs >= 6 ? 4 : hrs >= 4 ? 3 : hrs >= 2 ? 2 : hrs > 0 ? 1 : 0
+    const cell = document.createElement('div')
+    cell.className = 'streak-cell' + (lvl ? ` l${lvl}` : '')
+    cell.title = `${key}: ${hrs.toFixed(1)}h`
+    grid.appendChild(cell)
+  }
 }
 
 // count-ups in the Intelligence stat row

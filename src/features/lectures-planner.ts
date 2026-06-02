@@ -1,4 +1,5 @@
 import { listLectures, markDone, type LectureWithSubject } from '../data/repositories/lectures'
+import { todaySubjectKeywords, getCurrentState } from './core-engine'
 import './lectures-planner.css'
 
 type Filter = 'all' | 'today' | 'backlog' | 'done'
@@ -121,7 +122,23 @@ function render(): void {
   const cntEl = document.getElementById('plan-count')
   if (cntEl) cntEl.textContent = `${doneCount} / ${total}`
 
+  // Today's subject keywords (from CoreState) — used to priority-sort lectures
+  const subjectKws = todaySubjectKeywords()  // e.g. ['Economy', 'Mathematics']
+  const coreState  = getCurrentState()
+  const todaySubject = coreState?.today.subject ?? ''
+
   const STATUS_ORDER: Record<string, number> = { today: 0, backlog: 1, upcoming: 2, done: 3 }
+
+  function subjectPriority(l: LectureWithSubject): number {
+    if (!subjectKws.length) return 0
+    const name = (l.subjects?.name ?? '').toLowerCase()
+    const title = l.title.toLowerCase()
+    for (const kw of subjectKws) {
+      if (name.includes(kw.toLowerCase()) || title.includes(kw.toLowerCase())) return 1
+    }
+    return 0
+  }
+
   const visible = _cache
     .filter(l => {
       if (_filter === 'today')   return l.status === 'today' && !l.done
@@ -130,6 +147,9 @@ function render(): void {
       return true
     })
     .sort((a, b) => {
+      // Today's subject lectures surface first (highest priority = 1)
+      const pa = subjectPriority(a), pb = subjectPriority(b)
+      if (pa !== pb) return pb - pa
       const ao = STATUS_ORDER[a.done ? 'done' : a.status] ?? 99
       const bo = STATUS_ORDER[b.done ? 'done' : b.status] ?? 99
       if (ao !== bo) return ao - bo
@@ -143,12 +163,22 @@ function render(): void {
     return
   }
 
-  container.innerHTML = visible.map(l => {
+  // Banner showing today's subject from routine
+  const banner = todaySubject && subjectKws.length
+    ? `<div class="lp-subject-banner">
+        <span class="mono muted" style="font-size:10px;letter-spacing:.12em;">TODAY'S SUBJECT</span>
+        <span style="color:var(--accent-ink);font-size:13px;font-weight:600;">${esc(todaySubject)}</span>
+       </div>`
+    : ''
+
+  container.innerHTML = banner + visible.map(l => {
     const subjectName = l.subjects?.name ?? ''
-    const status = l.done ? 'done' : l.status
-    const tagClass = status === 'backlog' ? 'backlog' : status === 'today' ? 'lp-today' : ''
+    const isToday     = subjectPriority(l) === 1 && !l.done
+    const status      = l.done ? 'done' : l.status
+    const tagClass    = isToday ? 'lp-today' : status === 'backlog' ? 'backlog' : ''
+    const tagLabel    = isToday ? 'today' : status
     return `
-      <div class="plan-row${l.done ? ' done' : ''}" data-id="${l.id}">
+      <div class="plan-row${l.done ? ' done' : isToday ? ' lp-subject-match' : ''}" data-id="${l.id}">
         <button class="check" aria-label="toggle complete">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
         </button>
@@ -161,7 +191,7 @@ function render(): void {
             ${l.week != null ? `<span>Week ${l.week}</span>` : ''}
           </div>
         </div>
-        <span class="pl-tag ${tagClass}">${status}</span>
+        <span class="pl-tag ${tagClass}">${tagLabel}</span>
       </div>`
   }).join('')
 

@@ -58,3 +58,21 @@
   color: var(--good);
   border-color: color-mix(in oklab, var(--good) 35%, transparent);
 }
+
+/* Today's subject banner */
+.lp-subject-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px 10px;
+  margin-bottom: 8px;
+  border-left: 2px solid var(--accent);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+/* Lecture rows that match today's routine subject */
+.plan-row.lp-subject-match {
+  background: color-mix(in oklab, var(--accent) 4%, transparent);
+  border-left: 2px solid color-mix(in oklab, var(--accent) 40%, transparent);
+}

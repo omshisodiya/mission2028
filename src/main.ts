@@ -1,12 +1,15 @@
-// Engine boots immediately so the cinematic design is always visible.
-// Auth + Supabase sync work in the background / as an overlay.
+// Engine and UI shell boot immediately — auth + data sync happen in background.
 import './engine/image-slot.js'
 import './engine/engine.js'
 
 import { supabase } from './data/supabase'
 import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
-import { initLecturesPlanner } from './features/lectures-planner'
+import { mountPlannerUI, loadLectures } from './features/lectures-planner'
+
+// Mount the planner toolbar (filter tabs + Import Excel + Add) immediately.
+// This is synchronous and needs no auth — lectures load separately after login.
+mountPlannerUI()
 
 async function init(): Promise<void> {
   let synced = false
@@ -22,32 +25,35 @@ async function init(): Promise<void> {
       }
       await syncWithSupabase(sess.user.id)
     } else if (evt === 'INITIAL_SESSION') {
-      // No session — show auth gate as overlay over the running cinematic page
       showAuthGate()
     }
   })
 }
 
 async function syncWithSupabase(userId: string): Promise<void> {
-  // Pull Supabase data into localStorage
-  await pull(userId)
+  try {
+    await pull(userId)
 
-  // Merge pulled data into the engine's already-running in-memory store
-  const store = window.MISSION?.store
-  if (store) {
-    const merged = JSON.parse(localStorage.getItem('mission2028') || '{}') as Record<string, unknown>
-    Object.assign(store.data, merged)
+    // Merge pulled data into the engine's already-running in-memory store
+    const store = window.MISSION?.store
+    if (store) {
+      const merged = JSON.parse(localStorage.getItem('mission2028') || '{}') as Record<string, unknown>
+      Object.assign(store.data, merged)
 
-    // Patch store.set for write-through on every future write
-    if (!(store as { _patched?: boolean })._patched) {
-      const orig = store.set.bind(store)
-      store.set = (k: string, v: unknown) => { orig(k, v); queuePush(k, v) }
-      ;(store as { _patched?: boolean })._patched = true
+      if (!(store as { _patched?: boolean })._patched) {
+        const orig = store.set.bind(store)
+        store.set = (k: string, v: unknown) => { orig(k, v); queuePush(k, v) }
+        ;(store as { _patched?: boolean })._patched = true
+      }
     }
-  }
 
-  // Replace engine's hardcoded PLAN[] with real lectures from Supabase
-  await initLecturesPlanner()
+    // Load real lectures into the already-mounted planner UI
+    await loadLectures()
+  } catch (err) {
+    console.error('[main] syncWithSupabase failed:', err)
+    // Still try to load lectures even if pull/store patch failed
+    await loadLectures().catch(e => console.error('[main] loadLectures failed:', e))
+  }
 }
 
 init()

@@ -69,12 +69,10 @@ export async function initConstitution(): Promise<void> {
     }
   }
 
-  // Inject once: center-align body text so it matches the heading above it
-  if (!document.getElementById('const-body-align')) {
-    const s = document.createElement('style')
-    s.id = 'const-body-align'
-    s.textContent = '#ca-text { text-align: center; }'
-    document.head.appendChild(s)
+  // Force center-align on the text element directly (inline wins over any CSS)
+  if (textEl) {
+    textEl.style.textAlign = 'center'
+    textEl.style.width = '100%'
   }
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -89,7 +87,11 @@ export async function initConstitution(): Promise<void> {
     setTimeout(() => {
       if (numEl)   numEl.textContent   = entry.num
       if (titleEl) titleEl.textContent = entry.heading
-      if (textEl)  textEl.textContent  = entry.text
+      if (textEl) {
+        textEl.textContent  = entry.text
+        textEl.style.textAlign = 'center'   // inline — beats any CSS rule
+        textEl.style.width     = '100%'
+      }
       stage!.classList.add('show')
     }, snap ? 0 : 480)
   }

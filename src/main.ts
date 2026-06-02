@@ -1,51 +1,52 @@
+// Engine boots immediately so the cinematic design is always visible.
+// Auth + Supabase sync work in the background / as an overlay.
+import './engine/image-slot.js'
+import './engine/engine.js'
+
 import { supabase } from './data/supabase'
 import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
 import { initLecturesPlanner } from './features/lectures-planner'
 
 async function init(): Promise<void> {
-  let booted = false
+  let synced = false
 
-  // onAuthStateChange is the single source of truth for both:
-  //   • existing sessions (INITIAL_SESSION fires immediately)
-  //   • magic-link callbacks (SIGNED_IN fires after Supabase processes URL hash)
   supabase.auth.onAuthStateChange(async (evt, sess) => {
-    if (booted) return
+    if (synced) return
 
     if (sess) {
-      booted = true
+      synced = true
       hideAuthGate()
-      // Clean the access_token from the URL after magic-link landing
       if (window.location.hash.includes('access_token')) {
         history.replaceState(null, '', window.location.pathname)
       }
-      await bootEngine(sess.user.id)
+      await syncWithSupabase(sess.user.id)
     } else if (evt === 'INITIAL_SESSION') {
-      // Confirmed: no existing session → show login
+      // No session — show auth gate as overlay over the running cinematic page
       showAuthGate()
     }
   })
 }
 
-async function bootEngine(userId: string): Promise<void> {
-  // 1. Hydrate localStorage from Supabase BEFORE engine.js reads it
+async function syncWithSupabase(userId: string): Promise<void> {
+  // Pull Supabase data into localStorage
   await pull(userId)
 
-  // 2. Boot engine (reads the now-hydrated localStorage on init)
-  await import('./engine/image-slot.js')
-  await import('./engine/engine.js')
-
-  // 3. Patch store.set so every future write also queues a Supabase upsert
+  // Merge pulled data into the engine's already-running in-memory store
   const store = window.MISSION?.store
   if (store) {
-    const orig = store.set.bind(store)
-    store.set = (k: string, v: unknown) => {
-      orig(k, v)
-      queuePush(k, v)
+    const merged = JSON.parse(localStorage.getItem('mission2028') || '{}') as Record<string, unknown>
+    Object.assign(store.data, merged)
+
+    // Patch store.set for write-through on every future write
+    if (!(store as { _patched?: boolean })._patched) {
+      const orig = store.set.bind(store)
+      store.set = (k: string, v: unknown) => { orig(k, v); queuePush(k, v) }
+      ;(store as { _patched?: boolean })._patched = true
     }
   }
 
-  // 4. Replace engine's hardcoded PLAN[] with real lectures from Supabase
+  // Replace engine's hardcoded PLAN[] with real lectures from Supabase
   await initLecturesPlanner()
 }
 

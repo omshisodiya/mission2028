@@ -45,34 +45,60 @@ export async function initConstitution(): Promise<void> {
     return
   }
 
-  // ── Build pool (Preamble first, then all articles with text) ──────────────
-  type Entry = { num: string; heading: string; text: string }
+  // ── Build pool — each entry has ambient text AND full legal text ──────────
+  type Entry = { num: string; heading: string; text: string; fullText: string }
   const pool: Entry[] = []
 
-  // Preamble — short meaningful excerpt
   const preambleExcerpt = data.preamble.slice(0, MAX_TEXT).trimEnd() + '…'
-  pool.push({
-    num:     'Preamble',
-    heading: 'Preamble',
-    text:    preambleExcerpt,
-  })
+  pool.push({ num: 'Preamble', heading: 'Preamble', text: preambleExcerpt, fullText: data.preamble })
 
   for (const part of data.parts) {
     for (const a of part.articles) {
       if (!a.omitted && a.text && a.text.trim().length > 5) {
         pool.push({
-          num:     `Article ${a.num}`,
-          heading: a.heading,   // full heading, no truncation, no ellipsis
-          text:    clipBody(a.heading, a.text),
+          num:      `Article ${a.num}`,
+          heading:  a.heading,
+          text:     clipBody(a.heading, a.text),
+          fullText: a.text.trim(),
         })
       }
     }
   }
 
-  // Force center-align on the text element directly (inline wins over any CSS)
-  if (textEl) {
-    textEl.style.textAlign = 'center'
-    textEl.style.width = '100%'
+  // Center-align body text
+  if (textEl) { textEl.style.textAlign = 'center'; textEl.style.width = '100%' }
+
+  // ── Full-text expansion panel (shows below card on click) ─────────────────
+  let fullPanel: HTMLElement | null = null
+  let currentEntry: Entry | null = null
+
+  function openFullText(entry: Entry): void {
+    currentEntry = entry
+    if (!fullPanel) {
+      fullPanel = document.createElement('div')
+      fullPanel.style.cssText =
+        'background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r);' +
+        'padding:28px 32px;margin-top:20px;max-height:55vh;overflow-y:auto;text-align:left;' +
+        'line-height:1.8;font-size:15px;color:var(--ink-soft);position:relative;'
+      const hdr = document.createElement('div')
+      hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;'
+      hdr.innerHTML =
+        `<span style="font-family:var(--font-mono);font-size:11px;color:var(--accent);letter-spacing:.12em;" id="cfull-num"></span>` +
+        `<button id="cfull-close" style="background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--muted);font-family:var(--font-mono);font-size:11px;padding:3px 12px;cursor:pointer;">✕ CLOSE</button>`
+      const body = document.createElement('p')
+      body.id = 'cfull-text'
+      body.style.cssText = 'margin:0;white-space:pre-wrap;'
+      fullPanel.appendChild(hdr); fullPanel.appendChild(body)
+      stage!.insertAdjacentElement('afterend', fullPanel)
+      document.getElementById('cfull-close')?.addEventListener('click', () => {
+        fullPanel?.remove(); fullPanel = null
+      })
+    }
+    const numLbl = fullPanel.querySelector<HTMLElement>('#cfull-num')
+    const textLbl = fullPanel.querySelector<HTMLElement>('#cfull-text')
+    if (numLbl)  numLbl.textContent  = entry.num
+    if (textLbl) textLbl.textContent = entry.fullText
+    fullPanel.scrollTop = 0
   }
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -130,9 +156,17 @@ export async function initConstitution(): Promise<void> {
     ticker.appendChild(btn)
   }
 
-  // ── Hover pause (engine already pauses on hover, but so does ours) ────────
+  // ── Click → show full text; hover → pause cycle ───────────────────────────
+  stage.addEventListener('click', () => {
+    // Find current entry by matching article number
+    const cur = pool[idx % pool.length]
+    openFullText(cur)
+    paused = true   // pause while reading
+  })
+  stage.style.cursor = 'pointer'
+  stage.title = 'Click to read the full article text'
   stage.addEventListener('mouseenter', () => { paused = true })
-  stage.addEventListener('mouseleave', () => { paused = false })
+  stage.addEventListener('mouseleave', () => { if (!fullPanel) paused = false })
 
   // ── Start ─────────────────────────────────────────────────────────────────
   show(pool[0], true)

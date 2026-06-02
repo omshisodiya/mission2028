@@ -15,6 +15,7 @@ import { todayIST } from './services/core'
 import { initConstitution } from './features/constitution'
 import { initFocusMode } from './features/focus-mode'
 import { injectExportButton } from './features/export'
+import { initConfigurableTimer } from './features/timer-config'
 
 // UI shells mount synchronously so sections are always visible.
 mountPlannerUI()
@@ -123,8 +124,9 @@ async function syncAndBoot(userId: string): Promise<void> {
   injectAddScoreToMenu()
   injectExportButton()
 
-  // Phase 6: Full Constitution browser (lazy — loads 527KB JSON only when needed)
+  // Phase 6: Constitution + configurable timer
   void initConstitution()
+  initConfigurableTimer()
 }
 
 // ── Add Score in command menu ─────────────────────────────────────────────────

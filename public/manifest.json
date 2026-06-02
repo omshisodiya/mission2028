@@ -1,0 +1,20 @@
+{
+  "name": "Mission 2028 — UPSC Command Center",
+  "short_name": "Mission 2028",
+  "description": "Personal UPSC CSE 2028 preparation command center for Om Shisodiya",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05070f",
+  "theme_color": "#f0b54a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "lang": "en-IN"
+}

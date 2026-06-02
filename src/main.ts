@@ -12,10 +12,26 @@ import { mountRoutineSection, initRoutine } from './features/routine-ui'
 import { loadAndBind, recompute, onSessionComplete } from './features/core-engine'
 import { insertSession } from './data/repositories/sessions'
 import { todayIST } from './services/core'
+import { initConstitution } from './features/constitution'
+import { initFocusMode } from './features/focus-mode'
+import { injectExportButton } from './features/export'
 
 // UI shells mount synchronously so sections are always visible.
 mountPlannerUI()
 mountRoutineSection()
+
+// Focus Mode inits immediately (reads saved preference from store on first boot)
+// — called before auth so it's active as soon as the engine runs
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initFocusMode)
+} else {
+  initFocusMode()
+}
+
+// Register service worker for PWA / offline
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {})
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -103,8 +119,12 @@ async function syncAndBoot(userId: string): Promise<void> {
   // 3. Load all inputs → computeCoreState → bind every widget
   await loadAndBind().catch(e => console.error('[main] loadAndBind failed:', e))
 
-  // 4. Add Score button — inject into command menu
+  // Phase 5-6: inject command menu actions
   injectAddScoreToMenu()
+  injectExportButton()
+
+  // Phase 6: Full Constitution browser (lazy — loads 527KB JSON only when needed)
+  void initConstitution()
 }
 
 // ── Add Score in command menu ─────────────────────────────────────────────────

@@ -111,28 +111,46 @@ function bindStrip(s: CoreState): void {
   setText('rtn-consistency', s.consistencyPct != null ? s.consistencyPct + '%' : '—')
 }
 
-// rankSim — show real CoreState values; keep sliders for what-if
+// rankSim — feed real CoreState values into the sliders so the engine's
+// own compute() formula runs and updates #rank-num / #rank-band correctly.
 function bindRankSim(s: CoreState): void {
-  const rankNumEl = document.getElementById('rank-num')
-  const rankBandEl = document.getElementById('rank-band')
-
-  if (s.selectionProbabilityPct !== null) {
-    if (rankNumEl) rankNumEl.textContent = s.approxRank
-    if (rankBandEl) rankBandEl.textContent =
-      s.rankProjection + ' · ' + s.approxRank +
-      ' · SP: ' + s.selectionProbabilityPct.toFixed(1) + '%'
-  }
-
-  // Also update sliders as best-guess (keep them functional for what-if)
   const preSlider   = document.getElementById('s-pre')   as HTMLInputElement | null
   const mainsSlider = document.getElementById('s-mains') as HTMLInputElement | null
+
+  // Map accuracy % → slider ranges (pre: 60–200, mains: 30–100)
   if (preSlider && s.performance.prelimsAvg != null) {
-    preSlider.value = String(Math.round(60 + (Math.min(s.performance.prelimsAvg, 100) / 100) * 140))
+    const val = Math.round(60 + (Math.min(s.performance.prelimsAvg, 100) / 100) * 140)
+    preSlider.value = String(val)
+    // Dispatch so the engine's rankSim compute() updates #rank-num / #rank-band
     preSlider.dispatchEvent(new Event('input', { bubbles: true }))
   }
   if (mainsSlider && s.performance.optionalAvg != null) {
-    mainsSlider.value = String(Math.round(30 + (Math.min(s.performance.optionalAvg, 100) / 100) * 70))
+    const val = Math.round(30 + (Math.min(s.performance.optionalAvg, 100) / 100) * 70)
+    mainsSlider.value = String(val)
     mainsSlider.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  // Inject a CoreState sub-label below the band text (only once)
+  const rankRoot = document.getElementById('rank')
+  if (!rankRoot) return
+  let lbl = document.getElementById('cs-rank-label')
+  if (!lbl) {
+    lbl = document.createElement('p')
+    lbl.id = 'cs-rank-label'
+    lbl.style.cssText =
+      'margin:10px 0 0;font-size:11.5px;font-family:var(--font-mono);color:var(--muted);text-align:center;line-height:1.5;'
+    const muted = rankRoot.querySelector('.muted')
+    if (muted) muted.insertAdjacentElement('afterend', lbl)
+  }
+
+  if (s.selectionProbabilityPct != null) {
+    lbl.innerHTML =
+      `SP: <span style="color:var(--accent-ink)">${s.selectionProbabilityPct.toFixed(1)}%</span>` +
+      ` · Projection: <span style="color:var(--accent-ink)">${s.rankProjection}</span>` +
+      ` · Approx: <span style="color:var(--accent-ink)">${s.approxRank}</span>` +
+      `<br><span style="opacity:.65">${s.disclaimer.slice(0, 70)}…</span>`
+  } else {
+    lbl.textContent = 'Add scores or complete routine rows to seed this rank.'
   }
 }
 

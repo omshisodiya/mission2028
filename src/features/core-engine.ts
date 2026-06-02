@@ -1,0 +1,301 @@
+/**
+ * core-engine.ts — orchestration layer.
+ * Loads all inputs → computeCoreState → caches in store → binds every widget.
+ * No widget computes its own numbers. All reads go through CoreState.
+ */
+import { computeCoreState, todayIST, type CoreState, type CoreInputs } from '../services/core'
+import { listRoutineDays } from '../data/repositories/routine'
+import { listScores } from '../data/repositories/scores'
+import { listSessionDays } from '../data/repositories/sessions'
+import { listLectures } from '../data/repositories/lectures'
+
+// ── Module state ──────────────────────────────────────────────────────────────
+
+let _state: CoreState | null = null
+let _recomputeTimer: ReturnType<typeof setTimeout> | null = null
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+/** Load all inputs from DB, compute CoreState, bind widgets. Call on boot. */
+export async function loadAndBind(): Promise<void> {
+  const inputs = await fetchInputs()
+  _state = computeCoreState(inputs)
+  cacheInStore(_state)
+  bindWidgets(_state)
+}
+
+/** Re-run after any input write. Debounced 400ms so rapid inputs don't thrash. */
+export function recompute(): void {
+  if (_recomputeTimer) clearTimeout(_recomputeTimer)
+  _recomputeTimer = setTimeout(async () => {
+    const inputs = await fetchInputs()
+    _state = computeCoreState(inputs)
+    cacheInStore(_state)
+    bindWidgets(_state)
+  }, 400)
+}
+
+/** Called from focus-timer intercept when a session completes. */
+export function onSessionComplete(minutes: number): void {
+  // Hours auto-fill: punch the new session into _state optimistically,
+  // then trigger a full recompute so the DB catches up.
+  recompute()
+  // Toast-style: update hours.today immediately in the routine card
+  if (_state) {
+    const today = todayIST()
+    const prevByDay = _state.hours.byDay[today] ?? 0
+    // Only optimistically update if no manual hours override exists
+    const hasManualOverride = false  // detected during recompute from DB
+    if (!hasManualOverride) {
+      _state.hours.byDay[today] = prevByDay + minutes / 60
+      _state.hours.today = _state.hours.byDay[today]
+      _state.hours.cumulative += minutes / 60
+    }
+    patchHoursDisplay(_state)
+  }
+}
+
+export function getCurrentState(): CoreState | null { return _state }
+
+// ── Data fetching ─────────────────────────────────────────────────────────────
+
+async function fetchInputs(): Promise<CoreInputs> {
+  const today = todayIST()
+  const [routineDays, scores, sessionDays, lectures] = await Promise.all([
+    listRoutineDays().catch(() => []),
+    listScores().catch(() => []),
+    listSessionDays().catch(() => []),
+    listLectures().catch(() => []),
+  ])
+  const lecturesDone  = lectures.filter(l => l.done).length
+  const lecturesTotal = lectures.length
+  return { routineDays, scores, sessionDays, lecturesDone, lecturesTotal, today }
+}
+
+// ── Cache in store ────────────────────────────────────────────────────────────
+
+function cacheInStore(state: CoreState): void {
+  const mission = (window as { MISSION?: { store: { set(k: string, v: unknown): void; data: Record<string, unknown> } } }).MISSION
+  if (!mission?.store) return
+  // Cache the state so widgets can read synchronously next time
+  mission.store.data['coreState'] = state
+  // Also sync the keys that the engine reads natively
+  mission.store.set('heatSeed', buildHeatSeed(state))
+  mission.store.set('rankInputs', buildRankInputs(state))
+}
+
+// ── Widget bindings ───────────────────────────────────────────────────────────
+
+function bindWidgets(s: CoreState): void {
+  bindStrip(s)
+  bindRankSim(s)
+  bindBarCharts(s)
+  bindDonuts(s)
+  bindHeatmap(s)
+  bindStreak(s)
+  bindCountUps(s)
+  bindBriefing(s)
+}
+
+// Headline metrics strip (in the routine section)
+function bindStrip(s: CoreState): void {
+  const sp = s.selectionProbabilityPct
+  setText('rtn-sel-prob',    sp != null ? sp.toFixed(1) : '—')
+  setText('rtn-rank-proj',   s.rankProjection)
+  setText('rtn-approx-rank', s.approxRank)
+  setText('rtn-pre-avg',     s.performance.prelimsAvg != null ? s.performance.prelimsAvg.toFixed(1) : '—')
+  setText('rtn-opt-avg',     s.performance.optionalAvg != null ? s.performance.optionalAvg.toFixed(1) : '—')
+  setText('rtn-mains-avg',   s.performance.mainsAvg != null ? s.performance.mainsAvg.toFixed(1) : '—')
+  // Live metrics in today card
+  setText('rtn-accuracy',    s.performance.accuracyToday != null ? s.performance.accuracyToday.toFixed(1) + '%' : '—')
+  setText('rtn-consistency', s.consistencyPct != null ? s.consistencyPct + '%' : '—')
+}
+
+// rankSim — show real CoreState values; keep sliders for what-if
+function bindRankSim(s: CoreState): void {
+  const rankNumEl = document.getElementById('rank-num')
+  const rankBandEl = document.getElementById('rank-band')
+
+  if (s.selectionProbabilityPct !== null) {
+    if (rankNumEl) rankNumEl.textContent = s.approxRank
+    if (rankBandEl) rankBandEl.textContent =
+      s.rankProjection + ' · ' + s.approxRank +
+      ' · SP: ' + s.selectionProbabilityPct.toFixed(1) + '%'
+  }
+
+  // Also update sliders as best-guess (keep them functional for what-if)
+  const preSlider   = document.getElementById('s-pre')   as HTMLInputElement | null
+  const mainsSlider = document.getElementById('s-mains') as HTMLInputElement | null
+  if (preSlider && s.performance.prelimsAvg != null) {
+    preSlider.value = String(Math.round(60 + (Math.min(s.performance.prelimsAvg, 100) / 100) * 140))
+    preSlider.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  if (mainsSlider && s.performance.optionalAvg != null) {
+    mainsSlider.value = String(Math.round(30 + (Math.min(s.performance.optionalAvg, 100) / 100) * 70))
+    mainsSlider.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+}
+
+// barCharts — last 8 test accuracies
+function bindBarCharts(s: CoreState): void {
+  const trend = s.testScoreTrend
+  if (!trend.length) return
+  const cols = document.querySelectorAll<HTMLElement>('#mock-bars .col')
+  trend.forEach((v, i) => {
+    if (i >= cols.length) return
+    const col = cols[i]
+    col.setAttribute('data-v', String(v))
+    col.style.height = v + '%'
+    const pv = col.querySelector('.pv')
+    if (pv) pv.textContent = String(v)
+  })
+}
+
+// donuts — subject accuracy
+const DONUT_SUBJECT_MAP: { keyword: string; index: number }[] = [
+  { keyword: 'SJS',         index: 0 },   // Polity
+  { keyword: 'Medieval',    index: 1 },   // History
+  { keyword: 'Geography',   index: 2 },   // Geo
+  { keyword: 'Economy',     index: 3 },   // Economy
+  { keyword: 'Environment', index: 4 },   // Env
+  { keyword: 'Mathematics', index: 5 },   // CSAT / Optional
+]
+
+function bindDonuts(s: CoreState): void {
+  const donuts = document.querySelectorAll<HTMLElement>('.donut')
+  const accent  = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+  const line    = 'rgba(120,168,255,0.13)'
+  DONUT_SUBJECT_MAP.forEach(({ keyword, index }) => {
+    const acc = s.subjectAccuracy[keyword]
+    if (acc == null || index >= donuts.length) return
+    const v    = Math.round(acc)
+    const d    = donuts[index]
+    d.setAttribute('data-v', String(v))
+    const b = d.querySelector('.mid b')
+    if (b) b.textContent = v + '%'
+    const ring = d.querySelector<HTMLElement>('.ring')
+    if (ring) ring.style.background = `conic-gradient(${accent} ${v}%, ${line} 0)`
+  })
+}
+
+// heatmap — hours.byDay → 182-cell seed
+function buildHeatSeed(s: CoreState): number[] {
+  const today   = s.today.date
+  const todayMs = utcMs(today)
+  const dow     = new Date(todayMs).getUTCDay()
+  const startMs = todayMs - (25 * 7 + dow) * 86_400_000
+  const seed: number[] = []
+  for (let w = 0; w < 26; w++) {
+    for (let d = 0; d < 7; d++) {
+      const ms  = startMs + (w * 7 + d) * 86_400_000
+      const key = new Date(ms).toISOString().slice(0, 10)
+      const hrs = s.hours.byDay[key] ?? 0
+      seed.push(hrs >= 6 ? 4 : hrs >= 4 ? 3 : hrs >= 2 ? 2 : hrs > 0 ? 1 : 0)
+    }
+  }
+  return seed
+}
+
+function bindHeatmap(s: CoreState): void {
+  const root = document.getElementById('heat')
+  if (!root) return
+  const seed = buildHeatSeed(s)
+  root.innerHTML = ''
+  seed.forEach(l => {
+    const c = document.createElement('div')
+    c.className = 'c' + (l ? ' h' + l : '')
+    root.appendChild(c)
+  })
+  const active = seed.filter(v => v > 0).length
+  setText('heat-active', String(active))
+}
+
+// streak — consecutive days with hours > 0
+function bindStreak(s: CoreState): void {
+  const el = document.getElementById('streak-num')
+  if (el) el.textContent = String(s.streak)
+}
+
+// count-ups in the Intelligence stat row
+function bindCountUps(s: CoreState): void {
+  // Mocks attempted
+  updateCountUp('[data-to]', '.stat:nth-child(1) .count-up', s.cumulative.testsTaken)
+  // Avg prelims score (as accuracy %, capped at 200)
+  const avgPre = s.performance.prelimsAvg
+  updateCountUp('[data-to]', '.stat:nth-child(2) .count-up',
+    avgPre != null ? Math.round(avgPre * 2) : 0)   // map 0-100% → 0-200 scale
+  // Accuracy %
+  updateCountUp('[data-to]', '.stat:nth-child(3) .count-up',
+    avgPre != null ? Math.round(avgPre) : 0)
+  // Active study days (from heatmap active count)
+  const activeDays = Object.values(s.hours.byDay).filter(h => h > 0).length
+  const heatActiveEl = document.getElementById('heat-active')
+  if (heatActiveEl) heatActiveEl.textContent = String(activeDays)
+  // Also update data-to on all stat count-ups for engine's countUp animation
+  const statEls = document.querySelectorAll<HTMLElement>('.grid.g-4 .stat')
+  const vals = [s.cumulative.testsTaken,
+    avgPre != null ? Math.round(avgPre * 2) : 0,
+    avgPre != null ? Math.round(avgPre) : 0,
+    activeDays]
+  statEls.forEach((el, i) => {
+    const cu = el.querySelector<HTMLElement>('.count-up')
+    if (cu && vals[i] != null) {
+      cu.setAttribute('data-to', String(vals[i]))
+      cu.textContent = String(vals[i])
+    }
+  })
+}
+
+function updateCountUp(selector: string, containerSel: string, value: number): void {
+  const el = document.querySelector<HTMLElement>(containerSel)
+  if (!el) return
+  el.setAttribute('data-to', String(value))
+  el.textContent = String(value)
+}
+
+// daily briefing — one-line summary
+function bindBriefing(s: CoreState): void {
+  const el = document.getElementById('rtn-briefing')
+  if (!el) return
+
+  const parts: string[] = []
+  if (s.hours.today > 0) parts.push(`${s.hours.today.toFixed(1)}h studied today`)
+  if (s.consistencyPct != null) parts.push(`consistency ${s.consistencyPct}%`)
+  if (s.performance.prelimsAvg != null) parts.push(`prelims avg ${s.performance.prelimsAvg.toFixed(1)}%`)
+  if (s.selectionProbabilityPct != null) parts.push(`SP ${s.selectionProbabilityPct.toFixed(1)}%`)
+  if (s.backlogRemaining > 0) parts.push(`${s.backlogRemaining} lectures remaining`)
+
+  el.textContent = parts.length
+    ? parts.join(' · ')
+    : 'Log today\'s inputs to see your briefing.'
+}
+
+// routine card — patch hours display after optimistic update
+function patchHoursDisplay(s: CoreState): void {
+  const el = document.getElementById('rtn-study-hours') as HTMLInputElement | null
+  if (el && !el.value) el.value = s.hours.today.toFixed(1)
+}
+
+// ── rank inputs for store ─────────────────────────────────────────────────────
+
+function buildRankInputs(s: CoreState) {
+  const pre   = s.performance.prelimsAvg  != null
+    ? Math.round(60 + (Math.min(s.performance.prelimsAvg, 100) / 100) * 140)
+    : 110
+  const mains = s.performance.optionalAvg != null
+    ? Math.round(30 + (Math.min(s.performance.optionalAvg, 100) / 100) * 70)
+    : 52
+  return { pre, mains, inter: 165 }
+}
+
+// ── Tiny helpers ──────────────────────────────────────────────────────────────
+
+function setText(id: string, val: string): void {
+  const el = document.getElementById(id)
+  if (el) el.textContent = val
+}
+
+function utcMs(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return Date.UTC(y, m - 1, d)
+}

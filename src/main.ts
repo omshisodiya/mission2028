@@ -9,63 +9,49 @@ import { showAuthGate, hideAuthGate } from './features/auth'
 import { hasPIN, showPINEntry, hidePINEntry, showPINSetup, clearPIN } from './features/pin-auth'
 import { mountPlannerUI, loadLectures } from './features/lectures-planner'
 import { mountRoutineSection, initRoutine } from './features/routine-ui'
+import { loadAndBind, recompute, onSessionComplete } from './features/core-engine'
+import { insertSession } from './data/repositories/sessions'
+import { todayIST } from './services/core'
 
-// UI shells mount synchronously — data loads after auth.
+// UI shells mount synchronously so sections are always visible.
 mountPlannerUI()
 mountRoutineSection()
 
-async function init(): Promise<void> {
-  let handled = false   // true once we've started booting for a valid session
+// ── Auth ──────────────────────────────────────────────────────────────────────
 
-  // ── handle a valid session ──────────────────────────────────────────────────
+async function init(): Promise<void> {
+  let handled = false
+
   function handleSession(sess: Session, isFreshLogin: boolean): void {
     if (handled) return
     handled = true
-
     if (isFreshLogin && !hasPIN()) {
-      // First magic-link login — offer PIN setup
       showPINSetup(() => boot(sess.user.id))
     } else if (hasPIN() && !isFreshLogin) {
-      // Returning visitor with PIN set — show PIN entry
-      showPINEntry(
-        () => boot(sess.user.id),       // PIN correct
-        () => { clearPIN(); showAuthGate() }, // forgot PIN → magic link
-      )
+      showPINEntry(() => boot(sess.user.id), () => { clearPIN(); showAuthGate() })
     } else {
-      // No PIN (skipped setup) or already booting after PIN verified
       boot(sess.user.id)
     }
   }
 
-  // ── no session ─────────────────────────────────────────────────────────────
   function requireLogin(): void {
     handled = false
-    hideAuthGate()      // in case it was already shown
     hidePINEntry()
+    hideAuthGate()
     showAuthGate()
   }
 
-  // ── 1. Subscribe to auth state changes ─────────────────────────────────────
   supabase.auth.onAuthStateChange((evt, sess) => {
-    if (sess) {
-      handleSession(sess, evt === 'SIGNED_IN')
-    } else {
-      requireLogin()
-    }
+    if (sess) handleSession(sess, evt === 'SIGNED_IN')
+    else requireLogin()
   })
 
-  // ── 2. Also check immediately via getSession() ──────────────────────────────
-  // onAuthStateChange can be slow on some networks; getSession() reads from
-  // localStorage instantly and is the reliable fallback.
   const { data: { session } } = await supabase.auth.getSession()
-  if (session) {
-    handleSession(session, false)
-  } else if (!handled) {
-    requireLogin()
-  }
+  if (session) handleSession(session, false)
+  else if (!handled) requireLogin()
 }
 
-// ── boot engine after auth ──────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────────
 
 function boot(userId: string): void {
   hideAuthGate()
@@ -73,31 +59,80 @@ function boot(userId: string): void {
   if (window.location.hash.includes('access_token')) {
     history.replaceState(null, '', window.location.pathname)
   }
-  syncWithSupabase(userId).catch(err => console.error('[main] boot failed:', err))
+  syncAndBoot(userId).catch(err => console.error('[main] boot failed:', err))
 }
 
-async function syncWithSupabase(userId: string): Promise<void> {
-  try {
-    await pull(userId)
+async function syncAndBoot(userId: string): Promise<void> {
+  // 1. Pull KV state from Supabase → hydrate engine's store
+  try { await pull(userId) } catch { /* proceed from cache */ }
 
-    const store = window.MISSION?.store
-    if (store) {
-      const merged = JSON.parse(localStorage.getItem('mission2028') || '{}') as Record<string, unknown>
-      Object.assign(store.data, merged)
-      if (!(store as { _patched?: boolean })._patched) {
-        const orig = store.set.bind(store)
-        store.set = (k: string, v: unknown) => { orig(k, v); queuePush(k, v) }
-        ;(store as { _patched?: boolean })._patched = true
+  const store = window.MISSION?.store
+  if (store) {
+    const merged = JSON.parse(localStorage.getItem('mission2028') || '{}') as Record<string, unknown>
+    Object.assign(store.data, merged)
+
+    // Patch store.set: write-through to Supabase + intercept focus-timer events
+    if (!(store as { _patched?: boolean })._patched) {
+      let _prevFocusMins = Number(store.data['focusMins'] ?? 0)
+      const orig = store.set.bind(store)
+
+      store.set = (k: string, v: unknown) => {
+        orig(k, v)
+        queuePush(k, v)
+
+        // Focus timer completed a session → record it + update CoreState
+        if (k === 'focusMins') {
+          const newMins = Number(v)
+          const delta   = newMins - _prevFocusMins
+          if (delta > 0) {
+            _prevFocusMins = newMins
+            const today = todayIST()
+            void insertSession(delta, today) // persist to study_sessions
+            onSessionComplete(delta)          // optimistic CoreState update
+          }
+        }
       }
+      ;(store as { _patched?: boolean })._patched = true
     }
-
-    await loadLectures()
-    await initRoutine()
-  } catch (err) {
-    console.error('[main] syncWithSupabase failed:', err)
-    await loadLectures().catch(e => console.error('[main] loadLectures failed:', e))
-    await initRoutine().catch(e => console.error('[main] initRoutine failed:', e))
   }
+
+  // 2. Load lectures + routine UI (existing features)
+  await loadLectures().catch(e => console.error('[main] loadLectures failed:', e))
+  await initRoutine().catch(e => console.error('[main] initRoutine failed:', e))
+
+  // 3. Load all inputs → computeCoreState → bind every widget
+  await loadAndBind().catch(e => console.error('[main] loadAndBind failed:', e))
+
+  // 4. Add Score button — inject into command menu
+  injectAddScoreToMenu()
+}
+
+// ── Add Score in command menu ─────────────────────────────────────────────────
+
+function injectAddScoreToMenu(): void {
+  const grid = document.querySelector('.cm-grid')
+  if (!grid || document.getElementById('cm-add-score')) return
+
+  const card = document.createElement('a')
+  card.className = 'cm-card'
+  card.id = 'cm-add-score'
+  card.setAttribute('href', '#')
+  card.innerHTML = `
+    <span class="cm-no">+</span>
+    <span class="cm-t">Add Score</span>
+    <span class="cm-d">Log any test, mock, or DPP</span>
+  `
+  card.addEventListener('click', async e => {
+    e.preventDefault()
+    // Close the command menu first
+    document.getElementById('command-menu')?.classList.remove('open')
+    document.getElementById('menu-backdrop')?.classList.remove('show')
+    document.body.classList.remove('menu-open')
+
+    const { showAddScore } = await import('./features/add-score')
+    showAddScore(() => recompute())
+  })
+  grid.appendChild(card)
 }
 
 init()

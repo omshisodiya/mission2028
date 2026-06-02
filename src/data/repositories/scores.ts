@@ -1,0 +1,38 @@
+import { supabase } from '../supabase'
+import type { ScoreRow } from '../../services/core'
+
+async function uid(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not authenticated')
+  return session.user.id
+}
+
+export async function listScores(): Promise<ScoreRow[]> {
+  const { data, error } = await supabase
+    .from('scores')
+    .select('taken_on, category, subject, score, max_score, label')
+    .order('taken_on', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(r => ({
+    date:      r.taken_on,
+    category:  r.category ?? 'mock',
+    subject:   r.subject,
+    score:     Number(r.score),
+    max_score: Number(r.max_score),
+    label:     r.label,
+  }))
+}
+
+export async function insertScore(row: ScoreRow): Promise<void> {
+  const userId = await uid()
+  const { error } = await supabase.from('scores').insert({
+    user_id:   userId,
+    taken_on:  row.date,
+    category:  row.category,
+    subject:   row.subject ?? null,
+    score:     row.score,
+    max_score: row.max_score,
+    label:     row.label ?? null,
+  })
+  if (error) throw error
+}

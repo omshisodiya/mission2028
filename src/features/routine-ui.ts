@@ -228,6 +228,10 @@ function injectSection(): void {
     </div>
   `
   intel.insertAdjacentElement('beforebegin', section)
+
+  // The engine's IntersectionObserver only observed elements present at boot.
+  // Force-show all reveal elements in this dynamically-injected section.
+  section.querySelectorAll('.reveal').forEach(el => el.classList.add('in'))
 }
 
 // ── render ────────────────────────────────────────────────────────────────────

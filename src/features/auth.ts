@@ -14,7 +14,7 @@ export function showAuthGate(): void {
         Mission 2028 · Command Center
       </span>
       <h2 class="ag-title">Welcome back, Om.</h2>
-      <p class="ag-sub">Enter your email — we'll send a magic sign-in link.</p>
+      <p class="ag-sub">Enter your email — we'll send a magic sign-in link to access your command center.</p>
       <form id="ag-form" class="ag-form">
         <input id="ag-email" class="ag-input" type="email" autocomplete="email"
           placeholder="your@email.com" value="omshisodiya2603@gmail.com" required />

@@ -53,9 +53,17 @@ export function mountPlannerUI(): void {
     }
 
     // Show empty state until auth + data arrive
-    container.innerHTML = _authed
-      ? '<p class="lp-empty mono muted">Loading lectures…</p>'
-      : '<p class="lp-empty mono muted">Sign in to load your lectures.</p>'
+    if (!_authed) {
+      container.innerHTML = `
+        <p class="lp-empty mono muted" style="margin-bottom:12px;">Sign in to load your lectures.</p>
+        <button class="btn primary" id="lp-signin-btn" style="font-size:13px;padding:8px 18px;">Sign In</button>`
+      document.getElementById('lp-signin-btn')?.addEventListener('click', async () => {
+        const { showAuthGate } = await import('./auth')
+        showAuthGate()
+      })
+    } else {
+      container.innerHTML = '<p class="lp-empty mono muted">Loading lectures…</p>'
+    }
   }
 
   if (document.readyState === 'loading') {

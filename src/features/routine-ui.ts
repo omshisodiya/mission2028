@@ -25,17 +25,31 @@ function makeDefault(day: string): RoutineDay {
            attempted: null, correct: null, wrong: null, notes: null }
 }
 
-// ── public entry point (call from main.ts after auth) ─────────────────────────
+/**
+ * Step 1 — call synchronously at page load (no auth needed).
+ * Injects the section skeleton so it always appears in the page.
+ */
+export function mountRoutineSection(): void {
+  // Wait for DOM ready (module scripts are already deferred, but be safe)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectSection)
+  } else {
+    injectSection()
+  }
+}
 
+/**
+ * Step 2 — call after auth completes. Loads real data and renders everything.
+ */
 export async function initRoutine(): Promise<void> {
   _today = todayIST()
-  injectSection()
+  injectSection() // idempotent — does nothing if already injected
 
   try {
     _allDays = await listRoutineDays()
   } catch (err) {
     console.error('[routine] listRoutineDays failed — schema may need updating:', err)
-    elText('rtn-save-status', 'Run the Routine block from schema.sql in Supabase first.')
+    elText('rtn-save-status', 'Run the Routine block from schema.sql in Supabase SQL Editor first.')
     return
   }
 

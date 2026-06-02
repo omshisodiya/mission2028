@@ -62,6 +62,8 @@ function setup(): void {
     modeEl!.textContent = mode === 'focus' ? 'Deep Focus' : mode === 'shortBreak' ? 'Short Break' : 'Long Break'
     fg!.style.strokeDashoffset = String(C * (1 - (total - remaining) / total))
     startBtn!.textContent = running ? 'Pause' : remaining < total ? 'Resume' : 'Start'
+    // Mirror running time on the national emblem stamp
+    if (running) emblemShowTimer(mm, ss); else emblemRestore()
   }
 
   function applyMode(m: Mode): void {
@@ -86,7 +88,7 @@ function setup(): void {
     remaining--
     if (remaining < 0) {
       clearInterval(iv!); iv = null; running = false
-      card.animate([
+      card?.animate([
         { boxShadow: '0 0 0 0 rgba(240,181,74,.5)' },
         { boxShadow: '0 0 0 28px rgba(240,181,74,0)' }
       ], { duration: 800 })
@@ -131,6 +133,59 @@ function setup(): void {
   repl(startBtn, toggle)
   repl(resetBtn, reset)
   repl(skipBtn, skip)
+
+  // ── Emblem stamp: fade to running time while timer is active ─────────────
+  const emblem  = document.getElementById('emblem-stamp')
+  const esCore  = emblem?.querySelector<HTMLElement>('.es-core')
+  const esRing  = emblem?.querySelector<HTMLElement>('.es-ring')
+  const esMotto = emblem?.querySelector<HTMLElement>('.es-motto')
+  let emblemDisplay: HTMLElement | null = null
+
+  if (emblem && esCore) {
+    // Inject time overlay inside the emblem stamp
+    emblemDisplay = document.createElement('div')
+    emblemDisplay.id = 'emblem-timer-val'
+    emblemDisplay.style.cssText =
+      'position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);' +
+      'font-family:var(--font-display);font-size:15px;font-weight:700;' +
+      'color:var(--accent);letter-spacing:.1em;pointer-events:none;opacity:0;' +
+      'transition:opacity .35s;z-index:2;text-align:center;'
+    emblem.appendChild(emblemDisplay)
+    ;[esCore, esRing, esMotto].forEach(el => {
+      if (el) el.style.transition = 'opacity .35s'
+    })
+    // Hover: temporarily restore emblem while hovering
+    emblem.addEventListener('mouseenter', () => {
+      if (!running) return
+      if (esCore)  esCore.style.opacity  = '1'
+      if (esRing)  esRing.style.opacity  = '1'
+      if (esMotto) esMotto.style.opacity = '1'
+      if (emblemDisplay) emblemDisplay.style.opacity = '0'
+    })
+    emblem.addEventListener('mouseleave', () => {
+      if (!running) return
+      if (esCore)  esCore.style.opacity  = '0.12'
+      if (esRing)  esRing.style.opacity  = '0.12'
+      if (esMotto) esMotto.style.opacity = '0'
+      if (emblemDisplay) emblemDisplay.style.opacity = '1'
+    })
+  }
+
+  function emblemShowTimer(mm: string, ss: string): void {
+    if (!emblemDisplay) return
+    emblemDisplay.textContent = `${mm}:${ss}`
+    emblemDisplay.style.opacity = '1'
+    if (esCore)  esCore.style.opacity  = '0.12'
+    if (esRing)  esRing.style.opacity  = '0.12'
+    if (esMotto) esMotto.style.opacity = '0'
+  }
+
+  function emblemRestore(): void {
+    if (emblemDisplay) emblemDisplay.style.opacity = '0'
+    if (esCore)  esCore.style.opacity  = '1'
+    if (esRing)  esRing.style.opacity  = '1'
+    if (esMotto) esMotto.style.opacity = '1'
+  }
 
   // ── Config UI ─────────────────────────────────────────────────────────────
   if (!document.getElementById('tcfg-ui')) {

@@ -4,10 +4,13 @@
  * No widget computes its own numbers. All reads go through CoreState.
  */
 import { computeCoreState, todayIST, type CoreState, type CoreInputs } from '../services/core'
+import { computePlan, DEFAULT_SETTINGS, type PlannerLecture } from '../services/planner'
 import { listRoutineDays } from '../data/repositories/routine'
 import { listScores } from '../data/repositories/scores'
 import { listSessionDays } from '../data/repositories/sessions'
 import { listLectures } from '../data/repositories/lectures'
+import { savePlan } from '../data/repositories/plan'
+import { loadSettings, showSettings } from './settings'
 import { setPlannerSubjectContext } from './lectures-planner'
 
 // ── Module state ──────────────────────────────────────────────────────────────
@@ -394,84 +397,174 @@ function bindAutoTodos(s: CoreState): void {
   }
 }
 
-// Replace the AI hours range slider with a clean ±1 stepper
-let _aiUpgraded = false
+// ── Phase 3: Master Planner wired to #plan section ────────────────────────────
+
+let _plannerMounted = false
+let _cachedLectures: PlannerLecture[] = []
+
 function upgradeAIPlannerInput(s: CoreState): void {
-  if (_aiUpgraded) return
+  if (_plannerMounted) return
+  _plannerMounted = true
+
   const rangeEl = document.getElementById('ai-hours') as HTMLInputElement | null
   if (!rangeEl) return
-  _aiUpgraded = true
 
-  // Hide the original range slider
+  // Hide original slider; add ±1 stepper (real hours/day from settings, not the range)
   rangeEl.style.cssText = 'position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;'
+  const settings = loadSettings()
+  const avgCap   = Math.round(Object.values(settings.weekdayCapacity).reduce((a, b) => a + b, 0) / 7 / 60 * 10) / 10
 
-  // Build the stepper
   const stepper = document.createElement('div')
-  stepper.id = 'ai-hours-stepper'
-  stepper.style.cssText =
-    'display:flex;align-items:center;gap:6px;font-family:var(--font-display);'
+  stepper.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:var(--font-display);'
   stepper.innerHTML =
-    `<button class="ai-step" data-d="-1" style="width:28px;height:28px;border-radius:50%;` +
-    `border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink);` +
-    `cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;` +
-    `transition:border-color .15s;">−</button>` +
-    `<span id="ai-hours-val" style="font-size:22px;font-weight:700;color:var(--accent);` +
-    `min-width:28px;text-align:center;">${rangeEl.value}</span>` +
-    `<button class="ai-step" data-d="1" style="width:28px;height:28px;border-radius:50%;` +
-    `border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink);` +
-    `cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;` +
-    `transition:border-color .15s;">+</button>`
-
+    `<button id="ai-step-dn" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--line-2);` +
+    `background:var(--panel-2);color:var(--ink);cursor:pointer;font-size:18px;transition:border-color .15s;">−</button>` +
+    `<span id="ai-hrs-val" style="font-size:22px;font-weight:700;color:var(--accent);min-width:40px;text-align:center;">${rangeEl.value}</span>` +
+    `<button id="ai-step-up" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--line-2);` +
+    `background:var(--panel-2);color:var(--ink);cursor:pointer;font-size:18px;transition:border-color .15s;">+</button>` +
+    `<span class="mono muted" style="font-size:11px;">hrs/day (avg ${avgCap}h from settings)</span>`
   rangeEl.insertAdjacentElement('afterend', stepper)
 
-  stepper.querySelectorAll<HTMLButtonElement>('.ai-step').forEach(btn => {
-    btn.addEventListener('mouseover', () => (btn.style.borderColor = 'var(--accent)'))
-    btn.addEventListener('mouseout',  () => (btn.style.borderColor = 'var(--line-2)'))
-    btn.addEventListener('click', () => {
-      const d   = parseInt(btn.dataset.d ?? '0')
-      const cur = parseInt(rangeEl.value)
-      const nv  = Math.max(+rangeEl.min, Math.min(+rangeEl.max, cur + d))
-      rangeEl.value = String(nv)
-      const valEl = document.getElementById('ai-hours-val')
-      if (valEl) valEl.textContent = String(nv)
-      rangeEl.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-  })
+  const updateVal = (delta: number) => {
+    const nv = Math.max(1, Math.min(20, parseInt(rangeEl.value) + delta))
+    rangeEl.value = String(nv)
+    const el = document.getElementById('ai-hrs-val')
+    if (el) el.textContent = String(nv)
+  }
+  document.getElementById('ai-step-dn')?.addEventListener('click', () => updateVal(-1))
+  document.getElementById('ai-step-up')?.addEventListener('click', () => updateVal(1))
 
-  // Replace "Generate plan" with real CoreState summary
+  // Add "⚙ Settings" button next to Generate Plan
   const genBtn = document.getElementById('ai-gen')
   if (genBtn) {
-    const newBtn = genBtn.cloneNode(true) as HTMLElement  // clone without engine listeners
-    genBtn.replaceWith(newBtn)
-    newBtn.addEventListener('click', () => {
-      const out   = document.getElementById('ai-out')
-      const hours = parseInt(rangeEl.value)
-      if (!out) return
-
-      // Show spinner briefly, then show real CoreState summary
-      out.innerHTML = '<span style="opacity:.6;font-size:13px;">Generating…</span>'
-      setTimeout(() => {
-        const sp = s.selectionProbabilityPct
-        const pre = s.performance.prelimsAvg
-        const kws = todaySubjectKeywords()
-        const lines = [
-          `<b style="color:var(--accent-ink)">📅 ${s.today.dayName} · ${s.today.dayType}</b>`,
-          `<b>Today's subject:</b> ${s.today.subject}`,
-          `<b>Topic:</b> ${s.today.topicLabel}`,
-          `<b>Target:</b> ${s.today.targetQuestions} MCQs · ${s.today.mainsTarget} mains answer`,
-          `<b>Planned study:</b> ${hours}h/day`,
-          `─────`,
-          `<b>Cumulative:</b> ${s.cumulative.testsTaken} tests · ${s.cumulative.attempted} attempted · ${s.hours.cumulative.toFixed(0)}h total`,
-          pre != null ? `<b>Prelims avg:</b> ${pre.toFixed(1)}%` : '',
-          sp  != null ? `<b>Selection Probability:</b> ${sp.toFixed(1)}% → ${s.rankProjection}` : '',
-          `<b>Backlog:</b> ${s.backlogRemaining} lectures remaining`,
-          sp  != null ? `<span style="opacity:.55;font-size:11px;">${s.disclaimer}</span>` : '',
-        ].filter(Boolean)
-
-        out.innerHTML = lines.map(l => `<div style="margin-bottom:4px;">${l}</div>`).join('')
-      }, 600)
+    const settingsBtn = document.createElement('button')
+    settingsBtn.className = 'btn ghost'
+    settingsBtn.id = 'ai-settings-btn'
+    settingsBtn.style.cssText = 'font-size:13px;'
+    settingsBtn.textContent = '⚙ Settings'
+    settingsBtn.addEventListener('click', () => {
+      showSettings(() => {
+        // Re-generate plan automatically after settings save
+        document.getElementById('ai-gen')?.click()
+      })
     })
+    genBtn.insertAdjacentElement('beforebegin', settingsBtn)
+
+    // Replace "Generate plan" with real planner
+    const newBtn = genBtn.cloneNode(true) as HTMLElement
+    genBtn.replaceWith(newBtn)
+    newBtn.addEventListener('click', () => runPlanner(s))
   }
+}
+
+async function runPlanner(s: CoreState): Promise<void> {
+  const out = document.getElementById('ai-out')
+  if (!out) return
+  out.innerHTML = `<span style="opacity:.6;font-size:13px;font-family:var(--font-mono);">Computing plan…</span>`
+
+  try {
+    // Load lectures if not cached
+    if (_cachedLectures.length === 0) {
+      const all = await listLectures()
+      _cachedLectures = all.map(l => ({
+        id: l.id, title: l.title,
+        subject: l.subjects?.name ?? null,
+        sequence: l.sequence, duration_min: l.duration_min, done: l.done,
+      }))
+    }
+
+    const settings = loadSettings()
+    const today    = todayIST()
+    const result   = computePlan(_cachedLectures, settings, today)
+
+    // Save plan to Supabase (best-effort)
+    savePlan(result.days, today).catch(e => console.error('[planner] savePlan failed:', e))
+
+    // Render output
+    renderPlanOutput(out, result, s)
+  } catch (e) {
+    console.error('[planner] runPlanner failed:', e)
+    out.innerHTML = `<span style="color:var(--bad);font-size:13px;">Plan generation failed — check console.</span>`
+  }
+}
+
+function renderPlanOutput(container: HTMLElement, result: ReturnType<typeof computePlan>, s: CoreState): void {
+  const fmt = (m: number) => m >= 60 ? `${(m/60).toFixed(1)}h` : `${m}m`
+  const lines: string[] = []
+
+  // ── Metrics header ────────────────────────────────────────────────────────
+  lines.push(`<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">` +
+    metricChip('Backlog', `${result.metrics.backlogCount} lectures`) +
+    metricChip('Coverage', `${result.metrics.coveragePct}%`) +
+    (result.metrics.projectedCompletionDate
+      ? metricChip('Completes by', result.metrics.projectedCompletionDate)
+      : metricChip('Status', result.feasible ? 'Feasible' : '⚠ Deficit')) +
+    metricChip('Avg load', fmt(result.metrics.avgDailyLoadMins) + '/day') +
+  `</div>`)
+
+  // ── Feasibility / Deficit ─────────────────────────────────────────────────
+  if (!result.feasible && result.deficit) {
+    const d = result.deficit
+    const shortH = (d.shortfallMins / 60).toFixed(0)
+    lines.push(`<div style="border:1px solid var(--bad);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:16px;">`)
+    lines.push(`<div style="color:var(--bad);font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;margin-bottom:8px;">⚠ BACKLOG DEFICIT — ${shortH}h short of capacity</div>`)
+    lines.push(`<div style="font-size:13px;color:var(--ink-soft);margin-bottom:6px;">Three remedies:</div>`)
+    lines.push(`<div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">1. ${d.remedies.a}</div>`)
+    lines.push(`<div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">2. ${d.remedies.b}</div>`)
+    lines.push(`<div style="font-size:13px;color:var(--ink-soft);margin-bottom:0;">3. ${d.remedies.c}</div>`)
+    lines.push(`</div>`)
+  }
+
+  // ── Today's plan ─────────────────────────────────────────────────────────
+  const todayDay = result.days.find(d => d.date === todayIST())
+  if (todayDay && todayDay.blocks.length > 0) {
+    lines.push(`<div style="margin-bottom:14px;">`)
+    lines.push(`<div class="card-label" style="margin-bottom:8px;">Today · ${todayDay.dayName}</div>`)
+    todayDay.blocks.forEach(b => {
+      lines.push(
+        `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);">` +
+        `<span class="mono" style="color:var(--accent);font-size:11px;min-width:32px;">${fmt(b.minutes)}</span>` +
+        `<span style="flex:1;font-size:13px;color:var(--ink-soft);">${esc(b.label)}</span>` +
+        `<span class="mono muted" style="font-size:10px;">${esc(b.subject)}</span>` +
+        `</div>`
+      )
+    })
+    lines.push(`</div>`)
+  }
+
+  // ── Next 7 days ───────────────────────────────────────────────────────────
+  const upcoming = result.days.filter(d => d.date > todayIST()).slice(0, 7)
+  if (upcoming.length > 0) {
+    lines.push(`<div class="card-label" style="margin-bottom:8px;margin-top:4px;">Next 7 days</div>`)
+    lines.push(`<div style="display:flex;flex-direction:column;gap:4px;">`)
+    upcoming.forEach(d => {
+      const subjects = [...new Set(d.blocks.map(b => b.subject))].slice(0, 3).join(', ')
+      lines.push(
+        `<div style="display:flex;align-items:baseline;gap:10px;font-size:12.5px;color:var(--ink-soft);">` +
+        `<span class="mono" style="color:var(--muted);min-width:70px;">${d.date.slice(5)} ${d.dayName.slice(0,3)}</span>` +
+        `<span>${fmt(d.usedMins)} · ${subjects}</span>` +
+        `</div>`
+      )
+    })
+    lines.push(`</div>`)
+  }
+
+  // ── Disclaimer ────────────────────────────────────────────────────────────
+  lines.push(`<p style="font-size:11px;color:var(--muted);margin-top:16px;font-family:var(--font-mono);">${s.disclaimer}</p>`)
+
+  container.innerHTML = lines.join('')
+}
+
+function metricChip(label: string, value: string): string {
+  return `<div style="display:flex;flex-direction:column;gap:3px;background:var(--panel);` +
+    `border-radius:var(--r-sm);padding:8px 12px;">` +
+    `<span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.1em;">${label.toUpperCase()}</span>` +
+    `<span style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--accent-ink);">${value}</span>` +
+    `</div>`
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
 // ── rank inputs for store ─────────────────────────────────────────────────────

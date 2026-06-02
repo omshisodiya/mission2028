@@ -1,0 +1,60 @@
+/* ── Settings Panel ──────────────────────────────────────────── */
+#settings-overlay {
+  position: fixed; inset: 0; z-index: 600;
+  display: flex; align-items: flex-start; justify-content: flex-end;
+  background: rgba(5,7,15,.7); backdrop-filter: blur(4px); padding: 20px;
+}
+#settings-panel {
+  width: 100%; max-width: 500px; max-height: 92vh;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
+}
+.st-head {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.st-head h3 { margin: 0; font-size: 18px; }
+.st-close {
+  background: none; border: none; color: var(--muted); font-size: 22px;
+  cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: color .15s;
+}
+.st-close:hover { color: var(--ink); }
+.st-section { display: flex; flex-direction: column; gap: 12px; }
+.st-section-title {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--line); padding-bottom: 8px;
+}
+.st-grid-7 {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;
+}
+.st-day-field { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.st-day-label { font-family: var(--font-mono); font-size: 10px; color: var(--muted); letter-spacing:.08em; }
+.st-day-input {
+  width: 100%; text-align: center;
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: var(--r-sm); color: var(--ink);
+  font-family: var(--font-display); font-size: 15px; font-weight: 600;
+  padding: 8px 4px; outline: none; transition: border-color .18s;
+}
+.st-day-input:focus { border-color: color-mix(in oklab,var(--accent) 55%,transparent); }
+.st-field { display: flex; flex-direction: column; gap: 5px; }
+.st-input {
+  width: 100%; padding: 10px 14px; box-sizing: border-box;
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: var(--r-sm); color: var(--ink);
+  font-family: var(--font-body); font-size: 14.5px; outline: none;
+  transition: border-color .18s;
+}
+.st-input:focus { border-color: color-mix(in oklab,var(--accent) 55%,transparent); }
+.st-weight-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.st-weight-name { flex: 1; font-size: 13px; color: var(--ink-soft); }
+.st-weight-slider {
+  flex: 1; accent-color: var(--accent);
+}
+.st-weight-val {
+  width: 36px; text-align: right; font-family: var(--font-mono);
+  font-size: 12px; color: var(--accent-ink);
+}
+.st-save-row { display: flex; gap: 10px; justify-content: flex-end; }
+.st-note { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }

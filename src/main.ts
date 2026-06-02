@@ -5,11 +5,11 @@ import './engine/engine.js'
 import { supabase } from './data/supabase'
 import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
+import { hasPIN, showPINEntry, hidePINEntry, showPINSetup } from './features/pin-auth'
 import { mountPlannerUI, loadLectures } from './features/lectures-planner'
 import { mountRoutineSection, initRoutine } from './features/routine-ui'
 
-// Both UI shells mount synchronously so the section structure is always visible.
-// Data loads separately after auth completes.
+// UI shells mount synchronously — data loads after auth.
 mountPlannerUI()
 mountRoutineSection()
 
@@ -20,21 +20,49 @@ async function init(): Promise<void> {
     if (synced) return
 
     if (sess) {
-      synced = true
-      hideAuthGate()
-      if (window.location.hash.includes('access_token')) {
-        history.replaceState(null, '', window.location.pathname)
+      if (hasPIN() && evt !== 'SIGNED_IN') {
+        // Returning visitor with PIN set — show PIN entry instead of auto-login
+        showPINEntry(
+          async () => {
+            // PIN verified → proceed
+            synced = true
+            hidePINEntry()
+            await syncWithSupabase(sess.user.id)
+          },
+          () => {
+            // Forgot PIN → reset and send magic link
+            hidePINEntry()
+            showAuthGate()
+          },
+        )
+      } else if (evt === 'SIGNED_IN' && !hasPIN()) {
+        // Fresh magic-link login, no PIN yet → prompt to set one
+        showPINSetup(async () => {
+          synced = true
+          hideAuthGate()
+          await syncWithSupabase(sess.user.id)
+        })
+      } else {
+        // Session exists, PIN already set (SIGNED_IN after forgot-PIN flow),
+        // or user skipped PIN setup — proceed directly.
+        synced = true
+        hideAuthGate()
+        if (window.location.hash.includes('access_token')) {
+          history.replaceState(null, '', window.location.pathname)
+        }
+        await syncWithSupabase(sess.user.id)
       }
-      await syncWithSupabase(sess.user.id)
     } else if (!sess) {
-      // Show gate for INITIAL_SESSION, SIGNED_OUT, TOKEN_REFRESHED failures —
-      // any state where there is no valid session.
+      // No session — show magic-link gate (catches INITIAL_SESSION, SIGNED_OUT, etc.)
       showAuthGate()
     }
   })
 }
 
 async function syncWithSupabase(userId: string): Promise<void> {
+  if (window.location.hash.includes('access_token')) {
+    history.replaceState(null, '', window.location.pathname)
+  }
   try {
     await pull(userId)
 

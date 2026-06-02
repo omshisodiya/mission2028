@@ -1,0 +1,132 @@
+/* ============================================================
+   PIN Auth — same glass panel as the auth gate
+   ============================================================ */
+
+#pin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  background-image: radial-gradient(
+    ellipse 80% 55% at 50% 0%,
+    color-mix(in oklab, var(--accent) 9%, transparent),
+    transparent
+  );
+  padding: 20px;
+}
+
+.pin-panel {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.pin-ring {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 28px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in oklab, var(--accent) 50%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pin-orbit 6s linear infinite;
+}
+.pin-ring::after {
+  content: '';
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  animation: pin-orbit 1s linear infinite reverse;
+}
+@keyframes pin-orbit { to { transform: rotate(360deg); } }
+
+.pin-title {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 3.5vw, 26px);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.pin-sub {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 28px;
+}
+
+/* The visual PIN digit display */
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  cursor: text;
+}
+.pin-dot {
+  width: 48px;
+  height: 56px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--line-2);
+  background: var(--panel-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+  transition: border-color 0.15s;
+  position: relative;
+}
+.pin-dot.active {
+  border-color: color-mix(in oklab, var(--accent) 60%, transparent);
+}
+.pin-dot.filled::after {
+  content: '●';
+  font-size: 14px;
+}
+
+/* The actual invisible input that captures typing */
+.pin-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pin-btn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pin-msg {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  min-height: 18px;
+  margin-bottom: 4px;
+}
+.pin-msg.ok  { color: var(--good); }
+.pin-msg.err { color: var(--bad); }
+
+.pin-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s;
+}
+.pin-link:hover { color: var(--ink-soft); }
+
+/* Setup step: confirm PIN */
+.pin-setup-steps { display: flex; flex-direction: column; gap: 20px; }

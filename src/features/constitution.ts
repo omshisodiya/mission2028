@@ -61,13 +61,22 @@ function startAmbientOverride(): void {
   if (!numEl) return
 
   // Every time the engine updates #ca-num (its 5.2s setInterval), replace
-  // with the next article from our JSON pool — engine drives the timing,
-  // we supply the data.
-  new MutationObserver(() => {
+  // with the next article from our JSON pool.
+  // IMPORTANT: disconnect before updating DOM to prevent infinite feedback loop,
+  // then reconnect after a tick so we catch the engine's next cycle.
+  const obs = new MutationObserver((_mutations, self) => {
+    self.disconnect()   // stop watching while WE update the DOM
+
     const a = _pool[_idx % _pool.length]
     _idx++
+
     if (numEl)   numEl.textContent   = a.num
     if (titleEl) titleEl.textContent = a.heading
     if (textEl)  textEl.textContent  = a.text
-  }).observe(numEl, { childList: true, characterData: true, subtree: true })
+
+    // Reconnect after the current JS task finishes so the engine's
+    // next setInterval tick is observed but our own writes are not.
+    setTimeout(() => obs.observe(numEl!, { childList: true, characterData: true, subtree: true }), 100)
+  })
+  obs.observe(numEl, { childList: true, characterData: true, subtree: true })
 }

@@ -10,6 +10,9 @@ import { listScores } from '../data/repositories/scores'
 import { listSessionDays } from '../data/repositories/sessions'
 import { listLectures } from '../data/repositories/lectures'
 import { savePlan } from '../data/repositories/plan'
+import { listDueRevisions, listUpcomingRevisions, rateRevision, type DueRevision } from '../data/repositories/revisions'
+import { dueDateLabel, isDue, type Recall } from '../services/srs'
+import type { FixedRevision } from '../services/planner'
 import { loadSettings, showSettings } from './settings'
 import { setPlannerSubjectContext } from './lectures-planner'
 
@@ -26,6 +29,8 @@ export async function loadAndBind(): Promise<void> {
   _state = computeCoreState(inputs)
   cacheInStore(_state)
   bindWidgets(_state)
+  // Revision queue loads independently (separate DB call)
+  safeRun('revisions', () => { void loadAndBindRevisions() })
   // Engine's count-up animation runs for ~900ms after elements enter viewport.
   // Re-apply count-up values after 1200ms so real data wins over the animation.
   setTimeout(() => { if (_state) safeRun('count-ups-delayed', () => bindCountUps(_state!)) }, 1200)
@@ -475,7 +480,17 @@ async function runPlanner(s: CoreState): Promise<void> {
 
     const settings = loadSettings()
     const today    = todayIST()
-    const result   = computePlan(_cachedLectures, settings, today)
+    // Load upcoming revisions as fixed appointments (next 90 days)
+    const addDays90 = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
+    const upcomingRevs = await listUpcomingRevisions(today, addDays90).catch(() => [])
+    const fixedRevisions: FixedRevision[] = upcomingRevs.map(r => ({
+      date:      r.due_date,
+      lectureId: r.lecture_id ?? '',
+      label:     'Revision',
+      subject:   'Revision',
+      minutes:   30,
+    }))
+    const result = computePlan(_cachedLectures, settings, today, fixedRevisions)
 
     // Save plan to Supabase (best-effort)
     savePlan(result.days, today).catch(e => console.error('[planner] savePlan failed:', e))
@@ -577,6 +592,96 @@ function buildRankInputs(s: CoreState) {
     ? Math.round(30 + (Math.min(s.performance.optionalAvg, 100) / 100) * 70)
     : 52
   return { pre, mains, inter: 165 }
+}
+
+// ── Phase 4: Spaced-Repetition revision queue ─────────────────────────────────
+
+async function loadAndBindRevisions(): Promise<void> {
+  const today = todayIST()
+  let due: DueRevision[] = []
+  try {
+    due = await listDueRevisions(today)
+  } catch (e) {
+    console.error('[srs] listDueRevisions failed:', e)
+    return
+  }
+  renderRevisionQueue(due, today)
+}
+
+function renderRevisionQueue(due: DueRevision[], today: string): void {
+  // Find the revision queue container in #plan section
+  const queueWrap = findRevisionQueueEl()
+  if (!queueWrap) return
+
+  if (due.length === 0) {
+    queueWrap.innerHTML = `<p class="mono muted" style="font-size:13px;padding:12px 0;">
+      No revisions due today. Check back after completing some lectures.
+    </p>`
+    return
+  }
+
+  queueWrap.innerHTML = due.map(r => {
+    const label = dueDateLabel(r.due_date, today)
+    const isOverdue = isDue(r.due_date, today)
+    const labelClass = isOverdue ? 'rev-due now mono' : 'rev-due soon mono'
+    const title = r.lecture_title ?? `Lecture (${r.lecture_id?.slice(0, 8)})`
+    const subj  = r.subject_name ?? ''
+    return `
+      <div class="rev-card" id="rc-${r.id}" style="flex-direction:column;gap:6px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-weight:600;font-size:14px;">${esc(title)}</div>
+            <div class="mono muted" style="font-size:11px;margin-top:2px;">
+              ${subj ? esc(subj) + ' · ' : ''}due ${r.due_date.slice(5)} · reps: ${r.reps}
+            </div>
+          </div>
+          <span class="${labelClass}">${label}</span>
+        </div>
+        <div class="srs-rating" data-id="${r.id}" style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${['again','hard','good','easy'].map(rc => `
+            <button class="srs-btn" data-recall="${rc}" style="
+              padding:4px 10px;font-size:11px;letter-spacing:.06em;font-family:var(--font-mono);
+              border-radius:20px;cursor:pointer;background:var(--panel-2);
+              border:1px solid var(--line-2);color:var(--ink-soft);transition:all .15s;
+              text-transform:uppercase;" onmouseover="this.style.borderColor='var(--accent)'"
+              onmouseout="this.style.borderColor='var(--line-2)'"
+            >${rc}</button>`).join('')}
+        </div>
+      </div>`
+  }).join('')
+
+  // Attach recall-rating handlers
+  due.forEach(r => {
+    const ratingEl = queueWrap.querySelector(`[data-id="${r.id}"]`)
+    ratingEl?.querySelectorAll<HTMLButtonElement>('.srs-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const recall = btn.dataset.recall as Recall
+        const card = document.getElementById(`rc-${r.id}`)
+        if (card) { card.style.opacity = '0.4'; card.style.pointerEvents = 'none' }
+        try {
+          await rateRevision(r, recall, today)
+        } catch (e) {
+          console.error('[srs] rateRevision failed:', e)
+        }
+        // Reload queue after rating
+        await loadAndBindRevisions()
+        recompute()  // refresh CoreState (backlog / planner)
+      })
+    })
+  })
+}
+
+/** Find the existing "Spaced revision · due queue" wrapper in #plan section. */
+function findRevisionQueueEl(): HTMLElement | null {
+  // Look for a .rev-card parent container or the card-label containing "revision"
+  const labels = document.querySelectorAll<HTMLElement>('#plan .card-label')
+  for (const lbl of labels) {
+    if (lbl.textContent?.toLowerCase().includes('revision')) {
+      const sibling = lbl.nextElementSibling as HTMLElement | null
+      return sibling
+    }
+  }
+  return null
 }
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────────

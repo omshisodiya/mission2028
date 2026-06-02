@@ -45,7 +45,16 @@ export interface PlanBlock {
   label: string
   subject: string
   minutes: number
-  kind: 'learn'
+  kind: 'learn' | 'revise'
+}
+
+/** A revision due on a specific date — placed BEFORE greedy fill. */
+export interface FixedRevision {
+  date:      string   // YYYY-MM-DD when revision is due
+  lectureId: string
+  label:     string
+  subject:   string
+  minutes?:  number   // default 30
 }
 
 export interface PlanDay {
@@ -112,6 +121,7 @@ export function computePlan(
   allLectures: PlannerLecture[],
   settings: PlannerSettings,
   today: string,
+  fixedRevisions: FixedRevision[] = [],
 ): PlanResult {
   // Only undone lectures enter the backlog
   const backlog = allLectures
@@ -185,6 +195,23 @@ export function computePlan(
           : 'No droppable topics identified',
         c: `Extend study window by ${extraDays} days — complete by ${extendTo} instead of ${bufferStart}`,
       },
+    }
+  }
+
+  // ── 3b. Place fixed revision appointments FIRST on their due dates ─────────
+  const revsByDate = new Map<string, FixedRevision[]>()
+  for (const r of fixedRevisions) {
+    const k = r.date >= today ? r.date : today   // overdue → place today
+    const arr = revsByDate.get(k) ?? []; arr.push(r); revsByDate.set(k, arr)
+  }
+  for (const day of calendar) {
+    const revs = revsByDate.get(day.date) ?? []
+    for (const r of revs) {
+      const mins = r.minutes ?? 30
+      if (day.usedMins + mins > day.capacityMins) continue
+      day.blocks.push({ lectureId: r.lectureId, label: `Revise: ${r.label}`,
+                        subject: r.subject, minutes: mins, kind: 'revise' })
+      day.usedMins += mins
     }
   }
 

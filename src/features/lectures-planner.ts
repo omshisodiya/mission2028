@@ -1,4 +1,6 @@
 import { listLectures, markDone, type LectureWithSubject } from '../data/repositories/lectures'
+import { createRevisionSchedule } from '../data/repositories/revisions'
+import { todayIST } from '../services/core'
 import './lectures-planner.css'
 
 type Filter = 'all' | 'today' | 'backlog' | 'done'
@@ -263,7 +265,15 @@ function render(): void {
       if (newDone) lec.status = 'done'
       else if (lec.status === 'done') lec.status = 'backlog'
       render()
-      try { await markDone(id, newDone) } catch { lec.done = !newDone; render() }
+      try {
+        await markDone(id, newDone)
+        // When a lecture is completed, create its SRS revision schedule
+        if (newDone) {
+          createRevisionSchedule(id, todayIST()).catch(e =>
+            console.error('[srs] createRevisionSchedule failed:', e)
+          )
+        }
+      } catch { lec.done = !newDone; render() }
     })
   })
 }

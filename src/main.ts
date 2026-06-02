@@ -2,10 +2,11 @@
 import './engine/image-slot.js'
 import './engine/engine.js'
 
+import { type Session } from '@supabase/supabase-js'
 import { supabase } from './data/supabase'
 import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
-import { hasPIN, showPINEntry, hidePINEntry, showPINSetup } from './features/pin-auth'
+import { hasPIN, showPINEntry, hidePINEntry, showPINSetup, clearPIN } from './features/pin-auth'
 import { mountPlannerUI, loadLectures } from './features/lectures-planner'
 import { mountRoutineSection, initRoutine } from './features/routine-ui'
 
@@ -14,55 +15,68 @@ mountPlannerUI()
 mountRoutineSection()
 
 async function init(): Promise<void> {
-  let synced = false
+  let handled = false   // true once we've started booting for a valid session
 
-  supabase.auth.onAuthStateChange(async (evt, sess) => {
-    if (synced) return
+  // ── handle a valid session ──────────────────────────────────────────────────
+  function handleSession(sess: Session, isFreshLogin: boolean): void {
+    if (handled) return
+    handled = true
 
+    if (isFreshLogin && !hasPIN()) {
+      // First magic-link login — offer PIN setup
+      showPINSetup(() => boot(sess.user.id))
+    } else if (hasPIN() && !isFreshLogin) {
+      // Returning visitor with PIN set — show PIN entry
+      showPINEntry(
+        () => boot(sess.user.id),       // PIN correct
+        () => { clearPIN(); showAuthGate() }, // forgot PIN → magic link
+      )
+    } else {
+      // No PIN (skipped setup) or already booting after PIN verified
+      boot(sess.user.id)
+    }
+  }
+
+  // ── no session ─────────────────────────────────────────────────────────────
+  function requireLogin(): void {
+    handled = false
+    hideAuthGate()      // in case it was already shown
+    hidePINEntry()
+    showAuthGate()
+  }
+
+  // ── 1. Subscribe to auth state changes ─────────────────────────────────────
+  supabase.auth.onAuthStateChange((evt, sess) => {
     if (sess) {
-      if (hasPIN() && evt !== 'SIGNED_IN') {
-        // Returning visitor with PIN set — show PIN entry instead of auto-login
-        showPINEntry(
-          async () => {
-            // PIN verified → proceed
-            synced = true
-            hidePINEntry()
-            await syncWithSupabase(sess.user.id)
-          },
-          () => {
-            // Forgot PIN → reset and send magic link
-            hidePINEntry()
-            showAuthGate()
-          },
-        )
-      } else if (evt === 'SIGNED_IN' && !hasPIN()) {
-        // Fresh magic-link login, no PIN yet → prompt to set one
-        showPINSetup(async () => {
-          synced = true
-          hideAuthGate()
-          await syncWithSupabase(sess.user.id)
-        })
-      } else {
-        // Session exists, PIN already set (SIGNED_IN after forgot-PIN flow),
-        // or user skipped PIN setup — proceed directly.
-        synced = true
-        hideAuthGate()
-        if (window.location.hash.includes('access_token')) {
-          history.replaceState(null, '', window.location.pathname)
-        }
-        await syncWithSupabase(sess.user.id)
-      }
-    } else if (!sess) {
-      // No session — show magic-link gate (catches INITIAL_SESSION, SIGNED_OUT, etc.)
-      showAuthGate()
+      handleSession(sess, evt === 'SIGNED_IN')
+    } else {
+      requireLogin()
     }
   })
+
+  // ── 2. Also check immediately via getSession() ──────────────────────────────
+  // onAuthStateChange can be slow on some networks; getSession() reads from
+  // localStorage instantly and is the reliable fallback.
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session) {
+    handleSession(session, false)
+  } else if (!handled) {
+    requireLogin()
+  }
 }
 
-async function syncWithSupabase(userId: string): Promise<void> {
+// ── boot engine after auth ──────────────────────────────────────────────────
+
+function boot(userId: string): void {
+  hideAuthGate()
+  hidePINEntry()
   if (window.location.hash.includes('access_token')) {
     history.replaceState(null, '', window.location.pathname)
   }
+  syncWithSupabase(userId).catch(err => console.error('[main] boot failed:', err))
+}
+
+async function syncWithSupabase(userId: string): Promise<void> {
   try {
     await pull(userId)
 

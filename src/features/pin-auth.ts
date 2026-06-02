@@ -36,6 +36,7 @@ function makePINWidget(
   containerId: string,
   label: string,
   onComplete: (pin: string) => void,
+  autoFocus = true,
 ): void {
   const wrap = document.getElementById(containerId)
   if (!wrap) return
@@ -67,11 +68,10 @@ function makePINWidget(
     if (e.key === 'Backspace' && inp.value.length === 0) e.preventDefault()
   })
 
-  // Click anywhere in the dot row to focus the hidden input
   wrap.querySelector('.pin-dots')?.addEventListener('click', () => inp.focus())
   wrap.addEventListener('click', () => inp.focus())
 
-  setTimeout(() => inp.focus(), 80)
+  if (autoFocus) setTimeout(() => inp.focus(), 80)
   refresh()
 }
 
@@ -169,37 +169,38 @@ export function showPINSetup(onDone: () => void): void {
 
   let firstPIN = ''
 
+  // Step 1: enter new PIN
   makePINWidget('pin-set-widget', 'Enter a new PIN', (pin) => {
     firstPIN = pin
     const s1 = document.getElementById('pin-step-1')
     const s2 = document.getElementById('pin-step-2')
     if (s1) s1.style.display = 'none'
-    if (s2) s2.style.display = 'block'
-    const inp = document.getElementById('pin-confirm-widget-inp') as HTMLInputElement | null
-    if (inp) { inp.value = ''; inp.focus() }
-  })
-
-  makePINWidget('pin-confirm-widget', 'Confirm your PIN', async (pin) => {
-    if (pin !== firstPIN) {
-      const inp = document.getElementById('pin-confirm-widget-inp') as HTMLInputElement | null
-      if (inp) inp.value = ''
-      document.querySelectorAll<HTMLElement>('#pin-confirm-widget .pin-dot')
-        .forEach(d => d.classList.remove('filled', 'active'))
-      document.querySelectorAll<HTMLElement>('#pin-confirm-widget .pin-dot')[0]?.classList.add('active')
-      inp?.focus()
-      const msg = document.getElementById('pin-confirm-msg')
-      if (msg) { msg.textContent = "PINs don't match — try again."; msg.className = 'pin-msg err' }
-      return
+    if (s2) {
+      s2.style.display = 'block'
+      // Step 2: confirm PIN — only mount the widget now so it auto-focuses correctly
+      makePINWidget('pin-confirm-widget', 'Confirm your PIN', async (pin2) => {
+        if (pin2 !== firstPIN) {
+          const inp = document.getElementById('pin-confirm-widget-inp') as HTMLInputElement | null
+          if (inp) inp.value = ''
+          document.querySelectorAll<HTMLElement>('#pin-confirm-widget .pin-dot')
+            .forEach(d => d.classList.remove('filled', 'active'))
+          document.querySelectorAll<HTMLElement>('#pin-confirm-widget .pin-dot')[0]?.classList.add('active')
+          inp?.focus()
+          const msg = document.getElementById('pin-confirm-msg')
+          if (msg) { msg.textContent = "PINs don't match — try again."; msg.className = 'pin-msg err' }
+          return
+        }
+        await savePIN(pin2)
+        _setupEl?.remove()
+        _setupEl = null
+        onDone()
+      }, true)
     }
-    await savePIN(pin)
-    _setupEl?.remove()
-    _setupEl = null
-    onDone()
-  })
+  }, true)
 
   document.getElementById('pin-skip')?.addEventListener('click', () => {
     _setupEl?.remove()
     _setupEl = null
-    onDone()   // proceed without PIN
+    onDone()
   })
 }

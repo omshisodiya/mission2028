@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mission 2028 — UPSC Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+Devanagari:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/src/engine/styles.css" />
+</head>
+<body data-hero="orbital">
+
+<canvas id="starfield"></canvas>
+<div id="cursor-aura"></div>
+<div id="tricolor-progress"></div>
+<div id="chakra-watermark"><span class="chakra spin-slow" data-chakra="watermark"></span></div>
+
+<!-- persistent national emblem stamp (appears after scrolling past the seal) -->
+<div id="emblem-stamp" aria-hidden="true">
+  <span class="es-ring"></span>
+  <span class="es-core">
+    <span class="es-img"></span>
+    <span class="chakra es-fallback" data-chakra="stamp"></span>
+  </span>
+  <span class="es-motto">सत्यमेव जयते</span>
+  <span class="es-pull" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+  </span>
+</div>
+
+<!-- pull-down command menu -->
+<div id="menu-backdrop"></div>
+<nav id="command-menu" aria-label="Command menu">
+  <span class="cm-tricolor"></span>
+  <span class="cm-watermark"><span class="chakra spin-slow" data-chakra="menu-wm"></span></span>
+  <div class="cm-aura"></div>
+  <div class="cm-inner">
+    <div class="cm-head">
+      <span class="eyebrow"><span class="tricolor-rule"></span>&nbsp; Command Menu</span>
+      <h3>Navigate the mission.</h3>
+    </div>
+    <div class="cm-grid">
+      <a class="cm-card" data-go="#hero"><span class="cm-no">01</span><span class="cm-t">The Mission</span><span class="cm-d">Countdown &amp; the comeback</span></a>
+      <a class="cm-card" data-go="#engine"><span class="cm-no">02</span><span class="cm-t">Daily Engine</span><span class="cm-d">Focus · streaks · lectures</span></a>
+      <a class="cm-card" data-go="#intel"><span class="cm-no">03</span><span class="cm-t">Intelligence</span><span class="cm-d">Scores · rank · heatmap</span></a>
+      <a class="cm-card" data-go="#constitution"><span class="cm-no">04</span><span class="cm-t">Living Document</span><span class="cm-d">The Constitution</span></a>
+      <a class="cm-card" data-go="#plan"><span class="cm-no">05</span><span class="cm-t">The Plan</span><span class="cm-d">Strategy &amp; revision</span></a>
+      <a class="cm-card cm-cta" data-go="#focus"><span class="cm-no">→</span><span class="cm-t">Start Focus</span><span class="cm-d">Begin a deep-work block</span></a>
+    </div>
+    <div class="cm-todo">
+      <div class="cm-todo-head">
+        <span class="card-label">Today's intentions · <span id="cm-today"></span></span>
+        <span class="mono muted"><span id="cm-todo-count">0</span> set</span>
+      </div>
+      <form class="cm-todo-add" id="cm-todo-form">
+        <input id="cm-todo-input" type="text" autocomplete="off" placeholder="Name a win for today — e.g. finish Polity Lecture 12" />
+        <button class="btn primary" type="submit">Add</button>
+      </form>
+      <div class="cm-todo-list" id="cm-todo-list"></div>
+    </div>
+    <div class="cm-foot">
+      <span class="mono muted">Drag the emblem up · or tap outside to close</span>
+      <span class="mono" style="color:var(--accent-ink);">सत्यमेव जयते</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ===================== NAV ===================== -->
+<nav class="nav">
+  <div class="brand">
+    <span class="mark"><span class="chakra" data-chakra="brand"></span></span>
+    <span class="brand-name">Om&nbsp;Shisodiya<small>ASPIRANT · INDIAN ADMINISTRATIVE SERVICE</small></span>
+  </div>
+  <div class="nav-links">
+    <a href="#engine">Daily Engine</a>
+    <a href="#intel">Intelligence</a>
+    <a href="#plan">The Plan</a>
+    <a href="#focus" class="nav-cta">Start Focus</a>
+  </div>
+</nav>
+
+<!-- ===================== ACT I — HERO ===================== -->
+<div id="hero-track">
+<header id="hero">
+  <div class="hero-stage">
+    <canvas id="warp"></canvas>
+    <div class="aurora"><span class="a1"></span><span class="a2"></span><span class="a3"></span></div>
+    <div class="bharat-aura"><span class="s1"></span><span class="s2"></span></div>
+    <div class="hero-core"></div>
+    <div class="hero-chakra"><span class="chakra spin-slow" data-chakra="hero"></span></div>
+    <div class="orbit o1"><span class="planet"></span></div>
+    <div class="orbit o2"><span class="planet"></span></div>
+    <div class="orbit o3"><span class="planet"></span></div>
+  </div>
+
+  <div class="hero-content">
+    <div class="hero-msg" data-msg="0">
+      <span class="eyebrow">PW IAS · Prarambh 2027 · Full Cycle</span>
+      <h1 class="hero-title" style="font-family: sans-serif;">The comeback<br /><span class="grad" style="font-family: sans-serif;">starts now.</span></h1>
+      <p class="hero-sub">Your backlog isn't the end of the story — it's chapter one. A personal command center that tracks, scores, ranks and plans every move toward the 2028 civil services.</p>
+      <div class="hero-meta">
+        <span class="chip"><span class="dot"></span>System online</span>
+        <span class="chip">Target · CSE Prelims 2028</span>
+        <span class="chip">Mode · Recover &amp; Rise</span>
+      </div>
+    </div>
+    <div class="hero-msg" data-msg="1">
+      <span class="eyebrow">No more zero days</span>
+      <h1 class="hero-title">One block.<br /><span class="grad">Then the next.</span></h1>
+      <p class="hero-sub">Discipline compounds quietly — until the day it doesn't. Keep going; your command center is waking up below.</p>
+    </div>
+  </div>
+
+  <div class="scroll-cue">
+    <span>scroll to engage</span>
+    <span class="rail"></span>
+  </div>
+</header>
+</div>
+
+<!-- ===================== COUNTDOWN ===================== -->
+<section class="scene" style="padding-top:60px;">
+  <div class="wrap">
+    <div class="reveal" style="text-align:center;">
+      <span class="eyebrow" style="justify-content:center;">T-minus to the arena</span>
+      <div id="countdown" class="countdown">
+        <div class="cd-cell"><div class="cd-num" data-cd="d">—</div><div class="cd-lab">Days</div></div>
+        <div class="cd-cell"><div class="cd-num" data-cd="h">—</div><div class="cd-lab">Hours</div></div>
+        <div class="cd-cell"><div class="cd-num" data-cd="m">—</div><div class="cd-lab">Minutes</div></div>
+        <div class="cd-cell"><div class="cd-num" data-cd="s">—</div><div class="cd-lab">Seconds</div></div>
+      </div>
+      <p class="mono muted" style="margin-top:26px; font-size:12px; letter-spacing:0.16em;">EST. CSE PRELIMS · 28 MAY 2028 · 09:30 IST</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== BHARAT / MAP ===================== -->
+<section class="scene" style="padding-top:40px;padding-bottom:90px;">
+  <div class="wrap">
+    <div class="bharat-divider reveal">
+      <span class="line"></span>
+      <span class="glyph"><span class="chakra spin-med" data-chakra="divider1"></span></span>
+      <span class="line r"></span>
+    </div>
+
+    <div class="emblem-wrap reveal" style="margin-bottom:60px;">
+      <div class="emblem-seal">
+        <span class="seal-ring"></span>
+        <span class="seal-ring2"></span>
+        <span class="seal-ring3"></span>
+        <image-slot id="national-emblem" shape="circle" fit="contain"
+          placeholder="Drop the National Emblem"></image-slot>
+      </div>
+      <div class="emblem-motto">सत्यमेव जयते</div>
+      <div class="emblem-sub">Satyameva Jayate · Truth alone triumphs</div>
+    </div>
+
+    <div class="split" style="align-items:center;margin-top:30px;">
+      <div class="reveal">
+        <span class="eyebrow"><span class="tricolor-rule"></span>&nbsp; Why I rise</span>
+        <h2 style="font-size:clamp(30px,4.4vw,52px);margin-top:18px;">Not for a rank.<br /><span class="grad">For the Republic.</span></h2>
+        <p class="soft" style="margin-top:20px;max-width:540px;">Every backlog cleared, every mock attempted, every dawn at the desk is a vote of faith in the nation you intend to serve. The chakra turns; so does the work — steady, relentless, twenty-four spokes of resolve.</p>
+        <div class="hero-meta" style="justify-content:flex-start;margin-top:28px;">
+          <span class="chip"><span class="dot"></span>Dharma · Duty · Discipline</span>
+          <span class="chip">Satyameva Jayate</span>
+        </div>
+      </div>
+      <div class="panel panel-pad reveal map-frame" style="--d:90ms;">
+        <span class="card-label">Bharat · the arena</span>
+        <div class="map-stage" style="margin-top:16px;">
+          <div class="map-overlay">
+            <span class="grid-ov"></span>
+            <span class="scan"></span>
+            <span class="corner tl"></span><span class="corner tr"></span>
+            <span class="corner bl"></span><span class="corner br"></span>
+          </div>
+          <image-slot id="india-map" shape="rounded" radius="14" fit="contain"
+            placeholder="Drop an official map of India here"></image-slot>
+        </div>
+        <p class="map-cap">Drag &amp; drop a map · hover the image to <b style="color:var(--accent-ink);">Replace</b> or Remove</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACT II — DAILY ENGINE ===================== -->
+<section class="scene" id="engine">
+  <div class="wrap">
+    <div class="scene-head reveal">
+      <span class="eyebrow">Act II · The Daily Engine</span>
+      <h2>Show up. Every single day.<br />The streak does the rest.</h2>
+      <p>Momentum is built one focus block at a time. Run the timer, clear today's PW lectures, and watch the backlog shrink.</p>
+    </div>
+
+    <div class="split">
+      <!-- focus timer -->
+      <div class="panel hot timer-card reveal tilt" id="focus">
+        <span class="card-label">Deep-Focus Timer · Pomodoro</span>
+        <div class="ring-wrap">
+          <svg width="248" height="248" viewBox="0 0 248 248">
+            <circle class="ring-bg" cx="124" cy="124" r="116"></circle>
+            <circle class="ring-fg" cx="124" cy="124" r="116"></circle>
+          </svg>
+          <div class="ring-center">
+            <div class="ring-time">25:00</div>
+            <div class="ring-mode">Deep Focus</div>
+          </div>
+        </div>
+        <div class="timer-actions">
+          <button class="btn primary" data-act="start">Start</button>
+          <button class="btn ghost" data-act="skip">Skip</button>
+          <button class="btn ghost" data-act="reset">Reset</button>
+        </div>
+        <div class="grid g-2" style="width:100%; margin-top:6px;">
+          <div class="stat" style="align-items:center;text-align:center;"><span class="v"><span id="sess-count">0</span></span><span class="k">Sessions logged</span></div>
+          <div class="stat" style="align-items:center;text-align:center;"><span class="v"><span id="focus-mins">0</span> <small>min</small></span><span class="k">Total deep work</span></div>
+        </div>
+      </div>
+
+      <!-- streak + planner stacked -->
+      <div style="display:flex;flex-direction:column;gap:22px;">
+        <div class="panel panel-pad reveal" style="--d:80ms;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span class="card-label">Consistency · last 14 days</span>
+            <span class="mono" style="color:var(--accent-ink);font-size:13px;"><b id="streak-num" style="font-family:var(--font-display);font-size:22px;">0</b> day streak</span>
+          </div>
+          <div id="streak" class="streak-grid" style="margin-top:18px;"></div>
+          <p class="muted" style="font-size:13px;margin-top:16px;">Each cell brightens with the focus sessions you complete that day. Don't break the chain.</p>
+        </div>
+
+        <div class="panel panel-pad reveal" style="--d:160ms;flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;">
+            <span class="card-label">Today's lecture planner</span>
+            <span class="mono muted" style="font-size:12px;" id="plan-count">0 / 0</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
+            <div class="progress-line" id="plan-bar" style="flex:1;"><i style="width:0%"></i></div>
+            <span class="mono" style="color:var(--accent-ink);font-size:13px;" id="plan-pct">0%</span>
+          </div>
+          <div id="planner"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACT III — INTELLIGENCE ===================== -->
+<section class="scene" id="intel">
+  <div class="wrap">
+    <div class="scene-head reveal">
+      <span class="eyebrow">Act III · The Intelligence</span>
+      <h2>Numbers don't lie.<br />They show you the way up.</h2>
+      <p>Every mock, every score, every weak spot — translated into signals you can act on. Simulate your rank and see exactly what closes the gap.</p>
+    </div>
+
+    <!-- top stat row -->
+    <div class="grid g-4 reveal reveal-stagger" style="margin-bottom:22px;">
+      <div class="panel panel-pad reveal stat"><span class="k">Mocks attempted</span><span class="v count-up" data-to="24">0</span><span class="trend up">+6 this month</span></div>
+      <div class="panel panel-pad reveal stat" style="--d:70ms;"><span class="k">Avg. prelims score</span><span class="v"><span class="count-up" data-to="108">0</span><small>/200</small></span><span class="trend up">+14 vs last</span></div>
+      <div class="panel panel-pad reveal stat" style="--d:140ms;"><span class="k">Accuracy</span><span class="v"><span class="count-up" data-to="71" data-float="1">0</span><small>%</small></span><span class="trend up">+4.2%</span></div>
+      <div class="panel panel-pad reveal stat" style="--d:210ms;"><span class="k">Active study days</span><span class="v"><span class="count-up" id="heat-active" data-to="0">0</span><small>/182</small></span><span class="trend up">on track</span></div>
+    </div>
+
+    <div class="split">
+      <!-- mock bars -->
+      <div class="panel panel-pad reveal" id="mock-bars">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+          <span class="card-label">Mock test trajectory · score %</span>
+          <span class="mono muted" style="font-size:12px;">last 8 tests</span>
+        </div>
+        <div class="bars" style="margin-top:24px;">
+          <div class="bar"><div class="col" data-v="42"><span class="pv">42</span></div><span class="lab">M1</span></div>
+          <div class="bar"><div class="col" data-v="48"><span class="pv">48</span></div><span class="lab">M2</span></div>
+          <div class="bar"><div class="col" data-v="44"><span class="pv">44</span></div><span class="lab">M3</span></div>
+          <div class="bar"><div class="col" data-v="55"><span class="pv">55</span></div><span class="lab">M4</span></div>
+          <div class="bar"><div class="col" data-v="61"><span class="pv">61</span></div><span class="lab">M5</span></div>
+          <div class="bar"><div class="col" data-v="58"><span class="pv">58</span></div><span class="lab">M6</span></div>
+          <div class="bar"><div class="col" data-v="67"><span class="pv">67</span></div><span class="lab">M7</span></div>
+          <div class="bar"><div class="col" data-v="74"><span class="pv">74</span></div><span class="lab">M8</span></div>
+        </div>
+      </div>
+
+      <!-- rank simulator -->
+      <div class="panel hot panel-pad reveal tilt" id="rank" style="--d:90ms;">
+        <span class="card-label">All-India Rank · live simulator</span>
+        <div class="rank-display">
+          <div class="rank-num">AIR <span id="rank-num">—</span></div>
+          <div class="rank-band" id="rank-band">—</div>
+        </div>
+        <div class="slider-row">
+          <label for="s-pre">Prelims score <b>110</b></label>
+          <input class="mz" type="range" id="s-pre" min="60" max="200" value="110" data-unit="/200" />
+          <label for="s-mains">Mains avg / paper <b>52</b></label>
+          <input class="mz" type="range" id="s-mains" min="30" max="100" value="52" data-unit="/100" />
+          <label for="s-inter">Interview <b>165</b></label>
+          <input class="mz" type="range" id="s-inter" min="100" max="275" value="165" data-unit="/275" />
+        </div>
+        <p class="muted" style="font-size:12.5px;margin-top:18px;">Drag to model scenarios. Mains &amp; interview carry the final list — this is where rank is won.</p>
+      </div>
+    </div>
+
+    <!-- heatmap + subject balance -->
+    <div class="split" style="margin-top:22px;">
+      <div class="panel panel-pad reveal">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px;">
+          <span class="card-label">Study heatmap · 26 weeks</span>
+          <div class="legend">less <span class="c" style="background:rgba(124,170,255,0.06);"></span><span class="c h1"></span><span class="c h2"></span><span class="c h3"></span><span class="c h4"></span> more</div>
+        </div>
+        <div id="heat" class="heat"></div>
+      </div>
+
+      <div class="panel panel-pad reveal" style="--d:90ms;">
+        <span class="card-label">Subject readiness</span>
+        <div class="grid g-3" style="margin-top:22px;">
+          <div style="text-align:center;"><div class="donut" data-v="78"><div class="ring"></div><div class="mid"><b>78%</b><span>Polity</span></div></div></div>
+          <div style="text-align:center;"><div class="donut" data-v="54"><div class="ring"></div><div class="mid"><b>54%</b><span>History</span></div></div></div>
+          <div style="text-align:center;"><div class="donut" data-v="61"><div class="ring"></div><div class="mid"><b>61%</b><span>Geo</span></div></div></div>
+          <div style="text-align:center;"><div class="donut" data-v="47"><div class="ring"></div><div class="mid"><b>47%</b><span>Economy</span></div></div></div>
+          <div style="text-align:center;"><div class="donut" data-v="69"><div class="ring"></div><div class="mid"><b>69%</b><span>Env</span></div></div></div>
+          <div style="text-align:center;"><div class="donut" data-v="40"><div class="ring"></div><div class="mid"><b>40%</b><span>CSAT</span></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== THE LIVING DOCUMENT ===================== -->
+<section class="scene" id="constitution">
+  <canvas id="const-particles"></canvas>
+  <div class="wrap">
+    <div class="bharat-divider reveal">
+      <span class="line"></span>
+      <span class="glyph"><span class="chakra spin-med" data-chakra="divider2"></span></span>
+      <span class="line r"></span>
+    </div>
+    <div class="scene-head reveal" style="text-align:center;max-width:760px;margin:0 auto 48px;">
+      <span class="eyebrow" style="justify-content:center;"><span class="tricolor-rule"></span>&nbsp; The Living Document</span>
+      <h2 style="margin-top:18px;">The Constitution I serve.</h2>
+      <p style="margin-left:auto;margin-right:auto;">The text that turns a student into a servant of the Republic — read it until it reads back. It will change before your eyes; let each Article settle, then watch the next rise.</p>
+    </div>
+    <div class="const-stage reveal">
+      <div class="const-article show" id="const-article">
+        <div class="ca-num" id="ca-num">Article 21</div>
+        <div class="ca-title" id="ca-title">Protection of life and personal liberty</div>
+        <div class="ca-text" id="ca-text">"No person shall be deprived of his life or personal liberty except according to procedure established by law."</div>
+      </div>
+    </div>
+    <div class="const-ticker reveal" id="const-ticker"></div>
+  </div>
+</section>
+
+<!-- ===================== ACT IV — THE PLAN ===================== -->
+<section class="scene" id="plan">
+  <div class="wrap">
+    <div class="scene-head reveal">
+      <span class="eyebrow">Act IV · The Plan</span>
+      <h2>Strategy, generated.<br />Discipline, scheduled.</h2>
+      <p>Your assistant turns the backlog into a week you can actually execute — then keeps current affairs and revision in your line of sight.</p>
+    </div>
+
+    <!-- AI plan generator -->
+    <div class="panel hot ai-shell panel-pad reveal" id="ai" style="margin-bottom:22px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;">
+        <span class="card-label">Adaptive plan generator</span>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <label class="mono muted" style="font-size:12px;display:flex;align-items:center;gap:10px;">HRS/DAY
+            <input class="mz" type="range" id="ai-hours" min="4" max="14" value="8" style="width:120px;" />
+          </label>
+          <button class="btn primary" id="ai-gen"><span class="ai-spinner"><span class="chakra" data-chakra="spinner"></span></span> Generate plan</button>
+        </div>
+      </div>
+      <div class="ai-out" id="ai-out"></div>
+    </div>
+
+    <div class="split">
+      <!-- current affairs feed -->
+      <div class="panel panel-pad reveal">
+        <span class="card-label">Current affairs · this week</span>
+        <div style="margin-top:18px;">
+          <div class="feed-item"><div class="feed-date">JUN 02</div><div class="feed-body"><h4>RBI monetary policy review</h4><p>Repo rate decision and stance — link to inflation targeting framework.</p><span class="feed-cat">Economy · GS3</span></div></div>
+          <div class="feed-item"><div class="feed-date">JUN 01</div><div class="feed-body"><h4>New Ramsar sites notified</h4><p>India's wetland count rises — relevant for environment &amp; conservation.</p><span class="feed-cat">Environment · GS3</span></div></div>
+          <div class="feed-item"><div class="feed-date">MAY 31</div><div class="feed-body"><h4>SC verdict on federalism</h4><p>Centre–State legislative competence — tie to Schedule VII.</p><span class="feed-cat">Polity · GS2</span></div></div>
+          <div class="feed-item"><div class="feed-date">MAY 30</div><div class="feed-body"><h4>India–ASEAN summit outcomes</h4><p>Trade &amp; connectivity initiatives in the Indo-Pacific context.</p><span class="feed-cat">IR · GS2</span></div></div>
+        </div>
+      </div>
+
+      <!-- revision queue -->
+      <div style="display:flex;flex-direction:column;gap:22px;">
+        <div class="panel panel-pad reveal" style="--d:70ms;">
+          <span class="card-label">Spaced revision · due queue</span>
+          <div style="margin-top:18px;">
+            <div class="rev-card"><div><div style="font-weight:600;">Fundamental Rights</div><div class="mono muted" style="font-size:11px;margin-top:3px;">Polity · seen 21d ago</div></div><span class="rev-due now mono">DUE NOW</span></div>
+            <div class="rev-card"><div><div style="font-weight:600;">Monsoon mechanism</div><div class="mono muted" style="font-size:11px;margin-top:3px;">Geography · seen 6d ago</div></div><span class="rev-due soon mono">IN 1 DAY</span></div>
+            <div class="rev-card"><div><div style="font-weight:600;">Inflation &amp; indices</div><div class="mono muted" style="font-size:11px;margin-top:3px;">Economy · seen 2d ago</div></div><span class="rev-due soon mono">IN 5 DAYS</span></div>
+          </div>
+        </div>
+
+        <div class="panel panel-pad reveal" style="--d:140ms;flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+            <span class="card-label">Answer-writing tracker</span>
+            <span class="mono" style="color:var(--accent-ink);font-size:13px;"><span class="count-up" data-to="58">0</span> answers</span>
+          </div>
+          <div class="bars" style="height:120px;margin-top:18px;">
+            <div class="bar"><div class="col" data-v="30"></div><span class="lab">W1</span></div>
+            <div class="bar"><div class="col" data-v="50"></div><span class="lab">W2</span></div>
+            <div class="bar"><div class="col" data-v="40"></div><span class="lab">W3</span></div>
+            <div class="bar"><div class="col" data-v="70"></div><span class="lab">W4</span></div>
+            <div class="bar"><div class="col" data-v="85"></div><span class="lab">W5</span></div>
+            <div class="bar"><div class="col" data-v="100"></div><span class="lab">W6</span></div>
+          </div>
+          <p class="muted" style="font-size:12.5px;margin-top:14px;">One answer a day. Six weeks of compounding craft.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FOOT ===================== -->
+<footer class="foot">
+  <div class="wrap">
+    <p class="big">Backlogs are temporary.<br /><span style="color:var(--accent-ink);">The officer you're becoming is not.</span></p>
+    <p class="sig">Mission 2028 · Personal command center · Built for the long climb</p>
+    <p class="made-by">Made by <span>Om Shisodiya</span></p>
+  </div>
+</footer>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

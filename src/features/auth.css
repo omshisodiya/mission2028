@@ -1,0 +1,90 @@
+#auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  background-image: radial-gradient(
+    ellipse 80% 55% at 50% 0%,
+    color-mix(in oklab, var(--accent) 9%, transparent),
+    transparent
+  );
+  padding: 20px;
+}
+
+.ag-panel {
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+/* spinning ring logo */
+.ag-ring {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 28px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in oklab, var(--accent) 50%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ag-orbit 6s linear infinite;
+}
+.ag-ring::after {
+  content: '';
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  animation: ag-orbit 1s linear infinite reverse;
+}
+@keyframes ag-orbit { to { transform: rotate(360deg); } }
+
+.ag-title {
+  margin: 10px 0 8px;
+  font-size: clamp(22px, 4vw, 28px);
+}
+
+.ag-sub {
+  margin: 0 0 28px;
+  font-size: 14.5px;
+  color: var(--muted);
+}
+
+.ag-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ag-input {
+  width: 100%;
+  padding: 13px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.ag-input:focus {
+  border-color: color-mix(in oklab, var(--accent) 55%, transparent);
+}
+
+.ag-btn { width: 100%; padding: 13px; }
+
+.ag-msg {
+  margin-top: 14px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  min-height: 18px;
+  color: var(--muted);
+}
+.ag-msg.ok  { color: var(--good); }
+.ag-msg.err { color: var(--bad); }

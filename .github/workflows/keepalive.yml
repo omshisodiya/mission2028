@@ -1,0 +1,17 @@
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 3 AM UTC daily — prevents free-tier auto-pause
+  workflow_dispatch:        # allow manual trigger from GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -sf \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -o /dev/null && echo "Supabase is alive" || echo "Ping failed (non-fatal)"

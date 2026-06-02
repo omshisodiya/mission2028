@@ -16,12 +16,16 @@ import {
 // ── Input types ───────────────────────────────────────────────────────────────
 
 export interface ScoreRow {
-  date: string          // YYYY-MM-DD
-  category: string      // prelims | csat | mains | optional | dpp | sectional | quiz
-  subject?: string | null
-  score: number         // raw score
-  max_score: number     // max possible score
-  label?: string | null
+  date:       string          // YYYY-MM-DD
+  category:   string          // prelims | csat | mains | optional | dpp | sectional | quiz
+  subject?:   string | null
+  score:      number          // raw score (or correct×2 − wrong×0.66 if MCQ)
+  max_score:  number          // max possible score
+  label?:     string | null
+  // MCQ fields (optional — filled by enhanced Add Score modal)
+  attempted?: number | null
+  correct?:   number | null
+  wrong?:     number | null
 }
 
 export interface SessionDay {
@@ -139,17 +143,29 @@ export function computeCoreState(inputs: CoreInputs): CoreState {
                 accuracy: acc, testScore: ts, mainsWritten: rd.mains_written ?? 0 })
   })
 
-  // From scores table (score/max_score → accuracy; category maps to isMaths)
+  // From scores table — prefer MCQ fields when present, fall back to score/max_score
   scores.forEach(sc => {
     if (!sc.max_score) return
     const MATHS_CATS = ['optional', 'sectional', 'csat']
     const isMaths = MATHS_CATS.includes(sc.category?.toLowerCase() ?? '') ||
                     (sc.subject?.toLowerCase().includes('math') ?? false)
-    const acc = (sc.score / sc.max_score) * 100
-    const att = Math.round(sc.max_score)   // proxy: treat max_score as attempted
-    const cor = Math.round(sc.score)
+    let acc: number, att: number, cor: number, ts: number
+    if (sc.attempted != null && sc.correct != null && sc.wrong != null) {
+      // Full MCQ breakdown available — use actual negative-marking formula
+      att = sc.attempted
+      cor = sc.correct
+      ts  = cor * cfg.scoring.marks_per_correct - sc.wrong * cfg.scoring.negative_per_wrong
+      acc = att > 0 ? (cor / att) * 100 : 0
+    } else {
+      // Only score/max_score — derive accuracy directly
+      acc = (sc.score / sc.max_score) * 100
+      att = Math.round(sc.max_score)
+      cor = Math.round(sc.score)
+      ts  = sc.score
+    }
+    if (att < minAtt) return
     pool.push({ date: sc.date, isMaths, attempted: att, correct: cor,
-                accuracy: acc, testScore: sc.score, mainsWritten: 0 })
+                accuracy: acc, testScore: ts, mainsWritten: 0 })
   })
 
   // Sort pool chronologically

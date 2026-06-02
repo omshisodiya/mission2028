@@ -13,6 +13,8 @@ import { savePlan } from '../data/repositories/plan'
 import { listDueRevisions, listUpcomingRevisions, rateRevision, type DueRevision } from '../data/repositories/revisions'
 import { dueDateLabel, isDue, type Recall } from '../services/srs'
 import type { FixedRevision } from '../services/planner'
+import { bindAnswerTracker } from './answer-log'
+import { bindCAFeed } from './ca-log'
 import { loadSettings, showSettings } from './settings'
 import { setPlannerSubjectContext } from './lectures-planner'
 
@@ -29,8 +31,10 @@ export async function loadAndBind(): Promise<void> {
   _state = computeCoreState(inputs)
   cacheInStore(_state)
   bindWidgets(_state)
-  // Revision queue loads independently (separate DB call)
-  safeRun('revisions', () => { void loadAndBindRevisions() })
+  // Phase 5: answer tracker + CA feed + revision queue (independent DB calls)
+  safeRun('revisions',     () => { void loadAndBindRevisions() })
+  safeRun('answerTracker', () => { void bindAnswerTracker() })
+  safeRun('caFeed',        () => { void bindCAFeed() })
   // Engine's count-up animation runs for ~900ms after elements enter viewport.
   // Re-apply count-up values after 1200ms so real data wins over the animation.
   setTimeout(() => { if (_state) safeRun('count-ups-delayed', () => bindCountUps(_state!)) }, 1200)
@@ -346,17 +350,34 @@ function bindCountUps(s: CoreState): void {
   })
 }
 
-// daily briefing — one-line summary in the routine section
+// daily briefing — one accurate one-liner from live planner + SRS + test data
 function bindBriefing(s: CoreState): void {
   const el = document.getElementById('rtn-briefing')
   if (!el) return
   const parts: string[] = []
-  if (s.hours.today > 0)              parts.push(`${s.hours.today.toFixed(1)}h today`)
-  if (s.consistencyPct != null)       parts.push(`consistency ${s.consistencyPct}%`)
-  if (s.performance.prelimsAvg != null) parts.push(`prelims avg ${s.performance.prelimsAvg.toFixed(1)}%`)
-  if (s.selectionProbabilityPct != null) parts.push(`SP ${s.selectionProbabilityPct.toFixed(1)}%`)
-  if (s.backlogRemaining > 0)         parts.push(`${s.backlogRemaining} lectures left`)
-  el.textContent = parts.length ? parts.join(' · ') : 'Log today\'s inputs to see your briefing.'
+
+  // Today's plan
+  if (s.today.targetQuestions > 0)       parts.push(`${s.today.targetQuestions} MCQs target`)
+  if (s.today.mainsTarget >= 1)          parts.push(`${s.today.mainsTarget} answer to write`)
+
+  // Study hours
+  if (s.hours.today > 0)                 parts.push(`${s.hours.today.toFixed(1)}h logged`)
+  else                                   parts.push('0h — start the focus timer')
+
+  // Consistency
+  if (s.consistencyPct != null)          parts.push(`consistency ${s.consistencyPct}%`)
+
+  // Test performance
+  if (s.performance.prelimsAvg != null)  parts.push(`prelims avg ${s.performance.prelimsAvg.toFixed(1)}%`)
+  if (s.selectionProbabilityPct != null) parts.push(`SP ${s.selectionProbabilityPct.toFixed(1)}% → ${s.rankProjection}`)
+
+  // Backlog
+  if (s.backlogRemaining > 0)            parts.push(`${s.backlogRemaining} lectures in backlog`)
+  else if (s.cumulative.testsTaken > 0)  parts.push('backlog cleared')
+
+  el.textContent = parts.length
+    ? parts.join(' · ')
+    : `${s.today.subject} day — log your routine inputs to see your briefing.`
 }
 
 // routine card — patch hours display after focus timer fires

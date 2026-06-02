@@ -255,7 +255,11 @@ create index if not exists routine_days_user_idx on public.routine_days(user_id,
 -- after the initial schema is already in place (idempotent).
 -- ============================================================
 
--- A. Universal Scoring & Ranking (v2)
+-- A. Universal Scoring & Ranking (v2) — MCQ columns added in Phase 5
+alter table if exists public.scores add column if not exists attempted int;
+alter table if exists public.scores add column if not exists correct   int;
+alter table if exists public.scores add column if not exists wrong     int;
+
 create table if not exists public.scores (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references auth.users(id) on delete cascade,

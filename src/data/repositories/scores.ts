@@ -10,7 +10,7 @@ async function uid(): Promise<string> {
 export async function listScores(): Promise<ScoreRow[]> {
   const { data, error } = await supabase
     .from('scores')
-    .select('taken_on, category, subject, score, max_score, label')
+    .select('taken_on, category, subject, score, max_score, label, attempted, correct, wrong')
     .order('taken_on', { ascending: true })
   if (error) throw error
   return (data ?? []).map(r => ({
@@ -20,6 +20,9 @@ export async function listScores(): Promise<ScoreRow[]> {
     score:     Number(r.score),
     max_score: Number(r.max_score),
     label:     r.label,
+    attempted: r.attempted ?? null,
+    correct:   r.correct   ?? null,
+    wrong:     r.wrong     ?? null,
   }))
 }
 
@@ -33,6 +36,9 @@ export async function insertScore(row: ScoreRow): Promise<void> {
     score:     row.score,
     max_score: row.max_score,
     label:     row.label ?? null,
+    attempted: row.attempted ?? null,
+    correct:   row.correct   ?? null,
+    wrong:     row.wrong     ?? null,
   })
   if (error) throw error
 }

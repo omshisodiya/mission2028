@@ -14,11 +14,26 @@ interface Article { num: string | number; heading: string; omitted?: boolean; te
 interface Part    { part: string; title: string; articles: Article[] }
 interface ConData { preamble: string; parts: Part[] }
 
-const MAX_TEXT = 240    // chars shown in the ambient card
+const MAX_HEAD = 52     // heading chars — keeps it to 1-2 lines at display size
+const MAX_TEXT = 200    // body chars shown in the ambient card
 const INTERVAL = 5200   // ms between articles (matches engine's pace)
 
-function clip(s: string): string {
-  return s.length <= MAX_TEXT ? s : s.slice(0, MAX_TEXT).trimEnd() + '…'
+/** Clip heading to max chars. */
+function clipHead(s: string): string {
+  return s.length <= MAX_HEAD ? s : s.slice(0, MAX_HEAD - 1).trimEnd() + '…'
+}
+
+/** Strip the repeated heading prefix common in Indian legal drafting, then clip. */
+function clipBody(heading: string, text: string): string {
+  let t = text.trim()
+  // Legal body usually starts with the heading text then "—" (em-dash) then actual content
+  // e.g. "Formation of new States.—Parliament may by law—..."
+  // Strip everything up to and including the first em/en-dash
+  const dashIdx = t.search(/[—–]/)
+  if (dashIdx > 0 && dashIdx < Math.min(heading.length + 20, 120)) {
+    t = t.slice(dashIdx + 1).trimStart()
+  }
+  return t.length <= MAX_TEXT ? t : t.slice(0, MAX_TEXT - 1).trimEnd() + '…'
 }
 
 export async function initConstitution(): Promise<void> {
@@ -42,19 +57,22 @@ export async function initConstitution(): Promise<void> {
   type Entry = { num: string; heading: string; text: string }
   const pool: Entry[] = []
 
+  // Preamble — short meaningful excerpt
+  const preambleExcerpt = data.preamble.slice(0, MAX_TEXT).trimEnd() + '…'
   pool.push({
     num:     'Preamble',
-    heading: 'Preamble to the Constitution of India',
-    text:    clip(data.preamble),
+    heading: 'Preamble',
+    text:    preambleExcerpt,
   })
 
   for (const part of data.parts) {
     for (const a of part.articles) {
       if (!a.omitted && a.text && a.text.trim().length > 5) {
+        const heading = clipHead(a.heading)
         pool.push({
           num:     `Article ${a.num}`,
-          heading: a.heading,
-          text:    clip(a.text.trim()),
+          heading,
+          text:    clipBody(a.heading, a.text),
         })
       }
     }

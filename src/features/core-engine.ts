@@ -23,6 +23,9 @@ export async function loadAndBind(): Promise<void> {
   _state = computeCoreState(inputs)
   cacheInStore(_state)
   bindWidgets(_state)
+  // Engine's count-up animation runs for ~900ms after elements enter viewport.
+  // Re-apply count-up values after 1200ms so real data wins over the animation.
+  setTimeout(() => { if (_state) safeRun('count-ups-delayed', () => bindCountUps(_state!)) }, 1200)
 }
 
 /** Re-run after any input write. Debounced 400ms so rapid inputs don't thrash. */
@@ -109,19 +112,23 @@ function cacheInStore(state: CoreState): void {
 
 // ── Widget bindings ───────────────────────────────────────────────────────────
 
+/** Runs fn safely — logs any error but never lets one widget break another. */
+function safeRun(label: string, fn: () => void): void {
+  try { fn() } catch (e) { console.error(`[core-engine] ${label}:`, e) }
+}
+
 function bindWidgets(s: CoreState): void {
-  bindStrip(s)
-  bindRankSim(s)
-  bindBarCharts(s)
-  bindDonuts(s)
-  bindHeatmap(s)
-  bindStreak(s)
-  bindCountUps(s)
-  bindBriefing(s)
-  bindAutoTodos(s)
-  upgradeAIPlannerInput(s)
-  // Push subject context into the planner so today's lectures surface first
-  setPlannerSubjectContext(s.today.subject, todaySubjectKeywords())
+  safeRun('strip',        () => bindStrip(s))
+  safeRun('rankSim',      () => bindRankSim(s))
+  safeRun('barCharts',    () => bindBarCharts(s))
+  safeRun('donuts',       () => bindDonuts(s))
+  safeRun('heatmap',      () => bindHeatmap(s))
+  safeRun('streak',       () => bindStreak(s))
+  safeRun('countUps',     () => bindCountUps(s))
+  safeRun('briefing',     () => bindBriefing(s))
+  safeRun('autoTodos',    () => bindAutoTodos(s))
+  safeRun('aiUpgrade',    () => upgradeAIPlannerInput(s))
+  safeRun('plannerCtx',   () => setPlannerSubjectContext(s.today.subject, todaySubjectKeywords()))
 }
 
 // Headline metrics strip (in the routine section)
@@ -285,42 +292,49 @@ function bindStreak(s: CoreState): void {
   }
 }
 
-// Intelligence stat row — wire to real CoreState numbers
+// Intelligence stat row — wire to real CoreState numbers.
+// Also called with 1200ms delay from loadAndBind() to win over engine's animation.
 function bindCountUps(s: CoreState): void {
   const activeDays = Object.values(s.hours.byDay).filter(h => h > 0).length
   const avgPre     = s.performance.prelimsAvg
-  const avgScore   = avgPre != null ? Math.round(avgPre * 2) : 0  // % → /200 proxy
+  const avgScore   = avgPre != null ? Math.round(avgPre * 2) : 0   // % → /200 proxy
 
-  // Find the 4 stat cards inside #intel (by their .k label text, robust to ordering)
+  // Card value map keyed by fragment of the .k label text
+  const MAP: Record<string, number> = {
+    mock:     s.cumulative.testsTaken,
+    score:    avgScore,
+    accuracy: avgPre != null ? Math.round(avgPre) : 0,
+    study:    activeDays,
+  }
+
   document.querySelectorAll<HTMLElement>('#intel .stat').forEach(card => {
-    const label = card.querySelector('.k')?.textContent?.toLowerCase() ?? ''
-    const cu = card.querySelector<HTMLElement>('.count-up')
+    const label = (card.querySelector('.k')?.textContent ?? '').toLowerCase()
+    const cu    = card.querySelector<HTMLElement>('.count-up')
     if (!cu) return
-    let val: number | null = null
-    if (label.includes('mock')) val = s.cumulative.testsTaken
-    else if (label.includes('score')) val = avgScore
-    else if (label.includes('accuracy')) val = avgPre != null ? Math.round(avgPre) : null
-    else if (label.includes('study')) val = activeDays
-    if (val != null) { cu.setAttribute('data-to', String(val)); cu.textContent = String(val) }
+    const key = Object.keys(MAP).find(k => label.includes(k))
+    if (key == null) return
+    const val = MAP[key]
+    cu.setAttribute('data-to', String(val))
+    cu.textContent = String(val)   // direct set — engine animation already finished
   })
 
-  // heat-active element (used by heatmap)
+  // Update heat-active (used by heatmap section)
   const ha = document.getElementById('heat-active')
   if (ha) ha.textContent = String(activeDays)
 
-  // Trend labels — update to reflect real data
+  // Trend sub-labels
+  const trendMap: Record<string, string> = {
+    mock:     s.cumulative.testsTaken > 0  ? `${s.cumulative.testsTaken} total graded`            : '',
+    score:    avgPre != null               ? `avg accuracy ${avgPre.toFixed(1)}%`                 : '',
+    accuracy: avgPre != null               ? avgPre >= 60 ? '≥ 60% — target met' : 'Below 60%'   : '',
+    study:    `${s.hours.cumulative.toFixed(0)}h total`,
+  }
   document.querySelectorAll<HTMLElement>('#intel .stat .trend').forEach(tr => {
-    const parentLabel = tr.closest('.stat')?.querySelector('.k')?.textContent?.toLowerCase() ?? ''
-    if (parentLabel.includes('mock') && s.cumulative.testsTaken > 0) {
-      tr.textContent = `${s.cumulative.testsTaken} total graded`
-      tr.className = 'trend up'
-    } else if (parentLabel.includes('accuracy') && avgPre != null) {
-      tr.textContent = `${avgPre.toFixed(1)}% prelims avg`
-      tr.className = avgPre >= 60 ? 'trend up' : 'trend'
-    } else if (parentLabel.includes('study')) {
-      tr.textContent = `${s.hours.cumulative.toFixed(0)}h total`
-      tr.className = 'trend up'
-    }
+    const label = (tr.closest('.stat')?.querySelector('.k')?.textContent ?? '').toLowerCase()
+    const key   = Object.keys(trendMap).find(k => label.includes(k))
+    if (!key || !trendMap[key]) return
+    tr.textContent = trendMap[key]
+    tr.className = 'trend up'
   })
 }
 
@@ -345,36 +359,36 @@ function patchHoursDisplay(s: CoreState): void {
 
 // Auto-populate today's command-menu todos from the routine plan
 function bindAutoTodos(s: CoreState): void {
+  type Todo = { t: string; done: boolean }
   const mission = (window as {
     MISSION?: { store: { data: Record<string, unknown>; set(k: string, v: unknown): void } }
   }).MISSION
   if (!mission?.store) return
 
   const today = s.today.date
-  const raw   = mission.store.data['todos'] as Record<string, { t: string; done: boolean }[]> ?? {}
-  const list  = [...(raw[today] ?? [])]
+  const rawMap = (mission.store.data['todos'] ?? {}) as Record<string, Todo[]>
+  const list: Todo[] = [...(Array.isArray(rawMap[today]) ? rawMap[today] : [])]
   const existing = new Set(list.map(x => x.t))
 
   const suggestions: string[] = []
   const subj = s.today.subject
 
-  if (subj.includes('PW Full Test'))        suggestions.push('Full Length Prelims Test + Analysis')
-  else if (subj.includes('PW Optional'))    suggestions.push('Maths Sectional Test + Error Log')
+  if (subj.includes('PW Full Test'))     suggestions.push('Full Length Prelims Test + Analysis')
+  else if (subj.includes('PW Optional')) suggestions.push('Maths Sectional Test + Error Log')
   else {
-    if (s.today.topicLabel)                 suggestions.push(s.today.topicLabel)
-    if (subj.includes('Mathematics'))       suggestions.push('Maths Practice (DPP)')
-    if (s.today.mainsTarget >= 1)           suggestions.push(`Mains Answer Writing (${s.today.mainsTarget} answer)`)
+    if (s.today.topicLabel)              suggestions.push(s.today.topicLabel)
+    if (subj.includes('Mathematics'))   suggestions.push('Maths Practice (DPP)')
+    if (s.today.mainsTarget >= 1)       suggestions.push(`Mains Writing: ${s.today.mainsTarget} answer`)
   }
-  if (s.today.targetQuestions > 0)         suggestions.push(`MCQ Target: ${s.today.targetQuestions} questions`)
+  if (s.today.targetQuestions > 0)      suggestions.push(`MCQ Target: ${s.today.targetQuestions} Qs`)
 
   let changed = false
   for (const t of suggestions) {
     if (!existing.has(t)) { list.push({ t, done: false }); existing.add(t); changed = true }
   }
   if (changed) {
-    raw[today] = list
-    mission.store.set('todos', raw)
-    // Refresh todo count badge in the command menu
+    const updated = { ...rawMap, [today]: list }
+    mission.store.set('todos', updated)
     const countEl = document.getElementById('cm-todo-count')
     if (countEl) countEl.textContent = String(list.filter(x => !x.done).length)
   }

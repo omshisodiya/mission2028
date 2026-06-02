@@ -14,21 +14,13 @@ interface Article { num: string | number; heading: string; omitted?: boolean; te
 interface Part    { part: string; title: string; articles: Article[] }
 interface ConData { preamble: string; parts: Part[] }
 
-const MAX_HEAD = 52     // heading chars — keeps it to 1-2 lines at display size
 const MAX_TEXT = 200    // body chars shown in the ambient card
 const INTERVAL = 5200   // ms between articles (matches engine's pace)
 
-/** Clip heading to max chars. */
-function clipHead(s: string): string {
-  return s.length <= MAX_HEAD ? s : s.slice(0, MAX_HEAD - 1).trimEnd() + '…'
-}
-
-/** Strip the repeated heading prefix common in Indian legal drafting, then clip. */
+/** Strip the repeated heading prefix (Indian legal drafting: "Heading.—Actual text…")
+ *  and clip body to MAX_TEXT. No ellipsis on headings — they display in full. */
 function clipBody(heading: string, text: string): string {
   let t = text.trim()
-  // Legal body usually starts with the heading text then "—" (em-dash) then actual content
-  // e.g. "Formation of new States.—Parliament may by law—..."
-  // Strip everything up to and including the first em/en-dash
   const dashIdx = t.search(/[—–]/)
   if (dashIdx > 0 && dashIdx < Math.min(heading.length + 20, 120)) {
     t = t.slice(dashIdx + 1).trimStart()
@@ -68,14 +60,21 @@ export async function initConstitution(): Promise<void> {
   for (const part of data.parts) {
     for (const a of part.articles) {
       if (!a.omitted && a.text && a.text.trim().length > 5) {
-        const heading = clipHead(a.heading)
         pool.push({
           num:     `Article ${a.num}`,
-          heading,
+          heading: a.heading,   // full heading, no truncation, no ellipsis
           text:    clipBody(a.heading, a.text),
         })
       }
     }
+  }
+
+  // Inject once: center-align body text so it matches the heading above it
+  if (!document.getElementById('const-body-align')) {
+    const s = document.createElement('style')
+    s.id = 'const-body-align'
+    s.textContent = '#ca-text { text-align: center; }'
+    document.head.appendChild(s)
   }
 
   // ── State ─────────────────────────────────────────────────────────────────

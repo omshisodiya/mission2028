@@ -228,6 +228,59 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ============================================================
+-- v2 / v3 ADDITIONS — run this block separately in SQL Editor
+-- after the initial schema is already in place (idempotent).
+-- ============================================================
+
+-- A. Universal Scoring & Ranking (v2)
+create table if not exists public.scores (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  label      text,
+  category   text not null default 'mock',  -- prelims|csat|mains|optional|dpp|sectional|quiz
+  subject    text,
+  score      numeric not null,
+  max_score  numeric not null,
+  taken_on   date not null default current_date,
+  created_at timestamptz default now()
+);
+alter table public.scores enable row level security;
+drop policy if exists owner_all on public.scores;
+create policy owner_all on public.scores
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create index if not exists scores_user_date_idx on public.scores(user_id, taken_on);
+
+-- D. Mistake Notebook (v3)
+create table if not exists public.mistakes (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  subject      text,
+  question     text not null,
+  my_answer    text,
+  correct_note text,
+  source       text,
+  created_at   timestamptz default now()
+);
+alter table public.mistakes enable row level security;
+drop policy if exists owner_all on public.mistakes;
+create policy owner_all on public.mistakes
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- D. Quick Notes (v3)
+create table if not exists public.notes (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  lecture_id uuid references public.lectures(id) on delete cascade,
+  topic_id   uuid references public.topics(id) on delete cascade,
+  body       text not null,
+  created_at timestamptz default now()
+);
+alter table public.notes enable row level security;
+drop policy if exists owner_all on public.notes;
+create policy owner_all on public.notes
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ============================================================
 -- DONE. Next: enable magic-link auth in Authentication → Providers,
 -- then create a Storage bucket named "resources" (private) for Phase 6.
 -- ============================================================

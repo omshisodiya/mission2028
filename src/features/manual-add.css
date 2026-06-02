@@ -1,0 +1,81 @@
+/* ============================================================
+   Manual Add lecture modal
+   ============================================================ */
+
+#ma-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 15, 0.85);
+  backdrop-filter: blur(6px);
+  padding: 20px;
+}
+
+.ma-panel {
+  width: 100%;
+  max-width: 440px;
+}
+
+.ma-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.ma-head h3 { margin: 0; font-size: 18px; }
+.ma-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+.ma-close:hover { color: var(--ink); }
+
+.ma-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ma-input,
+.ma-select {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.ma-input:focus,
+.ma-select:focus { border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
+.ma-select { cursor: pointer; }
+
+.ma-row { display: flex; gap: 8px; }
+.ma-row .ma-input { flex: 1; }
+
+.ma-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.ma-err {
+  font-size: 12.5px;
+  color: var(--bad);
+  font-family: var(--font-mono);
+  min-height: 16px;
+}

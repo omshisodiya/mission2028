@@ -1,6 +1,7 @@
 import { supabase } from './data/supabase'
 import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
+import { initLecturesPlanner } from './features/lectures-planner'
 
 async function init(): Promise<void> {
   let booted = false
@@ -43,6 +44,9 @@ async function bootEngine(userId: string): Promise<void> {
       queuePush(k, v)
     }
   }
+
+  // 4. Replace engine's hardcoded PLAN[] with real lectures from Supabase
+  await initLecturesPlanner()
 }
 
 init()

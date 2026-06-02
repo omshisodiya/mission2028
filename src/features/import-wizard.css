@@ -1,0 +1,141 @@
+/* ============================================================
+   Import Wizard modal
+   ============================================================ */
+
+#iw-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 15, 0.85);
+  backdrop-filter: blur(6px);
+  padding: 20px;
+}
+
+#iw-panel {
+  width: 100%;
+  max-width: 700px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.iw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.iw-head h3 { margin: 0; font-size: 18px; }
+.iw-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+.iw-close:hover { color: var(--ink); }
+
+/* Step visibility */
+.iw-step { display: flex; flex-direction: column; gap: 16px; }
+.iw-step.hidden { display: none; }
+
+/* Template download button */
+.iw-template {
+  align-self: flex-start;
+  font-size: 13px;
+}
+
+/* Drop zone */
+.iw-drop {
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--r);
+  padding: 40px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.iw-drop:hover,
+.iw-drop.drag-over {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 5%, transparent);
+}
+.iw-drop p { margin: 6px 0; color: var(--muted); font-size: 14px; }
+.iw-drop .iw-browse { color: var(--accent); cursor: pointer; }
+
+/* Preview */
+.iw-preview-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.iw-preview-info span { font-size: 14px; color: var(--ink-soft); }
+
+.iw-table-wrap {
+  overflow-x: auto;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.iw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+}
+.iw-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-3);
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-2);
+  text-align: left;
+}
+.iw-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iw-table tr:last-child td { border-bottom: none; }
+.iw-table tr:hover td { background: var(--panel); }
+
+.iw-more {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 8px 0 0;
+}
+
+.iw-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.iw-err { color: var(--bad); font-size: 13px; font-family: var(--font-mono); }
+
+/* Done step */
+.iw-done {
+  text-align: center;
+  padding: 12px 0 4px;
+}
+.iw-done-icon { font-size: 40px; display: block; margin-bottom: 12px; }
+.iw-done p { color: var(--ink-soft); margin: 6px 0; font-size: 15px; }

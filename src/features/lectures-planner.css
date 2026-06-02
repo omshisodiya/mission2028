@@ -1,0 +1,60 @@
+/* ============================================================
+   Lectures Planner — sits inside the existing planner panel
+   ============================================================ */
+
+/* Toolbar: filter tabs + action buttons */
+#lp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.lp-filters {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.lp-filter {
+  padding: 4px 11px;
+  border-radius: 20px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.lp-filter:hover { color: var(--ink); border-color: var(--accent); }
+.lp-filter.active {
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.lp-actions { display: flex; gap: 8px; }
+
+.lp-btn-add,
+.lp-btn-import {
+  font-size: 12px;
+  padding: 6px 14px;
+}
+
+/* Empty state */
+.lp-empty {
+  font-size: 13px;
+  padding: 20px 0 8px;
+  text-align: center;
+}
+
+/* Today tag colour */
+.pl-tag.lp-today {
+  color: var(--good);
+  border-color: color-mix(in oklab, var(--good) 35%, transparent);
+}

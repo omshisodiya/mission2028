@@ -74,26 +74,36 @@ export async function markDone(id: string, done: boolean): Promise<void> {
   if (error) throw error
 }
 
-export async function insertLectures(rows: LectureInsert[]): Promise<void> {
+const INSERT_BATCH = 150   // safe Supabase request size for free tier
+
+export async function insertLectures(
+  rows: LectureInsert[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
   const userId = await uid()
 
-  // Auto-create subjects from free-text names
+  // Resolve / auto-create subjects in one round-trip
   const subjectNames = rows.map(r => r.subject ?? '').filter(Boolean)
   const subjectMap = await upsertByNames(subjectNames)
 
   const records = rows.map(r => ({
-    user_id: userId,
-    title: r.title,
-    source: r.source ?? 'PW · Prarambh',
-    sequence: r.sequence ?? null,
+    user_id:      userId,
+    title:        r.title,
+    source:       r.source ?? 'PW · Prarambh',
+    sequence:     r.sequence ?? null,
     duration_min: r.duration_min ?? 60,
-    week: r.week ?? null,
-    status: r.status ?? 'backlog',
-    subject_id: r.subject ? (subjectMap.get(r.subject.toLowerCase()) ?? null) : null,
+    week:         r.week ?? null,
+    status:       r.status ?? 'backlog',
+    subject_id:   r.subject ? (subjectMap.get(r.subject.toLowerCase()) ?? null) : null,
   }))
 
-  const { error } = await supabase.from('lectures').insert(records)
-  if (error) throw error
+  // Batch insert — avoids Supabase request-size limits and shows progress
+  for (let i = 0; i < records.length; i += INSERT_BATCH) {
+    const batch = records.slice(i, i + INSERT_BATCH)
+    const { error } = await supabase.from('lectures').insert(batch)
+    if (error) throw error
+    onProgress?.(Math.min(i + INSERT_BATCH, records.length), records.length)
+  }
 }
 
 export async function insertOneLecture(row: LectureInsert): Promise<void> {

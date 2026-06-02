@@ -252,7 +252,9 @@ async function doImport(): Promise<void> {
   }))
 
   try {
-    await insertLectures(inserts)
+    await insertLectures(inserts, (done, total) => {
+      if (btn && isOpen()) btn.textContent = `Importing… ${done} / ${total}`
+    })
     if (!isOpen()) return
     setText('iw-done-n', String(inserts.length))
     step('iw-done')

@@ -21,6 +21,22 @@ import { initConfigurableTimer } from './features/timer-config'
 mountPlannerUI()
 mountRoutineSection()
 
+// Limit command menu height — engine default covers 100% of the screen.
+// Inject override so it opens to at most 72vh (shows content, not full screen).
+;(function injectMenuFix() {
+  const s = document.createElement('style')
+  s.textContent = `
+    #command-menu {
+      max-height: 72vh !important;
+      overflow-y: auto !important;
+    }
+    #command-menu .cm-inner {
+      padding-bottom: 24px !important;
+    }
+  `
+  document.head.appendChild(s)
+})()
+
 // Focus Mode inits immediately (reads saved preference from store on first boot)
 // — called before auth so it's active as soon as the engine runs
 if (document.readyState === 'loading') {

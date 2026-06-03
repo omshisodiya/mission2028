@@ -203,41 +203,46 @@
   animation: jp-pulse .8s ease infinite;
 }
 
-/* ── JARVIS master on/off toggle ──────── */
+/* ── JARVIS master on/off toggle ─────────
+   Positioned top-right so it's always visible,
+   above the aurora overlay (z-index 850).     */
 #jarvis-master-toggle {
   position: fixed;
-  bottom: 30px;
-  left: 24px;
+  top: 18px;
+  right: 110px;          /* left of the JARVIS orb area */
   z-index: 850;
-  height: 32px;
+  height: 36px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 13px 0 11px;
-  background: rgba(5,7,15,.88);
-  border: 1px solid rgba(240,181,74,.18);
+  gap: 8px;
+  padding: 0 16px 0 12px;
+  background: rgba(5,7,15,.92);
+  border: 1.5px solid rgba(240,181,74,.25);
   border-radius: 20px;
   cursor: pointer;
   color: var(--muted, #6f7d9e);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: .18em;
   text-transform: uppercase;
   transition: border-color .25s, color .25s, box-shadow .25s;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   user-select: none;
+  white-space: nowrap;
 }
 #jarvis-master-toggle:hover {
-  border-color: rgba(240,181,74,.40);
+  border-color: rgba(240,181,74,.50);
   color: var(--ink-soft, #b9c6e6);
+  box-shadow: 0 0 20px rgba(240,181,74,.12);
 }
 #jarvis-master-toggle.on {
-  border-color: rgba(240,181,74,.55);
+  border-color: rgba(240,181,74,.60);
   color: var(--accent, #f0b54a);
-  box-shadow: 0 0 14px rgba(240,181,74,.14);
+  box-shadow: 0 0 18px rgba(240,181,74,.18), 0 2px 8px rgba(0,0,0,.5);
 }
 #jarvis-master-toggle .jmt-dot {
-  width: 6px; height: 6px;
+  width: 7px; height: 7px;
   border-radius: 50%;
   background: var(--muted, #6f7d9e);
   flex-shrink: 0;
@@ -245,7 +250,12 @@
 }
 #jarvis-master-toggle.on .jmt-dot {
   background: var(--accent, #f0b54a);
-  box-shadow: 0 0 7px var(--accent, #f0b54a);
+  box-shadow: 0 0 8px var(--accent, #f0b54a);
+  animation: jmtPulse 2s ease-in-out infinite;
+}
+@keyframes jmtPulse {
+  0%,100% { box-shadow: 0 0 6px var(--accent, #f0b54a); }
+  50%     { box-shadow: 0 0 14px var(--accent, #f0b54a); }
 }
 /* Dim orb when JARVIS is disabled */
 #jarvis-btn.disabled {

@@ -108,6 +108,7 @@ function setJarvisEnabled(on: boolean): void {
   const lbl = tog?.querySelector<HTMLElement>('span:last-child')
 
   if (on) {
+    document.body.classList.remove('va-disabled')
     btn?.classList.remove('disabled')
     tog?.classList.add('on')
     if (lbl) lbl.textContent = 'JARVIS'
@@ -117,6 +118,7 @@ function setJarvisEnabled(on: boolean): void {
     if (_open) closePanel()
     _synth.cancel()
     VA.setState('idle')
+    document.body.classList.add('va-disabled')
     btn?.classList.add('disabled')
     tog?.classList.remove('on')
     if (lbl) lbl.textContent = 'OFF'
@@ -159,7 +161,9 @@ export function initJarvis(): void {
   btn.addEventListener('click', togglePanel)
   document.body.appendChild(btn)
 
-  initVAOverlay()   // Siri-style aurora overlay (always mounted, idle by default)
+  initVAOverlay()   // Siri-style aurora overlay — ambient at idle, full on voice
+  // Apply disabled class NOW if JARVIS starts as off
+  if (!_jarvisEnabled) document.body.classList.add('va-disabled')
   startAura()
 
   // ── Master on/off toggle button ──────────────────────────────────────────
@@ -175,7 +179,7 @@ export function initJarvis(): void {
   setTimeout(() => {
     if (_jarvisEnabled) {
       startWakeWord()
-      startClapWatch()
+      startClapWatch()       // handles clap + feeds ambient mic to aurora
     }
     startProactiveEngine()
   }, 2000)
@@ -361,6 +365,9 @@ function startAura(): void {
       amp = 0.35 + Math.abs(Math.sin(t * 3.2)) * 0.52
     } else if (VA.state === 'thinking') {
       amp = 0.14 + Math.abs(Math.sin(t * 1.6)) * 0.10
+    } else {
+      // Ambient idle breathe — keeps the glow rotating and gently pulsing
+      amp = 0.04 + Math.abs(Math.sin(t * 0.6)) * 0.04
     }
     VA.setAmplitude(amp)
 
@@ -2050,11 +2057,19 @@ async function startClapWatch(): Promise<void> {
   const MIN_GAP = 80    // min 80ms debounce between any two spikes
 
   setInterval(() => {
-    if (!_jarvisEnabled || !_everActivated || _isSpeaking || !_clapEnabled) return
+    if (!_jarvisEnabled) return
     an.getByteFrequencyData(data)
     const rms = Math.sqrt(data.reduce((s,v)=>s+v*v,0)/data.length)
 
+    // Feed ambient mic amplitude to the aurora even when idle (room sound = aurora reacts)
+    if (VA.state === 'idle' && !_isSpeaking) {
+      const ambAmp = Math.min(1, rms / 80)    // normalise to 0-1, 80 = typical speech level
+      VA.setAmplitude(ambAmp * 0.35)          // scale down so ambient is subtle
+    }
+
     if (nSamples < 40) { ambient = (ambient*nSamples+rms)/(nSamples+1); nSamples++; return }
+
+    if (!_everActivated || _isSpeaking || !_clapEnabled) return  // clap check needs activation
 
     const now = Date.now()
     if (now < suppress) return

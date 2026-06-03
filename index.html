@@ -78,9 +78,9 @@ body[data-va=speaking]  .va-dot{background:#ffe39a;box-shadow:0 0 10px #ffe39a;}
 .va-tx{font-family:'Sora',system-ui,sans-serif;font-weight:500;font-size:clamp(20px,3.2vw,32px);line-height:1.28;color:#eaf0ff;max-width:760px;text-shadow:0 2px 30px rgba(0,0,0,.65);}
 .va-caret{display:inline-block;width:3px;height:1em;background:#f0b54a;margin-left:3px;vertical-align:-2px;border-radius:2px;animation:vaBlink 1s steps(1) infinite;}
 @keyframes vaBlink{50%{opacity:0}}
-/* ── Master toggle (top-right, always visible) ── */
+/* ── Master toggle — above the JARVIS orb, not overlapping nav ── */
 #va-toggle{
-  position:fixed;top:16px;right:16px;z-index:900;
+  position:fixed;bottom:108px;right:24px;z-index:900;
   height:38px;display:flex;align-items:center;gap:9px;
   padding:0 18px 0 14px;
   background:rgba(5,7,15,.95);

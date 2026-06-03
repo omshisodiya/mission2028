@@ -187,9 +187,13 @@ export function initJarvis(): void {
   setTimeout(() => {
     if (_jarvisEnabled) {
       startWakeWord()
-      startClapWatch()       // handles clap + feeds ambient mic to aurora
+      startClapWatch()
     }
     startProactiveEngine()
+    // Heartbeat: restart wake word if it silently dies every 15 seconds
+    setInterval(() => {
+      if (_jarvisEnabled && !_wakeRunning && !_isSpeaking && !_sleeping) startWakeWord()
+    }, 15_000)
   }, 2000)
 
   document.addEventListener('keydown', e => {
@@ -463,8 +467,19 @@ async function startListening(): Promise<void> {
       VA.setTranscript(best, false)   // show what was heard while thinking
       stopListening(); void processQuery(best)
     }
-    r.onerror = () => { if (!got && !fallback) tryLang(secondary, true); else if (!got) { stopListening(); setState('idle') } }
-    r.onend   = () => { if (!got && !fallback) tryLang(secondary, true); else if (!got) setState('idle') }
+    r.onerror = (err: unknown) => {
+      if (!got && !fallback) { tryLang(secondary, true); return }
+      if (!got) {
+        stopListening()
+        VA.setState('idle'); setState('idle')
+        const isPermission = err && typeof err === 'object' && 'error' in err && (err as {error:string}).error === 'not-allowed'
+        setStatus(isPermission ? 'Mic permission denied — please type.' : 'Could not hear you. Try again or type.')
+      }
+    }
+    r.onend = () => {
+      if (!got && !fallback) { tryLang(secondary, true); return }
+      if (!got) { VA.setState('idle'); setState('idle'); setStatus('Ready — say Jarvis or double clap') }
+    }
     try { r.start() } catch { if (!fallback) tryLang(secondary, true) }
   }
   tryLang(_lang)   // start with user's preferred language; falls back to secondary on error
@@ -486,11 +501,29 @@ function sendText(inp: HTMLInputElement): void {
 
 // ── Query Processing — the intelligence core ──────────────────────────────────
 async function processQuery(text: string): Promise<void> {
+  if (!text.trim()) return   // ignore empty (mic sometimes returns blank result)
 
   // 0. Vision
   if (isVisionTrigger(text)) { addMsg('user', text); openVisionCapture(text, respond); return }
 
   const tl = text.toLowerCase().trim()
+
+  // 0a. Single-keyword shortcuts — respond instantly, no router needed
+  const QUICK: Record<string, () => void> = {
+    'plan': () => scr('plan'),     'planner': () => scr('plan'),
+    'stats': () => scr('intel'),   'analytics': () => scr('intel'),   'scores': () => scr('intel'),
+    'timer': clickStart,           'start': clickStart,                'shuru': clickStart,
+    'pause': () => q('[data-act="start"]'), 'stop': () => q('[data-act="start"]'),
+    'reset': () => q('[data-act="reset"]'),
+    'routine': () => scr('routine'),       'constitution': () => scr('constitution'),
+    'settings': () => cl('cm-settings'),
+    'backlog': () => { scr('plan'); cl('lp-filter-backlog') },
+    'status': () => respond(buildStatusReport()),
+    'briefing': () => respond(buildStatusReport()),
+    'motivate': () => respond(motivationLine()),  'motivation': () => respond(motivationLine()),
+    'help': () => respond("Say 'Jarvis' or double-clap to wake me. Then say any command. Try: 'start timer', 'what's my plan', 'add score', 'quiz me on Polity'."),
+  }
+  if (QUICK[tl]) { addMsg('user', text); QUICK[tl](); if (!['status','briefing','motivate','motivation','help'].includes(tl)) respond(tl + '.'); return }
 
   // 0b. Sleep / stop-listening — MUST fire before any other pattern (STT can hear
   //     "listening" as "locking", so we intercept here to avoid false lock trigger)
@@ -967,8 +1000,8 @@ async function dispatchIntent(r: RouterResult): Promise<string> {
 function parseSpokenMinutes(text: string): number | null {
   const t = text.toLowerCase().trim()
 
-  // 1. Plain digits: "45 min" / "45 minutes" / "45 minat"
-  const plain  = t.match(/\b(\d{1,3})\s*(?:min|minute|minutes|mins|minat|मिनट)/i)
+  // 1. Plain digits: "45 min" / "45 minutes" / "45-minute" / "45 minat"
+  const plain  = t.match(/\b(\d{1,3})[\s\-]*(?:min|minute|minutes|mins|minat|मिनट)/i)
   if (plain)  { const n = parseInt(plain[1]);  if (n>=1&&n<=180) return n }
 
   // 2. Split digits heard separately: "2 5 minutes" → 25

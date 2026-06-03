@@ -1,6 +1,7 @@
 import { listLectures, markDone, type LectureWithSubject } from '../data/repositories/lectures'
 import { createRevisionSchedule } from '../data/repositories/revisions'
 import { todayIST } from '../services/core'
+import { advanceRoutineToDate, resetRoutineToToday } from './routine-ui'
 import './lectures-planner.css'
 
 type Filter = 'all' | 'today' | 'backlog' | 'done'
@@ -77,23 +78,41 @@ export function mountPlannerUI(): void {
 
       document.getElementById('lp-import')?.addEventListener('click', openImportWizard)
       document.getElementById('lp-add')?.addEventListener('click', openManualAdd)
-      document.getElementById('lp-skip-day')?.addEventListener('click', () => {
-        // Manually trigger auto-advance to next day's subject
-        const today  = todayIST()
-        const [y, m, d] = today.split('-').map(Number)
-        const nextDate   = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
-        const nextDow    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(Date.UTC(y, m-1, d+1)).getUTCDay()]
-        const SUBJ_MAP: Record<string, string[]> = {
-          Mon: ['SJS','Polity'], Tue: ['Geography'], Wed: ['Environment'],
-          Thu: ['Medieval','History'], Fri: ['Economy'], Sat: ['Mathematics'], Sun: [],
-        }
-        const kws = SUBJ_MAP[nextDow] ?? []
-        const label = new Date(Date.UTC(y,m-1,d+1)).toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',timeZone:'UTC'})
-        _autoAdvanced = true; _advancedDate = label
-        _subjectKws = kws
-        _todaySubject = kws.length ? kws[0] + ' (tomorrow)' : 'Tomorrow'
-        _page = 1; render()
-      })
+      const skipBtn = document.getElementById('lp-skip-day')
+      if (skipBtn) {
+        let _skipped = false
+        skipBtn.addEventListener('click', () => {
+          const today = todayIST()
+          const [y, m, d] = today.split('-').map(Number)
+          const nextDate = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+
+          if (_skipped) {
+            // Second click: restore to today
+            _skipped = false
+            skipBtn.textContent = 'Skip today →'
+            _autoAdvanced = false; _advancedDate = ''; _subjectKws = []; _todaySubject = ''
+            _page = 1; render()
+            resetRoutineToToday()
+          } else {
+            // First click: advance to tomorrow
+            _skipped = true
+            skipBtn.textContent = '← Back to today'
+            const nextDow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(Date.UTC(y, m-1, d+1)).getUTCDay()]
+            const SUBJ_MAP: Record<string, string[]> = {
+              Mon:['SJS','Polity'], Tue:['Geography'], Wed:['Environment'],
+              Thu:['Medieval','History'], Fri:['Economy'], Sat:['Mathematics'], Sun:[],
+            }
+            const kws = SUBJ_MAP[nextDow] ?? []
+            const label = new Date(Date.UTC(y,m-1,d+1))
+              .toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',timeZone:'UTC'})
+            _autoAdvanced = true; _advancedDate = label
+            _subjectKws = kws
+            _todaySubject = kws.length ? kws[0] + ' (tomorrow)' : 'Tomorrow\'s plan'
+            _page = 1; render()
+            advanceRoutineToDate(nextDate)
+          }
+        })
+      }
     }
 
     // Show empty state until auth + data arrive

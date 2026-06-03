@@ -16,9 +16,36 @@ import './routine-ui.css'
 // ── module state ──────────────────────────────────────────────────────────────
 
 let _allDays: RoutineDay[] = []
-let _today = ''
+let _today      = ''
+let _activeDate = ''   // date being shown in Today card (normally = _today, can be skipped to tomorrow)
 let _saveTimer: ReturnType<typeof setTimeout> | null = null
 let _todayRow: RoutineDay = makeDefault('')
+
+/** Called by the planner's "Skip today →" button to advance the routine card. */
+export function advanceRoutineToDate(dateStr: string): void {
+  _activeDate = dateStr
+  const existing = _allDays.find(d => d.day === dateStr)
+  if (!existing) {
+    _todayRow = makeDefault(dateStr)
+    _allDays.push(_todayRow)
+    upsertRoutineDay(_todayRow).catch(() => {})
+  } else {
+    _todayRow = { ...existing }
+  }
+  renderTodayCard()
+  renderAggregates()
+  renderTable()
+}
+
+/** Reset routine card back to today (called when skip is undone). */
+export function resetRoutineToToday(): void {
+  _activeDate = _today
+  const existing = _allDays.find(d => d.day === _today)
+  _todayRow = existing ? { ...existing } : makeDefault(_today)
+  renderTodayCard()
+  renderAggregates()
+  renderTable()
+}
 
 function makeDefault(day: string): RoutineDay {
   return { day, day_type: 'College', study_hours: null, mains_written: null,
@@ -43,6 +70,7 @@ export function mountRoutineSection(): void {
  */
 export async function initRoutine(): Promise<void> {
   _today = todayIST()
+  _activeDate = _today
   injectSection() // idempotent — does nothing if already injected
 
   try {
@@ -248,8 +276,11 @@ function renderTodayCard(): void {
   const subject = getSubject(row.day)
   const sched   = getSchedule(row.day_type)
 
-  elText('rtn-today-label', fullDayName(row.day))
-  elText('rtn-today-date',  formatDateDisplay(row.day))
+  const isSkipped = row.day !== _today
+  elText('rtn-today-label', isSkipped
+    ? `${fullDayName(row.day)} · (skipped today)`
+    : fullDayName(row.day))
+  elText('rtn-today-date', formatDateDisplay(row.day))
 
   // Day-type select
   const sel = document.getElementById('rtn-day-type') as HTMLSelectElement | null

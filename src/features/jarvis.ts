@@ -28,6 +28,37 @@ let _recognition: any = null
 let _synth = window.speechSynthesis
 let _open = false
 
+// ── Voice selection ────────────────────────────────────────────────────────────
+let _voices: SpeechSynthesisVoice[] = []
+let _selectedVoice: SpeechSynthesisVoice | null = null
+let _voiceGender: 'female' | 'male' = (localStorage.getItem('jarvis_voice_gender') as 'female' | 'male') ?? 'female'
+
+function loadVoices(): void {
+  _voices = _synth.getVoices()
+  selectBestVoice()
+}
+_synth.addEventListener('voiceschanged', loadVoices)
+loadVoices()
+
+function selectBestVoice(): void {
+  if (!_voices.length) return
+  const isFemale = (v: SpeechSynthesisVoice) =>
+    /female|woman|girl|zira|heera|kalpana|samantha|karen|moira|fiona/i.test(v.name)
+  const isMale = (v: SpeechSynthesisVoice) =>
+    /male|man|boy|ravi|david|daniel|james|thomas|aaron/i.test(v.name)
+
+  const indian = _voices.filter(v => v.lang === 'hi-IN' || v.lang === 'en-IN')
+  const english = _voices.filter(v => v.lang.startsWith('en'))
+  const pool = indian.length ? indian : english.length ? english : _voices
+
+  const byGender = pool.filter(_voiceGender === 'female' ? isFemale : isMale)
+  _selectedVoice = byGender[0] ?? pool[0] ?? null
+}
+
+// ── Clap calibration ───────────────────────────────────────────────────────────
+let _clapThreshold = parseFloat(localStorage.getItem('jarvis_clap_threshold') ?? '0')
+const DEFAULT_CLAP_THRESHOLD_ABOVE = 55
+
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY as string | undefined
@@ -39,8 +70,12 @@ export function initJarvis(): void {
 
   const btn = document.createElement('button')
   btn.id = 'jarvis-btn'
-  btn.title = 'Mission JARVIS — AI Assistant (hold J or click)'
-  btn.innerHTML = `<span class="jb-icon">J</span>`
+  btn.title = 'Mission JARVIS — AI Assistant (press J or double clap)'
+  // The canvas for wave animation sits INSIDE the button ring
+  btn.innerHTML = `
+    <canvas id="jarvis-btn-canvas"></canvas>
+    <span class="jb-icon" style="position:relative;z-index:2;">J</span>
+  `
   btn.addEventListener('click', togglePanel)
   document.body.appendChild(btn)
 
@@ -80,10 +115,13 @@ async function startClapDetection(): Promise<void> {
 
   const data = new Uint8Array(analyser.frequencyBinCount)
 
-  // Calibration: compute ambient noise floor over first 2 seconds
+  // Use calibrated absolute threshold if available, else do auto-calibration
   let ambient = 0
   let calibSamples = 0
-  const THRESHOLD_ABOVE_AMBIENT = 55  // clap must be this many units louder than ambient
+  // If user has calibrated, _clapThreshold is an absolute RMS value
+  // Otherwise fall back to relative threshold above ambient
+  const USE_CALIBRATED = _clapThreshold > 0
+  const THRESHOLD_ABOVE_AMBIENT = 50  // fallback relative threshold
   const CLAP_MIN_MS  = 80    // min time between clap start and next check
   const CLAP_MAX_MS  = 900   // max time between two claps for double-clap
   let lastClapTime   = 0
@@ -109,7 +147,11 @@ async function startClapDetection(): Promise<void> {
     const now = Date.now()
     if (now < suppressUntil) return   // ignore echoes / reverberation
 
-    if (rms > ambient + THRESHOLD_ABOVE_AMBIENT) {
+    const triggered = USE_CALIBRATED
+      ? rms > _clapThreshold
+      : rms > ambient + THRESHOLD_ABOVE_AMBIENT
+
+    if (triggered) {
       suppressUntil = now + CLAP_MIN_MS   // suppress next 80ms (one clap decay)
 
       if (lastClapTime && now - lastClapTime < CLAP_MAX_MS) {
@@ -124,17 +166,12 @@ async function startClapDetection(): Promise<void> {
 }
 
 function onClapWake(): void {
-  // Visual flash on the J button
+  if (_isSpeaking) return   // don't trigger on echo of own voice
   const btn = document.getElementById('jarvis-btn')
   btn?.classList.add('listening')
   setTimeout(() => btn?.classList.remove('listening'), 600)
-
-  if (!_open) {
-    openPanel()
-    setTimeout(() => startListening(), 700)
-  } else {
-    startListening()
-  }
+  if (!_open) { openPanel(); setTimeout(() => startListening(), 700) }
+  else startListening()
 }
 
 // ── Wake word: "Jarvis" ───────────────────────────────────────────────────────
@@ -161,7 +198,7 @@ function startWakeWordListener(): void {
         .join(' ')
         .toLowerCase()
 
-      if (transcript.includes('jarvis') || transcript.includes('jarvis')) {
+      if (!_isSpeaking && (transcript.includes('jarvis') || transcript.includes('jarvis'))) {
         _wakeRecognition?.stop()
         _wakeActive = false
         // Brief audio cue — pulse the button
@@ -201,11 +238,17 @@ function openPanel(): void {
   panel.innerHTML = `
     <div class="jarvis-head">
       <span class="jarvis-title">⬡ Mission JARVIS</span>
-      <button class="jarvis-close" id="j-close">×</button>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <select id="j-voice-gender" title="Voice gender" style="background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--muted);font-family:var(--font-mono);font-size:10px;padding:3px 8px;cursor:pointer;outline:none;">
+          <option value="female" ${_voiceGender==='female'?'selected':''}>♀ Female</option>
+          <option value="male"   ${_voiceGender==='male'  ?'selected':''}>♂ Male</option>
+        </select>
+        <button id="j-calibrate" title="Calibrate clap detection" style="background:none;border:1px solid var(--line-2);border-radius:20px;color:var(--muted);font-family:var(--font-mono);font-size:10px;padding:3px 8px;cursor:pointer;">👏 Calibrate</button>
+        <button class="jarvis-close" id="j-close">×</button>
+      </div>
     </div>
-    <div class="jarvis-vis">
-      <canvas id="jarvis-canvas"></canvas>
-      <div class="jarvis-status-text" id="j-status">Ready — tap mic or type</div>
+    <div class="jarvis-status-text" id="j-status" style="text-align:center;padding:10px 16px 2px;font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;color:var(--accent);text-transform:uppercase;opacity:.8;">
+      Ready — say Jarvis or double clap
     </div>
     <div class="jarvis-history" id="j-history"></div>
     <div class="jarvis-input-row">
@@ -222,6 +265,21 @@ function openPanel(): void {
   startAnimation()
 
   document.getElementById('j-close')?.addEventListener('click', closePanel)
+
+  // Voice gender selector
+  document.getElementById('j-voice-gender')?.addEventListener('change', e => {
+    _voiceGender = (e.target as HTMLSelectElement).value as 'female' | 'male'
+    localStorage.setItem('jarvis_voice_gender', _voiceGender)
+    selectBestVoice()
+    // Demo the new voice
+    const utt = new SpeechSynthesisUtterance(_voiceGender === 'female' ? 'Hello Om, I\'m ready.' : 'Hello Om, I\'m JARVIS.')
+    if (_selectedVoice) utt.voice = _selectedVoice
+    utt.rate = 1.0; utt.pitch = _voiceGender === 'female' ? 1.1 : 0.85
+    _synth.cancel(); _synth.speak(utt)
+  })
+
+  // Clap calibration
+  document.getElementById('j-calibrate')?.addEventListener('click', () => startClapCalibration())
 
   const micBtn  = document.getElementById('jarvis-mic')!
   const sendBtn = document.getElementById('jarvis-send')!
@@ -271,14 +329,24 @@ const SIRI_WAVES = [
 
 function startAnimation(): void {
   cancelAnimationFrame(_rafId)
-  const W = _canvas!.width  / devicePixelRatio
-  const H = _canvas!.height / devicePixelRatio
+  // Draw on the button's canvas (waves flow inside the ring)
+  const btnCanvas = document.getElementById('jarvis-btn-canvas') as HTMLCanvasElement | null
+  if (!btnCanvas) return
+  const btn = document.getElementById('jarvis-btn')!
+  const size = btn.offsetWidth || 68
+  btnCanvas.width  = size * devicePixelRatio
+  btnCanvas.height = size * devicePixelRatio
+  btnCanvas.style.width  = size + 'px'
+  btnCanvas.style.height = size + 'px'
+  const c2 = btnCanvas.getContext('2d')!
+  c2.scale(devicePixelRatio, devicePixelRatio)
+  const W = size, H = size
   let t = 0
   const fft = new Uint8Array(128)
 
   function frame(): void {
     _rafId = requestAnimationFrame(frame)
-    const c = _ctx!
+    const c = c2   // draw on the button canvas
     c.clearRect(0, 0, W, H)
     t += 0.012
 
@@ -337,7 +405,7 @@ function startAnimation(): void {
 // ── Voice input ───────────────────────────────────────────────────────────────
 
 async function startListening(): Promise<void> {
-  if (_state === 'listening') return
+  if (_state === 'listening' || _isSpeaking) return
   setState('listening', 'सुन रहा हूँ… / Listening…')
 
   // Real microphone waveform via AudioContext
@@ -353,21 +421,37 @@ async function startListening(): Promise<void> {
   const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   if (!SR) { speak("Speech recognition isn't supported. Please type."); setState('idle', 'Type to ask'); return }
 
-  _recognition = new SR()
-  // Recognize Hindi + English + Hinglish — 'hi-IN' catches Devanagari and often Hinglish too
-  _recognition.lang = 'hi-IN'
-  _recognition.interimResults = false
-  _recognition.maxAlternatives = 3  // try multiple interpretations
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _recognition.onresult = (e: any) => {
-    // Pick best transcript across alternatives
-    const text: string = e.results[0][0].transcript
-    stopListening()
-    processQuery(text)
+  // Try hi-IN first (handles Devanagari + Hinglish); fall back to en-IN if empty
+  let gotResult = false
+
+  function tryLang(lang: string, isFallback = false): void {
+    const r = new SR()
+    _recognition = r
+    r.lang = lang
+    r.interimResults = false
+    r.maxAlternatives = 5  // more alternatives = better Hinglish recognition
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onresult = (e: any) => {
+      if (gotResult) return
+      // Pick the alternative with highest confidence or most words
+      let best = e.results[0][0].transcript as string
+      for (let i = 0; i < e.results[0].length; i++) {
+        if ((e.results[0][i].transcript as string).trim().length > best.trim().length)
+          best = e.results[0][i].transcript as string
+      }
+      if (best.trim()) { gotResult = true; stopListening(); void processQuery(best.trim()) }
+    }
+    r.onerror = () => {
+      if (!gotResult && !isFallback) tryLang('en-IN', true)
+      else if (!gotResult) { stopListening(); setState('idle', 'Ready') }
+    }
+    r.onend = () => {
+      if (!gotResult && !isFallback) tryLang('en-IN', true)
+      else if (!gotResult && isFallback) setState('idle', 'Ready')
+    }
+    try { r.start() } catch { if (!isFallback) tryLang('en-IN', true) }
   }
-  _recognition.onerror = () => { stopListening(); setState('idle', 'Ready') }
-  _recognition.onend   = () => { if (_state === 'listening') setState('idle', 'Ready') }
-  _recognition.start()
+  tryLang('hi-IN')
 
   document.getElementById('jarvis-mic')?.classList.add('active')
   document.getElementById('jarvis-btn')?.classList.add('listening')
@@ -391,12 +475,159 @@ function sendText(input: HTMLInputElement): void {
 
 // ── AI processing ─────────────────────────────────────────────────────────────
 
+// ── Quick command patterns (instant response, no AI round-trip) ───────────────
+
+interface QuickCmd { pattern: RegExp; action: string; section?: string; value?: string; reply: string }
+
+const QUICK_CMDS: QuickCmd[] = [
+  // Timer
+  { pattern: /timer.*start|start.*timer|shuru karo|chalu karo|pomodoro start|focus start|focus shuru|timer on/i,
+    action:'start_timer', reply:'Focus timer shuru kiya, Om! 💪 Concentrate karo.' },
+  { pattern: /timer.*stop|band karo|pause karo|roko|timer off|stop timer|timer pause/i,
+    action:'stop_timer', reply:'Timer paused. Break lo, Om.' },
+  { pattern: /timer.*reset|reset.*timer|timer reset/i,
+    action:'reset_timer', reply:'Timer reset kar diya.' },
+  { pattern: /timer.*skip|skip.*timer|next break|next session/i,
+    action:'skip_timer', reply:'Timer skip kar diya. Next session!' },
+  // Lock
+  { pattern: /lock karo|lock kar do|screen lock|lock screen|lock it/i,
+    action:'lock_screen', reply:'Screen lock kar diya. PIN se unlock karna.' },
+  // Navigation
+  { pattern: /intelligence|stats|chart|score section/i,
+    action:'scroll_to', section:'intel', reply:'Intelligence section pe ja raha hoon.' },
+  { pattern: /daily engine|engine section|timer section/i,
+    action:'scroll_to', section:'engine', reply:'Daily Engine section pe le gaya.' },
+  { pattern: /plan section|the plan|planner section/i,
+    action:'scroll_to', section:'plan', reply:'Plan section pe le gaya.' },
+  { pattern: /routine section|routine pe|routine dikhao/i,
+    action:'scroll_to', section:'routine', reply:'Routine section pe le gaya.' },
+  { pattern: /constitution|article section/i,
+    action:'scroll_to', section:'constitution', reply:'Constitution section pe le gaya.' },
+  // Planner
+  { pattern: /skip today|aaj skip|kal ka plan|tomorrow plan/i,
+    action:'skip_today', reply:'Aaj skip kiya. Kal ka schedule dikh raha hai.' },
+  { pattern: /add score|score add|score dal|score log/i,
+    action:'open_add_score', reply:'Add Score window khol raha hoon.' },
+  { pattern: /generate plan|plan banao|plan generate/i,
+    action:'generate_plan', reply:'Master Planner chala raha hoon…' },
+  // Focus mode
+  { pattern: /focus mode|vfx band|animation band|calm mode/i,
+    action:'focus_mode', reply:'Focus Mode toggle kiya. Zyada calm ab.' },
+  { pattern: /export|data export|backup/i,
+    action:'export_data', reply:'Aapka data download ho raha hai.' },
+]
+
+function tryQuickCommand(text: string): boolean {
+  for (const cmd of QUICK_CMDS) {
+    if (cmd.pattern.test(text)) {
+      runAppCommand({ action: cmd.action, section: cmd.section, value: cmd.value })
+      respond(cmd.reply)
+      return true
+    }
+  }
+  return false
+}
+
+// ── Clap calibration ──────────────────────────────────────────────────────────
+
+async function startClapCalibration(): Promise<void> {
+  const modal = document.createElement('div')
+  modal.style.cssText =
+    'position:fixed;inset:0;z-index:9100;display:flex;align-items:center;justify-content:center;' +
+    'background:rgba(5,7,15,.92);backdrop-filter:blur(10px);'
+  modal.innerHTML = `
+    <div style="background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r);
+      padding:28px;width:320px;text-align:center;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;color:var(--accent);">
+        👏 CLAP CALIBRATION
+      </div>
+      <div id="cal-msg" style="font-size:14px;color:var(--ink-soft);line-height:1.6;">
+        Measuring ambient noise… please stay quiet.
+      </div>
+      <div id="cal-bar" style="height:6px;border-radius:3px;background:var(--line);overflow:hidden;">
+        <div id="cal-fill" style="height:100%;background:var(--accent);width:0%;transition:width .1s;"></div>
+      </div>
+      <button id="cal-cancel" style="background:none;border:1px solid var(--line-2);border-radius:20px;
+        color:var(--muted);font-family:var(--font-mono);font-size:11px;padding:6px 16px;cursor:pointer;">
+        Cancel
+      </button>
+    </div>
+  `
+  document.body.appendChild(modal)
+  document.getElementById('cal-cancel')?.addEventListener('click', () => modal.remove())
+
+  const msg  = document.getElementById('cal-msg')!
+  const fill = document.getElementById('cal-fill')!
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const ctx    = new AudioContext()
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 256
+    ctx.createMediaStreamSource(stream).connect(analyser)
+    const data = new Uint8Array(analyser.frequencyBinCount)
+
+    const getRMS = () => {
+      analyser.getByteFrequencyData(data)
+      return Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length)
+    }
+
+    // Step 1: measure ambient (2s)
+    let ambientSum = 0, ambientN = 0
+    const ambientTimer = setInterval(() => {
+      ambientSum += getRMS(); ambientN++
+      fill.style.width = `${(ambientN / 20) * 100}%`
+    }, 100)
+
+    await new Promise(r => setTimeout(r, 2000))
+    clearInterval(ambientTimer)
+    const ambient = ambientSum / ambientN
+
+    // Step 2: ask to clap
+    msg.textContent = '👏 NOW CLAP TWICE — as you normally would to wake JARVIS!'
+    fill.style.width = '0%'
+    fill.style.background = 'var(--good)'
+
+    let maxClap = ambient
+    const clapTimer = setInterval(() => {
+      const rms = getRMS()
+      if (rms > maxClap) maxClap = rms
+      fill.style.width = `${Math.min(((rms - ambient) / 80) * 100, 100)}%`
+    }, 50)
+
+    await new Promise(r => setTimeout(r, 3000))
+    clearInterval(clapTimer)
+    stream.getTracks().forEach(t => t.stop())
+    ctx.close()
+
+    // Set threshold halfway between ambient and max clap
+    const threshold = ambient + (maxClap - ambient) * 0.45
+    _clapThreshold = threshold
+    localStorage.setItem('jarvis_clap_threshold', String(threshold))
+
+    msg.innerHTML = `<b style="color:var(--good)">✓ Calibrated!</b><br>
+      Ambient: ${ambient.toFixed(0)} · Clap peak: ${maxClap.toFixed(0)}<br>
+      Threshold set to: ${threshold.toFixed(0)}<br><br>
+      Double clap JARVIS now responds to your claps accurately.`
+    fill.style.width = '100%'
+    setTimeout(() => modal.remove(), 3000)
+  } catch {
+    msg.textContent = 'Microphone access needed for calibration.'
+  }
+}
+
 async function processQuery(userText: string): Promise<void> {
   // Vision trigger detection
   if (isVisionTrigger(userText)) {
     addMessage('user', userText)
     setState('idle', 'Opening camera…')
     openVisionCapture(userText)
+    return
+  }
+
+  // Quick command matching (instant, no AI needed)
+  if (tryQuickCommand(userText)) {
+    addMessage('user', userText)
     return
   }
 
@@ -830,29 +1061,48 @@ function handleOffline(q: string): string {
 
 // ── Voice output ──────────────────────────────────────────────────────────────
 
+let _isSpeaking = false   // guard: stop recognition while speaking
+
 function speak(text: string): void {
   _synth.cancel()
+  if (!_voices.length) loadVoices()
+
   const utt = new SpeechSynthesisUtterance(text)
-  utt.rate   = 1.05
-  utt.pitch  = 0.95
-  utt.volume = 1
-
-  const voices = _synth.getVoices()
-
-  // Detect language from content (Hindi Devanagari chars in Unicode range)
   const isHindi = /[ऀ-ॿ]/.test(text)
-  if (isHindi) {
-    utt.lang = 'hi-IN'
-    const hiVoice = voices.find(v => v.lang === 'hi-IN')
-    if (hiVoice) utt.voice = hiVoice
+
+  // Natural, human-sounding settings
+  utt.volume = 1
+  if (_voiceGender === 'female') {
+    utt.rate  = 1.0    // natural pace
+    utt.pitch = 1.15   // slightly higher, natural female
   } else {
-    utt.lang = 'en-IN'
-    const enVoice = voices.find(v => v.lang === 'en-IN') ?? voices.find(v => v.lang.startsWith('en'))
-    if (enVoice) utt.voice = enVoice
+    utt.rate  = 0.95   // slightly slower, authoritative
+    utt.pitch = 0.82   // deeper, natural male
   }
 
-  utt.onstart = () => setState('speaking', isHindi ? 'बोल रहा हूँ…' : 'Speaking…')
-  utt.onend   = () => setState('idle', 'Ready — Jarvis बोलें या type करें')
+  if (isHindi) {
+    utt.lang = 'hi-IN'
+    const hiVoice = _voices.find(v => v.lang === 'hi-IN')
+    if (hiVoice) utt.voice = hiVoice
+    else if (_selectedVoice) utt.voice = _selectedVoice
+  } else {
+    utt.lang = 'en-IN'
+    if (_selectedVoice) utt.voice = _selectedVoice
+  }
+
+  utt.onstart = () => {
+    _isSpeaking = true
+    // Stop any active recognition while JARVIS speaks — prevents self-listening loop
+    _recognition?.stop(); _recognition = null
+    setState('speaking', isHindi ? 'बोल रहा हूँ…' : 'Speaking…')
+  }
+  utt.onend = () => {
+    _isSpeaking = false
+    setState('idle', 'Jarvis बोलें या type करें | Ready')
+    // Restart wake word after a short delay so it doesn't catch echo
+    setTimeout(() => { if (!_open) startWakeWordListener() }, 800)
+  }
+  utt.onerror = () => { _isSpeaking = false; setState('idle', 'Ready') }
   _synth.speak(utt)
 }
 

@@ -1,187 +1,176 @@
-/* ═══════════════════════════════════════════════════════
-   MISSION JARVIS — animated voice assistant
-   ═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════
+   JARVIS — clean, non-overlapping UI
+   ═══════════════════════════════════ */
 
-/* ── Floating trigger button ─────────────────────────── */
-/* ── JARVIS aura orb button — no text, pure living energy ── */
+/* ── Aura orb button ─────────────────── */
 #jarvis-btn {
   position: fixed;
-  bottom: 28px;
-  right: 28px;
+  bottom: 24px;
+  right: 24px;
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background: #05070f;
+  background: #04060a;
   border: none;
   cursor: pointer;
   z-index: 800;
   padding: 0;
   overflow: hidden;
   box-shadow:
-    0 0 0 1px rgba(240,181,74,.25),
-    0 0 24px rgba(240,181,74,.3),
-    0 0 60px rgba(240,181,74,.1);
-  transition: box-shadow .4s, transform .2s;
+    0 0 0 1.5px rgba(240,181,74,.30),
+    0 0 20px rgba(240,181,74,.25),
+    0 0 50px rgba(240,181,74,.08);
+  transition: box-shadow .35s, transform .2s;
 }
 #jarvis-btn:hover {
-  transform: scale(1.06);
+  transform: scale(1.07);
   box-shadow:
-    0 0 0 1.5px rgba(240,181,74,.5),
-    0 0 36px rgba(240,181,74,.55),
-    0 0 80px rgba(240,181,74,.2);
+    0 0 0 2px rgba(240,181,74,.55),
+    0 0 32px rgba(240,181,74,.50),
+    0 0 70px rgba(240,181,74,.18);
 }
 #jarvis-btn.listening {
-  box-shadow:
-    0 0 0 2px rgba(240,181,74,.8),
-    0 0 48px rgba(240,181,74,.7),
-    0 0 90px rgba(240,181,74,.3);
-  animation: jarvis-pulse-ring 1s ease infinite;
+  animation: jp-pulse 1s ease infinite;
+}
+@keyframes jp-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(240,181,74,.7); }
+  70%  { box-shadow: 0 0 0 18px rgba(240,181,74,0);  }
+  100% { box-shadow: 0 0 0 0   rgba(240,181,74,0);   }
 }
 #jarvis-btn-canvas {
   position: absolute;
   inset: 0;
-  width: 100% !important;
-  height: 100% !important;
   border-radius: 50%;
   pointer-events: none;
 }
-#jarvis-btn:hover {
-  transform: scale(1.08);
-  box-shadow: 0 0 36px color-mix(in oklab,var(--accent) 50%,transparent);
-}
-#jarvis-btn.listening {
-  animation: jarvis-pulse-ring 1.2s ease infinite;
-}
-@keyframes jarvis-pulse-ring {
-  0%   { box-shadow: 0 0 0 0 color-mix(in oklab,var(--accent) 60%,transparent); }
-  70%  { box-shadow: 0 0 0 18px color-mix(in oklab,var(--accent) 0%,transparent); }
-  100% { box-shadow: 0 0 0 0 color-mix(in oklab,var(--accent) 0%,transparent); }
-}
-#jarvis-btn .jb-icon {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: -.02em;
-  user-select: none;
-}
 
-/* ── Main panel ──────────────────────────────────────── */
+/* ── Panel — above button, non-overlapping ── */
 #jarvis-panel {
   position: fixed;
-  bottom: 108px;
-  right: 32px;
-  width: 340px;
+  bottom: 108px;        /* sits clearly above the 72px button + 24px margin */
+  right: 24px;
+  width: 320px;
+  max-height: 520px;
   z-index: 799;
   display: flex;
   flex-direction: column;
-  gap: 0;
-  border-radius: var(--r);
-  border: 1px solid color-mix(in oklab,var(--accent) 25%,var(--line));
-  background: rgba(5,7,15,.92);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 24px 64px -12px rgba(0,0,0,.8),
-              0 0 0 1px color-mix(in oklab,var(--accent) 8%,transparent) inset;
+  border-radius: 18px;
+  border: 1px solid rgba(240,181,74,.22);
+  background: rgba(5,7,15,.96);
+  backdrop-filter: blur(24px);
+  box-shadow:
+    0 32px 80px -16px rgba(0,0,0,.85),
+    0 0 0 1px rgba(240,181,74,.06) inset;
+  animation: jp-open .22s cubic-bezier(.16,1,.3,1);
   overflow: hidden;
-  transform-origin: bottom right;
-  animation: jarvis-open .25s cubic-bezier(.16,1,.3,1);
 }
-@keyframes jarvis-open {
-  from { opacity:0; transform:scale(.92) translateY(12px); }
-  to   { opacity:1; transform:scale(1) translateY(0); }
+@keyframes jp-open {
+  from { opacity:0; transform:scale(.93) translateY(10px); }
+  to   { opacity:1; transform:scale(1)   translateY(0);    }
 }
 
-/* ── Animation area ──────────────────────────────────── */
-.jarvis-vis {
-  position: relative;
-  height: 160px;
+/* ── Header ───────────────────────────── */
+.jp-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg,
-    rgba(5,7,15,1) 0%,
-    color-mix(in oklab,var(--accent) 5%,rgba(5,7,15,.95)) 50%,
-    rgba(5,7,15,1) 100%);
-  overflow: hidden;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  flex-shrink: 0;
 }
-#jarvis-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+.jp-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .22em;
+  color: var(--accent);
+  text-transform: uppercase;
 }
-.jarvis-status-text {
-  position: absolute;
-  bottom: 12px;
-  left: 0;
-  right: 0;
-  text-align: center;
+.jp-pill {
+  background: none;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 20px;
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: .18em;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.jp-pill:hover { border-color: var(--accent); color: var(--accent-ink); }
+.jp-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: color .15s;
+  line-height: 1;
+}
+.jp-close:hover { color: var(--ink); }
+
+/* ── Status bar ───────────────────────── */
+.jp-status {
+  padding: 6px 14px 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--accent);
-  opacity: .8;
+  opacity: .75;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
 }
 
-/* ── Chat history ────────────────────────────────────── */
-.jarvis-history {
-  max-height: 200px;
+/* ── Chat history ─────────────────────── */
+.jp-chat {
+  flex: 1;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid var(--line);
+  min-height: 60px;
+  max-height: 260px;
 }
-.jarvis-history::-webkit-scrollbar { width: 2px; }
-.jarvis-history::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 2px; }
+.jp-chat::-webkit-scrollbar { width: 2px; }
+.jp-chat::-webkit-scrollbar-thumb { background: rgba(240,181,74,.2); border-radius: 2px; }
 
-.jmsg {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.jmsg.user { align-items: flex-end; }
-.jmsg.assistant { align-items: flex-start; }
-.jmsg-bubble {
-  max-width: 88%;
+.jmsg { display: flex; }
+.jmsg.user     { justify-content: flex-end; }
+.jmsg.assistant{ justify-content: flex-start; }
+.jbubble {
+  max-width: 86%;
   padding: 8px 12px;
   border-radius: 14px;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
-.jmsg.user .jmsg-bubble {
-  background: color-mix(in oklab,var(--accent) 18%,transparent);
+.jmsg.user .jbubble {
+  background: rgba(240,181,74,.16);
   color: var(--accent-ink);
   border-bottom-right-radius: 4px;
 }
-.jmsg.assistant .jmsg-bubble {
-  background: var(--panel-2);
+.jmsg.assistant .jbubble {
+  background: rgba(255,255,255,.05);
   color: var(--ink-soft);
   border-bottom-left-radius: 4px;
 }
-.jmsg-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: .1em;
-  color: var(--muted);
-  text-transform: uppercase;
-  padding: 0 4px;
-}
 
-/* ── Input bar ───────────────────────────────────────── */
-.jarvis-input-row {
+/* ── Input row ────────────────────────── */
+.jp-input-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--line);
+  padding: 9px 12px;
+  border-top: 1px solid rgba(255,255,255,.05);
+  flex-shrink: 0;
 }
-#jarvis-text {
+#jp-text {
   flex: 1;
-  background: var(--panel-2);
-  border: 1px solid var(--line-2);
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
   border-radius: 20px;
   color: var(--ink);
   font-family: var(--font-body);
@@ -190,54 +179,26 @@
   outline: none;
   transition: border-color .18s;
 }
-#jarvis-text:focus { border-color: color-mix(in oklab,var(--accent) 55%,transparent); }
-#jarvis-text::placeholder { color: var(--muted); }
-#jarvis-mic, #jarvis-send {
+#jp-text:focus { border-color: rgba(240,181,74,.45); }
+#jp-text::placeholder { color: var(--muted); }
+.jp-mic-btn, .jp-send-btn {
   width: 34px; height: 34px;
   border-radius: 50%;
-  border: 1px solid var(--line-2);
-  background: var(--panel-2);
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
   color: var(--accent);
   font-size: 15px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   transition: all .15s;
   flex-shrink: 0;
 }
-#jarvis-mic:hover, #jarvis-send:hover {
+.jp-mic-btn:hover, .jp-send-btn:hover {
   border-color: var(--accent);
-  background: color-mix(in oklab,var(--accent) 12%,transparent);
+  background: rgba(240,181,74,.12);
 }
-#jarvis-mic.active {
-  background: color-mix(in oklab,var(--accent) 20%,transparent);
+.jp-mic-btn.active {
+  background: rgba(240,181,74,.22);
   border-color: var(--accent);
-  animation: jarvis-pulse-ring .8s ease infinite;
+  animation: jp-pulse .8s ease infinite;
 }
-
-/* ── Header ──────────────────────────────────────────── */
-.jarvis-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px 0;
-}
-.jarvis-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: .2em;
-  color: var(--accent);
-  text-transform: uppercase;
-}
-.jarvis-close {
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 18px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 6px;
-  transition: color .15s;
-}
-.jarvis-close:hover { color: var(--ink); }

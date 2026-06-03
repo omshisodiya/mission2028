@@ -164,9 +164,13 @@ function bindWidgets(s: CoreState): void {
   safeRun('autoTodos',    () => bindAutoTodos(s))
   safeRun('aiUpgrade',    () => upgradeAIPlannerInput(s))
   safeRun('plannerCtx',   () => {
-    const hoursToday = s.hours.byDay[s.today.date] ?? 0
-    if (hoursToday === 0) {
-      // No study today — advance the planner to show the NEXT day's schedule
+    const hoursToday    = s.hours.byDay[s.today.date] ?? 0
+    const hasRoutineToday = !!s.today.subject   // routine row exists for today
+    // Only advance to next-day view when the user has NO routine logged at all
+    // AND no study hours yet.  If the routine is logged (subject set) but hours
+    // are still 0, the day has just started — show TODAY's lectures, not tomorrow's.
+    if (hoursToday === 0 && !hasRoutineToday) {
+      // Nothing logged at all today — pre-show the NEXT day's schedule
       const [y, m, d] = s.today.date.split('-').map(Number)
       const nextDate   = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
       const nextSubj   = nextDaySubject(nextDate)
@@ -175,6 +179,7 @@ function bindWidgets(s: CoreState): void {
         .toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' })
       setPlannerSubjectContext(nextSubj, nextKws, true, label)
     } else {
+      // Routine is logged (or study hours already exist) — always show today
       setPlannerSubjectContext(s.today.subject, todaySubjectKeywords(), false, '')
     }
   })

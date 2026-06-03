@@ -260,103 +260,76 @@ function resizeCanvas(): void {
   if (_ctx) _ctx.scale(devicePixelRatio, devicePixelRatio)
 }
 
+// Siri-style wave descriptors — 5 layered organic waves
+const SIRI_WAVES = [
+  { freq: 1.3, speed: 1.8,  phase: 0.0,  ampMul: 1.00, r:240, g:181, b: 74, opacity: 0.95, lw: 3.0 },
+  { freq: 2.1, speed:-1.5,  phase: 0.9,  ampMul: 0.75, r:255, g:220, b:110, opacity: 0.70, lw: 2.2 },
+  { freq: 0.8, speed: 2.3,  phase: 2.2,  ampMul: 0.55, r:255, g:245, b:165, opacity: 0.50, lw: 2.5 },
+  { freq: 3.2, speed:-0.9,  phase: 1.5,  ampMul: 0.35, r:200, g:155, b: 55, opacity: 0.40, lw: 1.5 },
+  { freq: 1.8, speed: 1.0,  phase: 3.3,  ampMul: 0.20, r:255, g:255, b:200, opacity: 0.25, lw: 1.0 },
+]
+
 function startAnimation(): void {
   cancelAnimationFrame(_rafId)
   const W = _canvas!.width  / devicePixelRatio
   const H = _canvas!.height / devicePixelRatio
-  const cx = W / 2, cy = H / 2
   let t = 0
-
-  // Frequency data buffer for waveform
-  const fftSize = 64
-  const dataArr = new Uint8Array(fftSize)
+  const fft = new Uint8Array(128)
 
   function frame(): void {
     _rafId = requestAnimationFrame(frame)
     const c = _ctx!
     c.clearRect(0, 0, W, H)
-    t += 0.016
+    t += 0.012
 
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f0b54a'
-    const accentRgb = hexToRgb(accent) ?? { r: 240, g: 181, b: 74 }
-
-    if (_analyser && (_state === 'listening' || _state === 'speaking')) {
-      _analyser.getByteFrequencyData(dataArr)
+    // Get real mic amplitude (0-1)
+    let audioAmp = 0
+    if (_analyser) {
+      _analyser.getByteFrequencyData(fft)
+      audioAmp = fft.reduce((s, v) => s + v, 0) / fft.length / 255
     }
 
-    // ── Arc reactor rings ──────────────────────────────────────────────────
-    const rings = [
-      { r: 18, speed: 0.8,  opacity: 0.9, width: 2.5 },
-      { r: 32, speed: -0.5, opacity: 0.5, width: 1.5 },
-      { r: 46, speed: 1.2,  opacity: 0.3, width: 1 },
-      { r: 62, speed: -0.3, opacity: 0.2, width: 1 },
-    ]
+    // State → target wave height
+    const baseH = H * 0.5
+    let maxAmp: number
+    switch (_state) {
+      case 'idle':      maxAmp = baseH * 0.10 + Math.sin(t * 0.8) * baseH * 0.03; break
+      case 'listening': maxAmp = baseH * 0.22 + audioAmp * baseH * 0.28; break
+      case 'thinking':  maxAmp = baseH * 0.14 + Math.sin(t * 3.5) * baseH * 0.06; break
+      case 'speaking':  maxAmp = baseH * 0.18 + Math.sin(t * 7) * baseH * 0.10 + audioAmp * baseH * 0.15; break
+    }
 
-    const pulseScale = _state === 'idle'
-      ? 1 + Math.sin(t * 1.5) * 0.04
-      : _state === 'thinking'
-        ? 1 + Math.sin(t * 4) * 0.06
-        : 1
-
-    rings.forEach(({ r, speed, opacity, width }) => {
-      const angle = t * speed
-      const pr = r * pulseScale
-      c.save()
-      c.translate(cx, cy)
-      c.rotate(angle)
-      // Dashed ring
+    // ── Siri waves ──────────────────────────────────────────────────────────
+    SIRI_WAVES.forEach(w => {
+      const amp = maxAmp * w.ampMul
       c.beginPath()
-      c.arc(0, 0, pr, 0, Math.PI * 2)
-      c.strokeStyle = `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},${opacity})`
-      c.lineWidth = width
-      if (_state === 'thinking') c.setLineDash([6, 8])
-      else c.setLineDash([])
+      c.shadowColor = `rgba(${w.r},${w.g},${w.b},0.55)`
+      c.shadowBlur  = _state === 'idle' ? 6 : 18
+      c.strokeStyle = `rgba(${w.r},${w.g},${w.b},${w.opacity})`
+      c.lineWidth   = w.lw
+      c.lineCap     = 'round'
+      c.lineJoin    = 'round'
+
+      for (let x = 0; x <= W; x += 2) {
+        // Envelope: taper smoothly at both edges (Siri characteristic)
+        const env = Math.pow(Math.sin((x / W) * Math.PI), 0.7)
+        const y   = H / 2 + amp * env *
+                    Math.sin((x / W) * w.freq * Math.PI * 2 + t * w.speed + w.phase)
+        x === 0 ? c.moveTo(x, y) : c.lineTo(x, y)
+      }
       c.stroke()
-      // Bright dot on ring
-      c.beginPath()
-      c.arc(pr, 0, width * 1.8, 0, Math.PI * 2)
-      c.fillStyle = `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},${opacity * 1.5})`
-      c.fill()
-      c.restore()
+      c.shadowBlur = 0
     })
 
-    // ── Centre glow ────────────────────────────────────────────────────────
-    const glowR = _state === 'listening' ? 10 + Math.sin(t * 6) * 4 : 8
-    const grad = c.createRadialGradient(cx, cy, 0, cx, cy, glowR * 3)
-    grad.addColorStop(0, `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},.7)`)
-    grad.addColorStop(1, `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0)`)
-    c.beginPath(); c.arc(cx, cy, glowR * 3, 0, Math.PI * 2)
-    c.fillStyle = grad; c.fill()
-
-    // ── Waveform bars (listening / speaking) ───────────────────────────────
-    if (_state === 'listening' || _state === 'speaking') {
-      const barCount = 32
-      const barW     = 3
-      const radius   = 72
-      for (let i = 0; i < barCount; i++) {
-        const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2
-        const freqIdx = Math.floor((i / barCount) * (fftSize / 2))
-        let amp = dataArr[freqIdx] / 255
-
-        if (_state === 'speaking') {
-          // Simulate speaking waveform
-          amp = 0.3 + Math.sin(t * 8 + i * 0.5) * 0.25 + Math.sin(t * 13 + i) * 0.15
-          amp = Math.max(0, Math.min(1, amp))
-        }
-
-        const barH = Math.max(4, amp * 28)
-        const x1   = cx + Math.cos(angle) * radius
-        const y1   = cy + Math.sin(angle) * radius
-        const x2   = cx + Math.cos(angle) * (radius + barH)
-        const y2   = cy + Math.sin(angle) * (radius + barH)
-        c.beginPath()
-        c.moveTo(x1, y1); c.lineTo(x2, y2)
-        c.strokeStyle = `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},${0.4 + amp * 0.6})`
-        c.lineWidth = barW
-        c.lineCap = 'round'
-        c.stroke()
-      }
-    }
+    // ── Soft centre glow (replaces the arc reactor) ─────────────────────────
+    const glowSize = _state === 'listening'
+      ? 28 + audioAmp * 20 + Math.sin(t * 6) * 4
+      : _state === 'idle' ? 18 + Math.sin(t * 1.2) * 4 : 22
+    const g = c.createRadialGradient(W/2, H/2, 0, W/2, H/2, glowSize)
+    g.addColorStop(0, 'rgba(240,181,74,.45)')
+    g.addColorStop(1, 'rgba(240,181,74,0)')
+    c.beginPath(); c.arc(W/2, H/2, glowSize, 0, Math.PI * 2)
+    c.fillStyle = g; c.fill()
   }
   frame()
 }

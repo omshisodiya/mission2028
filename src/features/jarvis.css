@@ -70,13 +70,14 @@
 /* ── Animation area ──────────────────────────────────── */
 .jarvis-vis {
   position: relative;
-  height: 180px;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 60%,
-    color-mix(in oklab,var(--accent) 8%,transparent) 0%,
-    transparent 70%);
+  background: linear-gradient(180deg,
+    rgba(5,7,15,1) 0%,
+    color-mix(in oklab,var(--accent) 5%,rgba(5,7,15,.95)) 50%,
+    rgba(5,7,15,1) 100%);
   overflow: hidden;
 }
 #jarvis-canvas {

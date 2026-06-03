@@ -278,9 +278,6 @@ function openPanel(): void {
   `
   document.body.appendChild(panel)
 
-  _canvas = document.getElementById('jarvis-canvas') as HTMLCanvasElement
-  _ctx    = _canvas.getContext('2d')!
-  resizeCanvas()
   startAnimation()
 
   document.getElementById('j-close')?.addEventListener('click', closePanel)
@@ -1194,14 +1191,19 @@ function speak(text: string): void {
 
   let idx = 0
   _isSpeaking = true
+  _clapEnabled = false  // mute clap detection while JARVIS speaks
   _recognition?.stop(); _recognition = null
   setState('speaking', isHindi ? 'बोल रहा हूँ…' : 'Speaking…')
 
   function sayNext(): void {
     if (idx >= chunks.length) {
       _isSpeaking = false
-      setState('idle', 'Jarvis बोलें या type करें | Ready')
-      setTimeout(() => { if (!_wakeActive) startWakeWordListener() }, 800)
+      // Re-enable clap detection only AFTER echo settles (1.5s)
+      setTimeout(() => {
+        _clapEnabled = true
+        setState('idle', 'Jarvis bolen ya type karen | Ready')
+        if (!_wakeActive && !_open) startWakeWordListener()
+      }, 1500)
       return
     }
     const utt = new SpeechSynthesisUtterance(chunks[idx++])
@@ -1239,13 +1241,11 @@ function speak(text: string): void {
 // ── Greeting ──────────────────────────────────────────────────────────────────
 
 function greet(): void {
-  const cs   = getCurrentState()
+  // Short, sharp greeting — no data dump
   const hour = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false })
-  const h    = parseInt(hour)
-  const tod  = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
-  const subj = cs?.today.subject ?? 'today\'s subjects'
-  const msg  = `Good ${tod}, Om. Today is ${subj} day. You have ${cs?.backlogRemaining ?? '?'} lectures remaining. How can I help?`
-  respond(msg)
+  const h = parseInt(hour)
+  const tod = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
+  respond(`${tod}, Om. Ready.`)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

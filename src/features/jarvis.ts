@@ -113,6 +113,25 @@ let _jarvisEnabled = localStorage.getItem('jarvis_enabled') !== 'false'
 // Clap activation: clap only works after the user has explicitly said "Jarvis" at least once
 let _everActivated = false
 
+// ── Advanced feature state ────────────────────────────────────────────────────
+
+// Continuous conversation: after JARVIS responds, auto-reopen mic for follow-up
+let _continuousMode  = localStorage.getItem('jarvis_continuous') === 'true'
+let _contListenTimer = 0   // window.setTimeout handle — cleared on interrupt
+
+// TTS speed: user-adjustable for accessibility and preference
+type TtsSpeed = 'slow' | 'normal' | 'fast'
+let _ttsSpeed: TtsSpeed = (localStorage.getItem('jarvis_speed') as TtsSpeed) ?? 'normal'
+
+// Active study subject: set when user announces what they're studying
+let _sessionSubject  = ''
+
+// Conversation context: last transcript for follow-up chaining
+let _lastUserQuery   = ''
+
+// Clap noise floor: EMA of ambient RMS — updates every 45 ms for smarter calibration
+let _emaAmb = 40   // starts at 40 dB, converges within seconds
+
 // ── Master toggle helpers ─────────────────────────────────────────────────────
 function setJarvisEnabled(on: boolean): void {
   _jarvisEnabled = on
@@ -259,14 +278,24 @@ function startProactiveEngine(): void {
     // Evening streak alert — after 8pm, if < 25 min studied
     if (h >= 20 && cs && (cs.streak ?? 0) > 2 && getTodayFocusMins() < 25) {
       _lastNudgeMs = now
-      showNudge(`Streak alert: ${cs.streak}-day streak at risk. One 25-minute session will protect it.`)
+      const lang = detectResponseLang('')
+      showNudge(
+        lang === 'hi'       ? `Streak alert: ${cs.streak} दिनों की streak खतरे में है। एक 25-minute session उसे बचा लेगा।` :
+        lang === 'hinglish' ? `Streak alert: ${cs.streak}-day streak at risk hai. Ek 25-minute session se bachao.` :
+                              `Streak alert: ${cs.streak}-day streak at risk. One 25-minute session will protect it.`
+      )
       return
     }
 
     // Backlog warning — once in a while during day
     if (cs && (cs.backlogRemaining ?? 0) > 20 && h >= 9 && h < 22 && Math.random() < 0.25) {
       _lastNudgeMs = now
-      showNudge(`${cs.backlogRemaining} lectures still pending. Say "generate plan" for an optimized schedule.`)
+      const lang = detectResponseLang('')
+      showNudge(
+        lang === 'hi'       ? `${cs.backlogRemaining} lectures अभी बाकी हैं। "plan generate karo" कहो एक optimized schedule के लिए।` :
+        lang === 'hinglish' ? `${cs.backlogRemaining} lectures pending hain. "generate plan" bolo optimized schedule ke liye.` :
+                              `${cs.backlogRemaining} lectures still pending. Say "generate plan" for an optimized schedule.`
+      )
     }
   }, 3 * 60_000)
 }
@@ -547,8 +576,8 @@ async function startListening(): Promise<void> {
 }
 
 function stopListening(): void {
+  if (_contListenTimer) { clearTimeout(_contListenTimer); _contListenTimer = 0 }
   _rec?.stop();     _rec = null
-  // Also stop wake word — prevents mic contention on restart
   _wakeRec?.stop(); _wakeRec = null; _wakeRunning = false
   _micStream?.getTracks().forEach(t => t.stop()); _micStream = null
   _audioCtx?.close(); _audioCtx = null; _analyser = null
@@ -876,7 +905,195 @@ async function processQuery(text: string): Promise<void> {
     }
   }
 
-  // 18. CMDS — fast pattern-action table (200+ patterns)
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 17b. ADVANCED INTELLIGENCE HANDLERS (run before CMDS for priority)
+  // ─────────────────────────────────────────────────────────────────────────────
+  _lastUserQuery = text   // always record for context / follow-up
+
+  // ── TTS Speed Control ────────────────────────────────────────────────────────
+  if (/speak.*faster|faster.*speak|speed.*up|tez.*bolo|jaldi.*bolo|fast.*mode/i.test(tl)) {
+    _ttsSpeed = 'fast'; localStorage.setItem('jarvis_speed', 'fast')
+    addMsg('user', text)
+    respond(L(detectResponseLang(text), 'Speaking faster now.', 'अब तेज़ बोलूंगा।', 'Faster speed set.')); return
+  }
+  if (/speak.*slower|slower.*speak|slow.*down|dheere.*bolo|aaram.*se.*bolo|slow.*mode/i.test(tl)) {
+    _ttsSpeed = 'slow'; localStorage.setItem('jarvis_speed', 'slow')
+    addMsg('user', text)
+    respond(L(detectResponseLang(text), 'Speaking slower now.', 'अब धीरे बोलूंगा।', 'Slower speed set.')); return
+  }
+  if (/normal.*speed|reset.*speed|default.*speed|medium.*speed/i.test(tl)) {
+    _ttsSpeed = 'normal'; localStorage.setItem('jarvis_speed', 'normal')
+    addMsg('user', text)
+    respond(L(detectResponseLang(text), 'Back to normal speed.', 'सामान्य गति पर वापस।', 'Normal speed resumed.')); return
+  }
+
+  // ── Continuous Conversation Mode ─────────────────────────────────────────────
+  if (/conversation.*mode.*on|auto.*listen.*on|continuous.*mode.*on|baat.*karte.*raho|sunta.*raho/i.test(tl)) {
+    _continuousMode = true; localStorage.setItem('jarvis_continuous', 'true')
+    addMsg('user', text)
+    respond(L(detectResponseLang(text),
+      'Conversation mode on. I will keep listening after each response for your follow-up.',
+      'Conversation mode चालू। हर जवाब के बाद follow-up के लिए सुनता रहूंगा।',
+      'Conversation mode on. Follow-up ke liye sunta rahunga.'
+    )); return
+  }
+  if (/conversation.*mode.*off|auto.*listen.*off|continuous.*mode.*off|band.*karo.*conversation/i.test(tl)) {
+    _continuousMode = false; localStorage.setItem('jarvis_continuous', 'false')
+    addMsg('user', text)
+    respond(L(detectResponseLang(text), 'Conversation mode off.', 'Conversation mode बंद।', 'Conversation mode off.')); return
+  }
+
+  // ── Command Chaining: "start timer and show plan" / "mark done aur add score" ──
+  {
+    const CHAIN_RE = /^(.+?)\s+(?:and\s+(?:then\s+|also\s+)?|then\s+|aur\s+(?:phir\s+)?|phir\s+(?:se\s+)?)(.+)$/i
+    const cm = tl.match(CHAIN_RE)
+    const isCmd = (s: string) => !s.includes('?') && /\b(open|show|start|stop|mark|add|set|generate|remind|lock|go|give|tell|log|create|get|display|toggle)\b/i.test(s)
+    if (cm && isCmd(cm[1]) && isCmd(cm[2])) {
+      addMsg('user', text)
+      void processQuery(cm[1].trim())
+      setTimeout(() => { void processQuery(cm[2].trim()) }, 1600)
+      return
+    }
+  }
+
+  // ── Emergency Cram Mode ───────────────────────────────────────────────────────
+  if (/emergency.*cram|emergency.*mode|crash.*course|last.*minute.*study|urgent.*revision|time.*nahi.*hai.*padh|kal.*exam.*hai/i.test(tl)) {
+    addMsg('user', text)
+    const lang   = detectResponseLang(text)
+    const rawMin = parseSpokenMinutes(tl) ?? parseNaturalDuration(tl)
+    const hrsNum = rawMin ? Math.max(1, Math.round(rawMin / 60)) : 2
+    const subj   = tl.replace(/emergency|cram|crash|course|last|minute|study|urgent|revision|time|nahi|hai|padh|kal|exam|hours?|ghante|mins?|minutes?/gi, '').trim()
+                  || (_sessionSubject || getCurrentState()?.today?.subject || 'GS')
+    respond(L(lang,
+      `Emergency ${hrsNum}-hour cram for ${subj}. Timer set. Fetching top priority topics.`,
+      `${hrsNum} घंटे का emergency session ${subj} के लिए। Timer चालू, top topics आ रहे हैं।`,
+      `${hrsNum} hour emergency cram for ${subj}. Timer set. Top topics fetch kar raha hoon.`
+    ))
+    fireTimer(50); scr('plan')
+    if (GROQ_AVAILABLE) void executeIntent(`List the 8 most important and most frequently asked UPSC topics in ${subj} that I must cover in a ${hrsNum}-hour emergency cram. Rank by UPSC frequency. No markdown. Spoken list only.`)
+    return
+  }
+
+  // ── Voice-First Guided Topic Walkthrough ─────────────────────────────────────
+  if (/walk.*me.*through|guide.*me.*through|explain.*step.*by.*step.*topic|teach.*me.*about|topic.*se.*shuru|topic.*samjhao/i.test(tl)) {
+    const topic = tl.replace(/walk.*me.*through|guide.*me.*through|explain.*step.*by.*step|teach.*me.*about|topic.*se.*shuru|topic.*samjhao/gi, '').trim()
+    if (topic.length > 2) {
+      addMsg('user', text)
+      if (GROQ_AVAILABLE) void executeIntent(`Walk me through ${topic} for UPSC in simple spoken language. Cover: definition, background, key points, constitutional provisions if any, and one real-world example. Maximum 4 sentences total. No markdown.`)
+      return
+    }
+  }
+
+  // ── Study Session Subject Tagging ─────────────────────────────────────────────
+  if (/(?:i'm|i am|main|mein)\s+(?:studying|padh\s+raha|padhna\s+shuru)|studying\s+(?:polity|history|geography|economics|environment|science|ethics|gs\d|csat)/i.test(tl)) {
+    const subj = tl.replace(/i'm|i am|main|mein|studying|padh.*raha|padhna.*shuru|abhi/gi, '').trim()
+    if (subj.length > 2) {
+      _sessionSubject = subj
+      addMsg('user', text)
+      respond(L(detectResponseLang(text),
+        `Tracking your ${subj} session. I'll tailor questions and reminders to this topic.`,
+        `${subj} session track हो रही है। Questions और reminders इसी पर रहेंगे।`,
+        `${subj} session track ho raha hai. Questions isi topic pe rahengi.`
+      )); return
+    }
+  }
+
+  // ── Comparative Progress Query ────────────────────────────────────────────────
+  if (/compare.*(?:this.*week|last.*week)|improvement.*over.*time|how.*improved|score.*trend|trend.*score/i.test(tl)) {
+    addMsg('user', text); scr('intel'); respond(buildWeekSummary()); return
+  }
+
+  // ── Weakest Subject / Gap Analysis ───────────────────────────────────────────
+  if (/weakest.*subject|worst.*subject|lowest.*score.*subject|mera.*kamzor|gap.*analysis|kahan.*weak/i.test(tl)) {
+    addMsg('user', text); scr('intel')
+    if (GROQ_AVAILABLE) void executeIntent(`Based on standard UPSC preparation difficulty, identify my most likely weak subject from these GS papers: GS1 (History, Geography, Society), GS2 (Polity, Governance, IR), GS3 (Economy, Environment, Science), GS4 (Ethics). Give one specific subject and three targeted study tips for it. No markdown.`)
+    else respond('Check the Intelligence section for your subject-wise score breakdown. The lowest average points to your weakest area.')
+    return
+  }
+
+  // ── Smart Dictation — Note / CA / Doubt / Mistake ────────────────────────────
+  {
+    const dictNote    = text.match(/^(?:note|jot|likh)\s*[:\-]?\s*(.+)/i)
+    const dictCA      = text.match(/^(?:ca|current affairs?|news|aaj ka news)\s*[:\-]?\s*(.+)/i)
+    const dictDoubt   = text.match(/^(?:doubt|doubts?|query|sawaal)\s*[:\-]?\s*(.+)/i)
+    const dictMistake = text.match(/^(?:mistake|galti|wrong)\s*[:\-]?\s*(.+)/i)
+    if (dictNote) {
+      addToInbox(dictNote[1].trim()); addMsg('user', text)
+      respond(L(detectResponseLang(text), `Noted: "${dictNote[1].trim()}"`, `Note: "${dictNote[1].trim()}"`, `Noted.`)); return
+    }
+    if (dictCA) {
+      addMsg('user', text); cl('cm-ca-log')
+      setTimeout(() => {
+        const inp = document.querySelector<HTMLTextAreaElement>('#ca-body,#ca-text,[name="ca-body"]')
+        if (inp) { inp.value = dictCA[1].trim(); inp.dispatchEvent(new Event('input')) }
+      }, 400)
+      respond(L(detectResponseLang(text), `CA entry ready: "${dictCA[1].trim()}"`, `CA entry: "${dictCA[1].trim()}"`, `CA log ready.`)); return
+    }
+    if (dictDoubt) {
+      addToInbox(`[DOUBT] ${dictDoubt[1].trim()}`); addMsg('user', text)
+      respond(L(detectResponseLang(text), `Doubt logged: "${dictDoubt[1].trim()}"`, `Doubt log: "${dictDoubt[1].trim()}"`, `Doubt saved.`)); return
+    }
+    if (dictMistake) {
+      addMsg('user', text); cl('cm-add-mistake')
+      setTimeout(() => {
+        const inp = document.querySelector<HTMLInputElement>('#mk-question,[name="mk-question"]')
+        if (inp) { inp.value = dictMistake[1].trim(); inp.dispatchEvent(new Event('input')) }
+      }, 400)
+      respond(L(detectResponseLang(text), `Mistake logged for review.`, `Mistake log हो गई।`, `Mistake save ho gayi.`)); return
+    }
+  }
+
+  // ── Session-Aware Study Check-In ─────────────────────────────────────────────
+  if (/how.*long.*studying|kitni.*der.*se.*padh|session.*kitna.*hua|kitna.*time.*ho.*gaya.*padhai/i.test(tl)) {
+    addMsg('user', text)
+    const m    = getTodayFocusMins()
+    const lang = detectResponseLang(text)
+    respond(m
+      ? L(lang, `You've studied ${m} minutes today. ${m >= 120 ? 'Excellent consistency.' : 'Keep going.'}`, `आज ${m} मिनट पढ़ाई हुई। ${m >= 120 ? 'शानदार।' : 'जारी रखो।'}`, `Aaj ${m} minutes padhai hui.`)
+      : L(lang, 'No sessions logged yet today.', 'आज अभी कोई session नहीं।', 'Aaj koi session nahi hua abhi.')
+    ); return
+  }
+
+  // ── Repeat / Expand Last Answer ───────────────────────────────────────────────
+  if (/tell.*more|elaborate|expand.*on.*that|more.*detail|aur.*batao|detail.*mein|elaborate.*karo/i.test(tl)) {
+    if (_lastReply) {
+      addMsg('user', text)
+      if (GROQ_AVAILABLE) void executeIntent(`Expand on this in 2-3 more spoken sentences: "${_lastReply.slice(0, 120)}"`)
+      else respond(_lastReply)
+    } else {
+      addMsg('user', text); respond(L(detectResponseLang(text), 'Nothing to expand on yet.', 'अभी कुछ नहीं है।', 'Kuch nahi hai abhi.'))
+    }
+    return
+  }
+
+  // ── IQ / Concept Test: Ask JARVIS to quiz on current topic ────────────────────
+  if (/test.*my.*knowledge|test.*karke.*dekho|mera.*test.*lo|aaj.*ka.*quiz|random.*question/i.test(tl)) {
+    const topic = _sessionSubject || getCurrentState()?.today?.subject || 'UPSC GS'
+    addMsg('user', text); void startQuiz(topic); return
+  }
+
+  // ── Exam Date Awareness ───────────────────────────────────────────────────────
+  if (/how.*prepared|kitna.*taiyar|preparation.*percent|taiyari.*kahan|readiness/i.test(tl)) {
+    addMsg('user', text)
+    const cs   = getCurrentState()
+    const lang = detectResponseLang(text)
+    const done = document.querySelectorAll('#plan .plan-row.done').length
+    const tot  = document.querySelectorAll('#plan .plan-row').length
+    const pct  = tot ? Math.round((done / tot) * 100) : 0
+    const avg  = cs?.performance?.prelimsAvg?.toFixed(1)
+    if (GROQ_AVAILABLE) {
+      void executeIntent(`Give me an honest assessment of my preparation: I've covered ${pct}% of lectures, ${avg ? `average score ${avg}%` : 'no scores yet'}, ${cs?.streak ?? 0} day streak. What's my biggest gap right now? One honest sentence only.`)
+    } else {
+      respond(L(lang,
+        `Syllabus coverage: ${pct}%${avg ? `, average score: ${avg}%` : ''}. Keep pushing.`,
+        `Syllabus ${pct}% complete${avg ? `, average: ${avg}%` : ''}। जारी रखो।`,
+        `Coverage: ${pct}%${avg ? `, avg: ${avg}%` : ''}. Keep going.`
+      ))
+    }
+    return
+  }
+
+  // 18. CMDS — fast pattern-action table (560+ patterns)
   for (const cmd of CMDS) {
     if (cmd.re.test(tl)) {
       addMsg('user', text)
@@ -900,7 +1117,8 @@ async function processQuery(text: string): Promise<void> {
 // Safety net: 8 seconds absolute timeout — JARVIS never stays stuck
 async function executeIntent(transcript: string): Promise<void> {
   setState('thinking')
-  setStatus('Thinking…')
+  const _thinkLang = detectResponseLang(transcript)
+  setStatus(_thinkLang === 'hi' ? 'सोच रहा हूँ…' : _thinkLang === 'hinglish' ? 'Soch raha hoon…' : 'Thinking…')
   VA.setState('thinking')
 
   const safetyTimer = setTimeout(() => {
@@ -942,7 +1160,7 @@ async function executeIntent(transcript: string): Promise<void> {
       const cached   = getCached(cacheKey)
       if (cached) { respond(cached); return }
 
-      setStatus(detectedLang === 'hi' ? 'जवाब ढूंढ रहा हूं…' : 'Searching knowledge base…')
+      setStatus(detectedLang === 'hi' ? 'जवाब खोज रहा हूँ…' : detectedLang === 'hinglish' ? 'Jawab dhundh raha hoon…' : 'Searching knowledge base…')
       const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
       const answer   = qaResult.answer?.trim()
       if (answer) { setCached(cacheKey, answer); respond(answer) }
@@ -957,7 +1175,7 @@ async function executeIntent(transcript: string): Promise<void> {
     // Intent matched but returned nothing → treat as general AI question
     // (covers misclassified questions, general knowledge, math, jokes, anything)
     if (GROQ_AVAILABLE) {
-      setStatus(detectedLang === 'hi' ? 'सोच रहा हूं…' : 'Thinking…')
+      setStatus(detectedLang === 'hi' ? 'सोच रहा हूँ…' : detectedLang === 'hinglish' ? 'Soch raha hoon…' : 'Thinking…')
       const fallback = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
       respond(fallback.answer?.trim() || offlineAnswer(transcript))
     } else {
@@ -1714,11 +1932,15 @@ const CMDS: Cmd[] = [
   { re: /backup.*data|data.*backup|sync.*now|force.*sync/i,                                action: () => { cl('cm-export-btn'); respond('Data export initiated.') }, reply: '' },
   { re: /sync.*status|last.*synced|connection.*status|online.*status/i,                    action: () => { const online=navigator.onLine; respond(online ? 'Online. All changes are syncing.' : 'Offline. Changes will sync when reconnected.') }, reply: '' },
 
-  // ── APP CONTROLS ──────────────────────────────────────────────────────────
-  // NOTE: lock patterns use word boundaries — avoids false match on "stop locking/listening"
-  { re: /\block\s+screen\b|\bscreen\s+lock\b|\block\s+karo\b|\block\s+kar\b/i,            action: () => cl('lock-btn'), reply: 'Screen locked.' },
-  { re: /\block\s+phone\b|\block\s+app\b|\bprivacy\s+mode\b/i,                            action: () => cl('lock-btn'), reply: 'Screen locked.' },
-  { re: /\bunlock\s+screen\b|\bscreen\s+unlock\b|\bunlock\s+kar\b/i,                      action: () => cl('lock-btn'), reply: 'Unlocking.' },
+  // ── APP CONTROLS — LOCK SCREEN ───────────────────────────────────────────
+  // NOTE: word boundaries prevent false-match on "stop locking/listening"
+  { re: /\block\s+screen\b|\bscreen\s+lock\b|\block\s+karo\b|\block\s+kar\b/i,                       action: () => cl('lock-btn'), reply: 'Screen locked.' },
+  { re: /\block\s+(?:phone|app|website|site|tab|portal|page)\b/i,                                     action: () => cl('lock-btn'), reply: 'Website locked.' },
+  { re: /\bprivacy\s+mode\b|\bprivacy\s+on\b|\bsecure\s+screen\b/i,                                  action: () => cl('lock-btn'), reply: 'Privacy mode on.' },
+  { re: /\bunlock\s+screen\b|\bscreen\s+unlock\b|\bunlock\s+kar\b|\bunlock\s+karo\b/i,                action: () => cl('lock-btn'), reply: 'Unlocking.' },
+  { re: /website.*band.*karo|site.*lock.*karo|page.*lock.*karo|lock.*kar.*do.*website/i,              action: () => cl('lock-btn'), reply: 'Website lock ho gaya.' },
+  { re: /koi.*nahi.*dekhe|koi.*na.*dekhe|private.*rakhna|screen.*chupa.*do/i,                         action: () => cl('lock-btn'), reply: 'Screen locked for privacy.' },
+  { re: /mujhe.*akela.*chod|distract.*mat.*karo|focus.*lock|concentration.*lock/i,                    action: () => cl('lock-btn'), reply: 'Locked. Focus mode.' },
   { re: /focus.*mode|animation.*off|vfx.*off|heavy.*vfx|performance.*mode/i,              action: () => cl('focus-mode-btn'), reply: 'Focus Mode toggled.' },
   { re: /settings.*open|open.*settings|settings.*kholao|app.*settings/i,                  action: () => cl('cm-settings'), reply: 'Settings opened.' },
   { re: /exam.*date.*set|set.*exam.*date|prelims.*date|exam.*configure/i,                  action: () => cl('cm-settings'), reply: 'Open Settings to configure your exam date.' },
@@ -2109,6 +2331,335 @@ const CMDS: Cmd[] = [
   { re: /thank.*you.*jarvis|thanks.*jarvis|shukriya/i,                                      action: () => respond("Always here for you, Om. Now get back to it!"), reply: '' },
   { re: /jarvis.*you.*are.*great|jarvis.*awesome|jarvis.*best/i,                            action: () => respond("Thank you! Now let's channel that energy into a study session."), reply: '' },
   { re: /ping|are.*you.*there|hello.*jarvis|hey.*jarvis/i,                                  action: () => respond("Online and ready. What do you need?"), reply: '' },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v4 — 300+ additional patterns  (total CMDS ≈ 500)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── CONSTITUTION — DEEP ARTICLES ─────────────────────────────────────────
+  { re: /article\s*1\b|name.*india|india.*union.*states/i,                 action: () => respond("Article 1: India, that is Bharat, shall be a Union of States. It uses 'Union' — not 'Federation' — signifying the indestructibility of the Union."), reply: '' },
+  { re: /article\s*2\b|admission.*new.*state|parliament.*new.*state/i,     action: () => respond("Article 2: Parliament may admit new States into the Union or establish new States on such terms as it thinks fit. Used when Sikkim merged in 1975."), reply: '' },
+  { re: /article\s*3\b|formation.*new.*state|alteration.*boundary/i,       action: () => respond("Article 3: Parliament can form new States, alter boundaries, or change names by simple majority. State Legislatures must be consulted but Parliament is not bound by their view."), reply: '' },
+  { re: /article\s*13\b|laws.*void.*fundamental.*rights/i,                 action: () => respond("Article 13: Laws inconsistent with Fundamental Rights shall be void to the extent of inconsistency. Enables judicial review. Pre-constitutional laws are also struck down if they infringe FR."), reply: '' },
+  { re: /article\s*14\b|equality.*before.*law/i,                           action: () => respond("Article 14: Equality before law (British concept — no privilege) AND Equal protection of laws (American concept — equal treatment in equal circumstances). Reasonable classification is permitted."), reply: '' },
+  { re: /article\s*16\b|equality.*public.*employment/i,                    action: () => respond("Article 16: Equal opportunity in public employment. Allows reservations for backward classes (16(4)), SC/ST (16(4A)), and EWS (16(6) — 103rd Amendment 2019)."), reply: '' },
+  { re: /article\s*17\b|untouchability.*abolished/i,                       action: () => respond("Article 17: Untouchability is abolished. Its practice in any form is an offence punishable by law. Protection of Civil Rights Act 1955 and SC/ST (Prevention of Atrocities) Act 1989 enforce this."), reply: '' },
+  { re: /article\s*18\b|abolition.*titles/i,                               action: () => respond("Article 18: Abolition of titles. No State shall confer titles. Military and academic distinctions exempt. Bharat Ratna/Padma Awards are not 'titles' — SC upheld this in 1996."), reply: '' },
+  { re: /article\s*20\b|protection.*conviction/i,                          action: () => respond("Article 20: Protection in respect of conviction for offences. Three rights: No ex-post-facto law, No double jeopardy, No self-incrimination. Available even during National Emergency."), reply: '' },
+  { re: /article\s*22\b|preventive.*detention/i,                           action: () => respond("Article 22: Protection against arrest and detention. Safeguards: inform of grounds (Art 22(1)), right to legal counsel (22(1)), produce before magistrate within 24 hours (22(2)). Art 22(3-7) governs preventive detention."), reply: '' },
+  { re: /article\s*23\b|prohibition.*traffic|begar|forced.*labour/i,       action: () => respond("Article 23: Prohibits traffic in human beings, begar (forced labour), and similar forms of forced labour. Bonded Labour System (Abolition) Act 1976 implements it."), reply: '' },
+  { re: /article\s*24\b|child.*labour|factories.*mines/i,                  action: () => respond("Article 24: No child below 14 shall be employed in any factory or mine or engaged in any hazardous employment. Child Labour (Prohibition and Regulation) Amendment Act 2016 extends this."), reply: '' },
+  { re: /article\s*26\b|religious.*denomination/i,                         action: () => respond("Article 26: Religious denominations can manage their own affairs, establish institutions, acquire property, and administer it. Subject to public order, morality, and health."), reply: '' },
+  { re: /article\s*29\b|protection.*minorities|minority.*culture/i,        action: () => respond("Article 29: Any section of citizens with a distinct language/script/culture has the right to conserve it. Broader than Art 30 — not limited to minorities."), reply: '' },
+  { re: /article\s*30\b|right.*establish.*educational.*institution/i,      action: () => respond("Article 30: Minorities (religious or linguistic) have the right to establish and administer educational institutions of their choice. This right is absolute — no reasonable restrictions can be imposed."), reply: '' },
+  { re: /article\s*38\b|welfare.*state.*dpsp/i,                            action: () => respond("Article 38 (DPSP): State shall promote welfare of people by securing a social order — justice (social, economic, political), minimise inequalities, ensure adequate means of livelihood."), reply: '' },
+  { re: /article\s*39\b|equal.*pay.*men.*women|equal.*pay.*equal.*work/i,  action: () => respond("Article 39(d) (DPSP): Equal pay for equal work for both men and women. Despite this DPSP, SC has consistently upheld it as a fundamental right via Articles 14, 16, and 21."), reply: '' },
+  { re: /article\s*48a\b|environment.*protection.*dpsp/i,                  action: () => respond("Article 48A (DPSP, added by 42nd Amendment): State shall endeavour to protect and improve the environment and safeguard forests and wildlife. Read with Art 51A(g) (fundamental duty to protect environment)."), reply: '' },
+  { re: /article\s*50\b|separation.*judiciary.*executive/i,                action: () => respond("Article 50 (DPSP): State shall take steps to separate the judiciary from the executive in public services. Has been given effect through CrPC where executive magistrates' judicial functions were separated."), reply: '' },
+  { re: /article\s*110\b|money.*bill.*definition/i,                        action: () => respond("Article 110: Definition of Money Bill — deals with taxation, appropriation of Consolidated Fund, audit/accounts, custody of CFI. Certified by Lok Sabha Speaker. Rajya Sabha has 14-day window to return with recommendations only."), reply: '' },
+  { re: /article\s*112\b|annual.*financial.*statement|union.*budget/i,     action: () => respond("Article 112: The Annual Financial Statement (Union Budget) must be laid before Parliament. Distinguishes between charged expenditure (non-votable) and voted expenditure."), reply: '' },
+  { re: /article\s*148\b|comptroller.*auditor.*general/i,                  action: () => respond("Article 148: CAG is appointed by the President. Tenure: 6 years or 65 years (whichever is earlier). After retirement, cannot hold any office under Centre or State. Salary from Consolidated Fund — same security as SC judges."), reply: '' },
+  { re: /article\s*153\b|governor.*states/i,                               action: () => respond("Article 153: There shall be a Governor for each State. Same person can be Governor of two or more states (since 1956 amendment)."), reply: '' },
+  { re: /article\s*161\b|governor.*pardon/i,                               action: () => respond("Article 161: Governor can grant pardons, reprieves, respites, or remissions for offences under State law. Governor cannot pardon death sentences (only President under Art 72 can)."), reply: '' },
+  { re: /article\s*200\b|governor.*assent.*bill/i,                         action: () => respond("Article 200: When a Bill is passed by State Legislature, Governor can assent, withhold assent, return for reconsideration, or reserve for President's consideration. If returned and re-passed, Governor MUST assent."), reply: '' },
+  { re: /article\s*239aa\b|delhi.*special.*status|nct.*delhi/i,            action: () => respond("Article 239AA (inserted by 69th Amendment 1991): Special status to Delhi — National Capital Territory with a Legislative Assembly for items in State and Concurrent lists except Police, Land, Public Order. Lt Governor heads the administration."), reply: '' },
+  { re: /article\s*244\b|scheduled.*areas|tribal.*areas/i,                 action: () => respond("Article 244: Provisions for Scheduled Areas (5th Schedule) in states other than Assam, Meghalaya, Mizoram, Tripura. 6th Schedule applies to tribal areas of those four northeastern states with autonomous district councils."), reply: '' },
+  { re: /article\s*267\b|contingency.*fund/i,                              action: () => respond("Article 267: Contingency Fund of India — established under Parliament's authority. President has funds to meet unforeseen expenditures. Replenished from Consolidated Fund by Parliament. Similar fund for States under Art 267(2)."), reply: '' },
+  { re: /article\s*312\b|all.*india.*services/i,                           action: () => respond("Article 312: Parliament may create new All India Services if Rajya Sabha passes a resolution by 2/3 majority. Current AIS: IAS, IPS, IFoS. These serve both Centre and States."), reply: '' },
+  { re: /article\s*315\b|public.*service.*commission/i,                    action: () => respond("Article 315: UPSC for Centre; SPSCs for States. Joint PSC possible for two or more states. UPSC/SPSC members appointed by President/Governor. Removal procedure same as SC judges."), reply: '' },
+  { re: /article\s*335\b|reservation.*services/i,                          action: () => respond("Article 335: Claims of SC/ST shall be taken into consideration in making appointments to services, consistently with maintaining efficiency of administration. Basis of reservation policy in government jobs."), reply: '' },
+  { re: /article\s*360\b|financial.*emergency/i,                           action: () => respond("Article 360: Financial Emergency can be proclaimed if financial stability or credit of India or any part is threatened. Never been used. During it, salaries of government servants can be reduced."), reply: '' },
+
+  // ── IMPORTANT CONSTITUTIONAL BODIES ──────────────────────────────────────
+  { re: /national.*human.*rights.*commission|nhrc|human.*rights.*body/i,   action: () => respond("NHRC: Established under Protection of Human Rights Act 1993. Headed by retired CJI. Quasi-judicial body. Recommendations binding on government. Cannot investigate: armed forces, matters under commission of inquiry."), reply: '' },
+  { re: /national.*commission.*women|ncw.*india|women.*commission/i,       action: () => respond("NCW: Statutory body under NCW Act 1990. Headed by Chairperson. Reviews laws, recommends legislative changes, investigates complaints, advises Central/State governments on women's issues."), reply: '' },
+  { re: /national.*commission.*sc|scheduled.*caste.*commission/i,          action: () => respond("National Commission for SCs (Art 338): Investigates complaints about safeguards for SC/ST, advises on socio-economic development. Quasi-judicial. Reports to President annually."), reply: '' },
+  { re: /national.*commission.*st|scheduled.*tribe.*commission/i,          action: () => respond("National Commission for STs (Art 338A): Monitors constitutional safeguards for STs, advises on planning, evaluates socio-economic progress. Works separately from SC Commission since 2004."), reply: '' },
+  { re: /central.*vigilance.*commission|cvc.*india|vigilance.*body/i,      action: () => respond("CVC: Apex integrity institution, established 1964 (statutory 2003). Supervises CBI for PE cases. Headed by Central Vigilance Commissioner. Processes complaints against Group A officers of Centre."), reply: '' },
+  { re: /attorney.*general|solicitor.*general|law.*officer.*india/i,       action: () => respond("Attorney General (Art 76): Government's chief legal adviser. Must be qualified to be SC judge. Can attend Parliament proceedings. Not a Cabinet member. Solicitor General and ASGs assist the AG."), reply: '' },
+  { re: /comptroller.*auditor|cag.*role|types.*audit.*cag/i,               action: () => respond("CAG conducts 3 types of audit: Financial Audit (accounts accuracy), Compliance Audit (rules followed), Performance Audit (efficiency/effectiveness). Reports tabled in Parliament — examined by PAC and COPU."), reply: '' },
+  { re: /national.*disaster.*management|ndma.*india|ndrf/i,                action: () => respond("NDMA: Statutory body under DM Act 2005. Chaired by PM. Sets policies and guidelines. NDRF (13 battalions) is primary response force. SDMAs at State level, DDMAs at district level."), reply: '' },
+
+  // ── IMPORTANT LAWS ────────────────────────────────────────────────────────
+  { re: /forest.*rights.*act|tribal.*forest.*rights|van.*adhikar/i,        action: () => respond("Forest Rights Act 2006: Recognises forest rights of Scheduled Tribes and other traditional forest dwellers. Individual rights (cultivation land), community rights (common land, water), developmental rights. Gram Sabha is key institution."), reply: '' },
+  { re: /pesa.*act|panchayat.*extension.*scheduled.*areas/i,               action: () => respond("PESA Act 1996: Extends Panchayati Raj to 5th Schedule areas with modifications. Gram Sabha has primacy. Protects customary law, traditional management of resources. 10 states have scheduled areas."), reply: '' },
+  { re: /consumer.*protection.*act|consumer.*court|district.*forum/i,      action: () => respond("Consumer Protection Act 2019 (replaced 1986 Act): District (up to ₹1 cr), State (₹1cr-10cr), National CDRC (above ₹10 cr). E-commerce covered. Product liability added. Mediation option introduced."), reply: '' },
+  { re: /maternity.*benefit.*act|maternity.*leave.*india|26.*weeks.*maternity/i, action: () => respond("Maternity Benefit (Amendment) Act 2017: Maternity leave extended to 26 weeks (from 12 weeks) for first 2 children. 12 weeks for 3rd child onwards. Crèche facility mandatory for 50+ workers."), reply: '' },
+  { re: /prevention.*corruption.*act|anti.*corruption.*law|bribery.*india/i, action: () => respond("Prevention of Corruption Act 1988 (amended 2018): Covers bribery by public servants and commercial organisations. Now includes 'giving of bribe' as offence. Prior sanction needed to prosecute retired servants."), reply: '' },
+  { re: /pocso.*act|child.*sexual.*abuse|protection.*children/i,           action: () => respond("POCSO Act 2012 (amended 2019): Protection of Children from Sexual Offences. Child = under 18. Strict liability offences. Mandatory reporting by any person who suspects abuse. Special courts for speedy trial."), reply: '' },
+  { re: /whistleblower.*protection|public.*interest.*disclosure|whistleblower/i, action: () => respond("Whistle Blowers Protection Act 2014 (not yet effective): Protects persons who disclose corruption/misuse in Central Government bodies. Complaints to CVC. Anonymity protected."), reply: '' },
+  { re: /insolvency.*bankruptcy.*code|ibc.*2016|nclt.*resolution/i,        action: () => respond("IBC 2016: Consolidates insolvency laws. Resolution process: 180+90 days. NCLT is adjudicating authority. IBBI (Insolvency and Bankruptcy Board) regulates. Asset monetization through resolution has improved India's credit culture."), reply: '' },
+  { re: /competition.*act|cci.*india|monopoly.*antitrust/i,                action: () => respond("Competition Act 2002: CCI (Competition Commission of India) is regulator. Prohibits anti-competitive agreements, abuse of dominant position. Approves M&A above threshold. NCLAT is appellate body."), reply: '' },
+  { re: /digital.*personal.*data|dpdp.*act|data.*protection.*2023/i,       action: () => respond("Digital Personal Data Protection Act 2023: Replaces IT Act provisions. Data Fiduciary obligations. Data Principal rights. Data Protection Board for disputes. Cross-border transfer allowed to notified countries. Children's data stricter rules."), reply: '' },
+
+  // ── POLITY — MISCELLANEOUS ────────────────────────────────────────────────
+  { re: /doctrine.*lapse|dalhousie.*doctrine/i,                            action: () => respond("Doctrine of Lapse: Policy by Lord Dalhousie (1848-56). If a ruler died without natural male heir, the territory would lapse to British. Applied to Satara, Jhansi, Nagpur, Sambalpur. Major cause of 1857 Revolt."), reply: '' },
+  { re: /doctrine.*basic.*structure|basic.*structure.*doctrine/i,          action: () => respond("Basic Structure Doctrine (Kesavananda Bharati, 1973): Parliament cannot amend Constitution to destroy its basic structure. Elements: Supremacy of Constitution, republican/democratic form, secularism, separation of powers, judicial review, fundamental rights."), reply: '' },
+  { re: /doctrine.*colorable.*legislation|mala.*fide.*legislation/i,       action: () => respond("Doctrine of Colourable Legislation: 'What cannot be done directly cannot be done indirectly.' If a legislature lacks power, it cannot achieve the same result through indirect means. Prevents circumvention of constitutional limits."), reply: '' },
+  { re: /delegated.*legislation|subordinate.*legislation|rule.*making.*power/i, action: () => respond("Delegated Legislation: Parliament delegates rule-making power to executive due to time constraints and technical complexity. Types: Statutory Rules & Orders, By-laws, Notifications. Controlled by Parliamentary Committees."), reply: '' },
+  { re: /ouster.*clause|bar.*jurisdiction|finality.*clause/i,             action: () => respond("Ouster Clause: Constitutional/statutory provisions barring judicial review of government actions. But SC held in Anisminic (UK) and Indian cases that basic judicial review cannot be ousted — courts can still examine jurisdictional errors."), reply: '' },
+  { re: /parliamentary.*privilege|privilege.*committee/i,                  action: () => respond("Parliamentary Privileges: Freedom of speech in Parliament, exemption from jury service, freedom from arrest in civil cases during session. Privilege Committee investigates breaches. Members cannot be sued for statements in Parliament."), reply: '' },
+  { re: /question.*hour|zero.*hour|starred.*question|unstarred.*question/i, action: () => respond("Parliamentary Questions: Starred (oral answer, starred with *), Unstarred (written answer), Short Notice, Questions to Private Members. Zero Hour (India-specific): immediately after Question Hour, 12 noon. Supplementary questions allowed on Starred."), reply: '' },
+  { re: /budget.*types|vote.*on.*account|interim.*budget/i,               action: () => respond("Budget Types: Regular (Annual Financial Statement, Feb 1), Vote on Account (spending authority for 2 months during election year), Interim Budget (presented before elections, has income tax provisions). Supplementary Demands for Grants for excess spending."), reply: '' },
+  { re: /consolidated.*fund.*india|contingency.*fund|public.*account/i,   action: () => respond("Government Accounts: Consolidated Fund (all revenues/loans — voted expenditure), Contingency Fund (President's emergency spending), Public Account (deposits, PF, small savings). Only CFI subject to Parliamentary vote."), reply: '' },
+  { re: /joint.*parliamentary.*committee|jpc.*india|standing.*committee/i, action: () => respond("Parliamentary Committees: Standing Committees (permanent — DRSCs, Financial Committees: PAC, Estimates, Public Undertakings), Ad hoc (JPC, Select). JPC has both houses, investigates specific matters like Bofors, 2G, etc."), reply: '' },
+  { re: /president.*election|electoral.*college.*president|presidential.*election.*india/i, action: () => respond("Presidential Election (Art 54-55): Electoral College = elected MPs + elected MLAs. Weightage formula: State votes = Population/(Seats×1000), then adjusted. Single Transferable Vote system. Supreme Court scrutinizes election disputes."), reply: '' },
+  { re: /vice.*president.*election|rajya.*sabha.*chairman/i,              action: () => respond("Vice President (Art 66): Elected by Electoral College of both Houses of Parliament (not MLAs). Simple ballot (not STV). Ex-officio Chairman of Rajya Sabha. Can become Acting President if President incapacitated."), reply: '' },
+
+  // ── ECONOMY — DEEPER CONCEPTS ─────────────────────────────────────────────
+  { re: /repo.*rate|reverse.*repo|msf|bank.*rate.*rbi/i,                  action: () => respond("RBI Rate Tools: Repo Rate (lending to banks, key policy rate), Reverse Repo (RBI borrows from banks), MSF — Marginal Standing Facility (emergency overnight, 25 bps above repo), Bank Rate (rediscounting, aligns with MSF)."), reply: '' },
+  { re: /crr|cash.*reserve.*ratio|slr.*rbi|statutory.*liquidity/i,        action: () => respond("CRR: Banks must maintain % of deposits with RBI as cash. SLR: Banks must invest % of deposits in approved securities. Both drain liquidity from the banking system. RBI uses them to regulate money supply."), reply: '' },
+  { re: /open.*market.*operations|omo.*rbi|government.*securities/i,      action: () => respond("OMO (Open Market Operations): RBI buys/sells government securities in open market to inject/absorb liquidity. Buying G-Secs injects ₹, selling absorbs ₹. Key unconventional monetary tool during liquidity crisis."), reply: '' },
+  { re: /nairu|natural.*rate.*unemployment|phillips.*curve/i,             action: () => respond("Phillips Curve: Inverse relationship between inflation and unemployment. NAIRU: Non-Accelerating Inflation Rate of Unemployment — the unemployment rate consistent with stable inflation. Long-run curve is vertical — no trade-off."), reply: '' },
+  { re: /base.*effect.*inflation|cost.*push.*inflation|demand.*pull/i,    action: () => respond("Inflation Types: Demand-pull (excess demand over supply), Cost-push (input cost rise), Structural (supply bottlenecks), Core inflation (excl. food & fuel), Headline inflation (includes food & fuel). Base effect can distort year-on-year comparisons."), reply: '' },
+  { re: /twin.*deficit|fiscal.*deficit.*current.*account/i,               action: () => respond("Twin Deficit: Fiscal deficit + Current Account Deficit together. High fiscal deficit → government borrows → crowds out private investment → imports rise → CAD widens. India faces twin deficit risk when global commodity prices are high."), reply: '' },
+  { re: /inverted.*duty.*structure|import.*duty.*raw.*material/i,         action: () => respond("Inverted Duty Structure: When import duty on raw materials is higher than on finished products — discourages domestic manufacturing. India rationalising duties under Make in India to fix this anomaly."), reply: '' },
+  { re: /venture.*capital|angel.*investor|private.*equity|startup.*funding/i, action: () => respond("Startup Funding Stages: Angel (seed) → Venture Capital (Series A/B) → Private Equity (growth) → IPO (public). SEBI regulates AIF (Alternative Investment Funds) that include VC/PE. SIDBI Fund of Funds supports startup ecosystem."), reply: '' },
+  { re: /microfinance|self.*help.*group|shg|nabard|rural.*credit/i,       action: () => respond("Microfinance: Small loans to poor without collateral. SHG-Bank Linkage Programme (NABARD 1992): largest globally. MUDRA scheme for micro-enterprises. RBI regulates MFIs — lending rate cap, household income limit."), reply: '' },
+  { re: /food.*inflation|msp.*food.*prices|procurement.*price/i,          action: () => respond("Food Inflation in India: Driven by vegetables (high volatility, short shelf life), pulses, and edible oils. MSP supports farmer income but can stoke inflation. Buffer stock operations (FCI) used to stabilize prices."), reply: '' },
+  { re: /15th.*finance.*commission|xv.*finance|fy2021.*fy2026/i,         action: () => respond("15th Finance Commission (NK Singh, 2017-2020): Award period 2021-26. Vertical devolution: 41% to states (down from 42% — 1% for J&K, Ladakh UTs). Introduced performance-based grants on health, education, power."), reply: '' },
+  { re: /pm.*gati.*shakti|national.*master.*plan|multimodal.*connectivity/i, action: () => respond("PM GatiShakti (2021): National Master Plan for multimodal connectivity. 16 ministries share data on GIS platform to avoid duplication. Covers roads, railways, ports, waterways, airports, mass transit. Target: reduce logistics cost to 8% of GDP."), reply: '' },
+
+  // ── ENVIRONMENT — COMPREHENSIVE ───────────────────────────────────────────
+  { re: /wetland.*importance|ecosystem.*services|mangrove.*importance/i,  action: () => respond("Wetland Ecosystem Services: Water purification, flood moderation, carbon sequestration (blue carbon), biodiversity, fisheries, groundwater recharge. India's wetlands under threat from encroachment and pollution."), reply: '' },
+  { re: /coral.*reef.*india|lakshadweep.*coral|andaman.*coral/i,          action: () => respond("India's coral reefs: Andaman & Nicobar (fringing reefs), Lakshadweep (atolls), Gulf of Mannar, Gulf of Kutch. Threatened by coral bleaching (ocean warming), ocean acidification, overfishing, and sedimentation."), reply: '' },
+  { re: /tiger.*population.*india|tiger.*census|project.*tiger.*success/i, action: () => respond("India Tiger Census 2022: 3,167 tigers — world's 75%+ wild tigers. Major reserves: Jim Corbett, Bandipur, Kaziranga, Sundarban, Nagarhole. Doubled from 2010 (1,706). Project Tiger (1973) credited for turnaround."), reply: '' },
+  { re: /one.*health.*approach|zoonotic.*disease|spillover.*infection/i,  action: () => respond("One Health Approach: Integrates human, animal, and environmental health. WHO-FAO-WOAH framework. COVID-19, Nipah, SARS were zoonotic. India's National Action Plan for AMR also adopts One Health."), reply: '' },
+  { re: /plastic.*pollution|single.*use.*plastic|ban.*plastic.*india/i,   action: () => respond("India banned 19 single-use plastic items from July 2022 (cutlery, straws, earbuds, cigarette packs, etc.). Extended Producer Responsibility (EPR) for plastic packaging. Plastic Waste Management Rules 2016."), reply: '' },
+  { re: /e.*waste|electronic.*waste|ewaste.*india/i,                      action: () => respond("E-waste: India 3rd largest generator globally (~3.2 million tonnes/year). E-Waste (Management) Rules 2022: Extended Producer Responsibility — manufacturers collect and recycle. Formalisation of informal sector is challenge."), reply: '' },
+  { re: /stubble.*burning|parali.*problem|air.*pollution.*punjab/i,       action: () => respond("Stubble Burning: Paddy stubble burning in Punjab/Haryana (Oct-Nov) causes severe air pollution in Delhi. Commission for Air Quality Management in NCR set up. PUSA bio-decomposer, Happy Seeder machine promoted as alternatives."), reply: '' },
+  { re: /carbon.*sink|forest.*carbon|afforestation.*india/i,              action: () => respond("India's carbon sinks: Forests (Forest Survey of India) cover 21.7% area — absorb ~2 billion tonnes CO2 equivalent annually. NDC targets: create additional carbon sink of 2.5-3 billion tonnes through forests by 2030."), reply: '' },
+  { re: /glacial.*retreat|himalayan.*glacier|climate.*himalaya/i,         action: () => respond("Himalayan Glaciers: Third Pole after Arctic and Antarctic. ~15,000 glaciers in India. Retreat rate accelerating due to climate change. Fed rivers: Indus, Ganga, Brahmaputra. Increased short-term flooding, long-term water stress."), reply: '' },
+  { re: /blue.*economy|ocean.*economy|maritime.*india/i,                  action: () => respond("Blue Economy: Economic use of oceans — fishing, shipping, tourism, offshore energy, deep-sea mining. India's coastline: 7,517 km. Sagarmala for port-led development. Deep Ocean Mission (2021) explores 6,000m depth."), reply: '' },
+
+  // ── INDIA'S FOREIGN POLICY ────────────────────────────────────────────────
+  { re: /panchsheel|five.*principles.*coexistence|bandung/i,              action: () => respond("Panchsheel (1954): Five Principles of Peaceful Coexistence — mutual respect for sovereignty, non-aggression, non-interference, equality and mutual benefit, peaceful coexistence. Signed with China, articulated Nehru's foreign policy."), reply: '' },
+  { re: /non.*aligned.*movement|nam.*india|neutral.*foreign.*policy/i,   action: () => respond("Non-Aligned Movement: Founded 1961 at Belgrade by Nehru (India), Nasser (Egypt), Tito (Yugoslavia), Sukarno (Indonesia), Nkrumah (Ghana). India's independent foreign policy during Cold War. 120+ members now."), reply: '' },
+  { re: /gujral.*doctrine|india.*neighborhood|good.*neighbor.*policy/i,  action: () => respond("Gujral Doctrine (1996, IK Gujral): India doesn't demand reciprocity from neighbors. Unilateral concessions to build trust. Improved relations with Bangladesh, Nepal, Bhutan during his tenure as PM/FM."), reply: '' },
+  { re: /indo.*pacific.*strategy|freedom.*navigation|south.*china.*sea/i, action: () => respond("Indo-Pacific: India's definition: includes West Indian Ocean to Pacific. Key: freedom of navigation, rule-based order, no unilateral change of status quo. India part of QUAD (India-US-Japan-Australia). ASEAN centrality respected."), reply: '' },
+  { re: /nuclear.*doctrine.*india|no.*first.*use.*nuclear|minimum.*credible/i, action: () => respond("India's Nuclear Doctrine: No First Use (NFU), Massive Retaliation for nuclear attack, Civilian control. Credible Minimum Deterrence. Non-weaponization of space. India did not sign NPT — but NSG waiver in 2008 recognized India as responsible state."), reply: '' },
+  { re: /india.*africa.*relations|india.*africa.*forum.*summit/i,        action: () => respond("India-Africa: IAFS-3 (2015) — commitments for Lines of Credit, training, capacity building. India-Africa trade: ~$100 billion. African Union now G20 member partly due to India's push in G20 presidency (2023)."), reply: '' },
+  { re: /india.*asean|asean.*india.*summit|act.*east.*policy.*asean/i,   action: () => respond("India-ASEAN: Strategic Partnership since 2012. ASEAN-India Free Trade Agreement (2010). Act East Policy replaced Look East Policy. ASEAN's 6-country bloc is 4th largest trade partner of India."), reply: '' },
+  { re: /scl.*india|shanghai.*cooperation|russia.*china.*organisation/i,  action: () => respond("SCO: India joined full membership in 2017. 9 members. Focus: security, counter-terrorism, economic cooperation in Eurasian region. India balances SCO membership (with China-Pakistan) against QUAD membership."), reply: '' },
+
+  // ── SOCIO-ECONOMIC ISSUES ─────────────────────────────────────────────────
+  { re: /gig.*economy|platform.*worker|uber.*worker.*rights/i,            action: () => respond("Gig Economy: Workers engaged through digital platforms (Uber, Swiggy, Urban Company). India 2nd largest gig workforce (ASSOCHAM). Code on Social Security 2020 includes 'platform workers' — first legal recognition. Benefits: flexibility; concern: no social security."), reply: '' },
+  { re: /brain.*drain.*india|skilled.*migration|reverse.*brain.*drain/i,  action: () => respond("Brain Drain: Emigration of skilled Indians (IT, healthcare, academia). ~1.8 million Indian-Americans are highest earning ethnic group in USA. Reverse Brain Drain occurring as startups, research institutions attract diaspora back. Pravasi Bharatiya Diwas celebrates diaspora."), reply: '' },
+  { re: /digital.*divide|rural.*internet.*access|internet.*penetration/i, action: () => respond("Digital Divide: Rural internet penetration ~35% vs urban ~70%. Gender divide: 40% women use internet vs 60% men. BharatNet (optical fibre to gram panchayats) aims to close gap. PMGDISHA for digital literacy."), reply: '' },
+  { re: /aging.*population|elderly.*india|old.*age.*security/i,           action: () => respond("India Aging: 10% population is 60+ (Census 2011); projected 20% by 2050. National Policy on Older Persons 1999. Atal Vayo Abhyuday Yojana for elderly welfare. Reverse mortgage, IGNOAPS (pension scheme) are key instruments."), reply: '' },
+  { re: /malnutrition.*india|stunting.*wasting|poshan.*abhiyan/i,         action: () => respond("India Malnutrition: 35% children stunted, 19% wasted, 33% underweight (NFHS-5). POSHAN Abhiyaan (National Nutrition Mission) targets reducing stunting by 2%, undernutrition by 2% per year. Anaemia and wasting remain high."), reply: '' },
+  { re: /human.*development.*index|hdi.*india|education.*health.*income/i, action: () => respond("HDI 2022: India ranked 132 out of 191. Three dimensions: Health (life expectancy), Education (mean/expected years of schooling), Income (GNI per capita). India HDI improved significantly since 1990 but still in 'Medium HDI' category."), reply: '' },
+  { re: /gender.*gap.*index|wef.*gender|world.*economic.*forum.*gender/i, action: () => respond("WEF Gender Gap Index 2023: India ranked 127/146. Economic participation (low), Educational attainment (moderate), Health (below average), Political empowerment (high for India — 7th globally due to women political leaders)."), reply: '' },
+
+  // ── IMPORTANT ORGANISATIONS & REPORTS ────────────────────────────────────
+  { re: /ease.*of.*doing.*business|eodb.*ranking|world.*bank.*ranking/i,  action: () => respond("India's EODB ranking improved from 142 (2014) to 63 (2019). World Bank discontinued the index in 2021. India's Business Reforms Action Plan evaluated annually. DPIIT coordinates."), reply: '' },
+  { re: /press.*freedom.*index|rsf.*india|media.*freedom/i,               action: () => respond("Press Freedom Index (RSF): India ranked 159/180 (2023). RSF cites harassment of journalists, sedition laws, UAPA. Article 19(1)(a) protects freedom of speech/expression including press."), reply: '' },
+  { re: /transparency.*international|corruption.*perception|cpi.*index/i, action: () => respond("Corruption Perceptions Index (Transparency International): India ranked 93/180 (2023). Scale 0 (highly corrupt) to 100 (very clean). Denmark tops. India improved but still perceived as moderately corrupt."), reply: '' },
+  { re: /global.*hunger.*index|ghi.*india|hunger.*ranking/i,              action: () => respond("Global Hunger Index (GHI): India ranked 111/125 (2023). Four indicators: undernourishment, child stunting, child wasting, child mortality. India disputes methodology. Govt calls it based on flawed assumptions."), reply: '' },
+  { re: /niti.*aayog.*sdr|india.*sdg.*progress/i,                         action: () => respond("India SDG Index (NITI Aayog 2023-24): Overall score 71/100. SDG 7 (Clean Energy) and SDG 13 (Climate Action): frontrunners. SDG 2 (Zero Hunger), SDG 15 (Life on Land): aspirants. State-wise competition improves performance."), reply: '' },
+  { re: /world.*press.*freedom|media.*censorship.*india/i,                action: () => respond("India's Media: Largest democracy with ~100,000 registered publications. TV: 900+ channels. Censorship/content control via MIB. Concerns: media consolidation, SLAPP suits against journalists. SC has upheld press freedom as fundamental right."), reply: '' },
+
+  // ── IMPORTANT PERSONALITIES ───────────────────────────────────────────────
+  { re: /br.*ambedkar|babasaheb|dalits.*constitution|father.*constitution/i, action: () => respond("Dr. B.R. Ambedkar: Chairman, Drafting Committee of Constitution. Father of the Constitution. Fought untouchability — converted to Buddhism in 1956. Also Law Minister, architect of Indian Labour Laws. Born April 14 (Ambedkar Jayanti)."), reply: '' },
+  { re: /jawaharlal.*nehru|first.*pm.*india|nehru.*policy/i,               action: () => respond("Jawaharlal Nehru (1889-1964): First PM for 17 years. Architect of Indian democracy, Non-Alignment, IITs, Planning Commission, Panchsheel. Tryst with Destiny speech. Described as 'Chacha Nehru'. Nehru Report 1928."), reply: '' },
+  { re: /sardar.*patel|iron.*man|states.*integration.*india/i,            action: () => respond("Sardar Vallabhbhai Patel: India's 'Iron Man'. Deputy PM and Home Minister. Integrated 562 princely states into India. Hyderabad Police Action (1948). Junagadh, Goa under his tenure. National Unity Day: Oct 31 (his birth anniversary)."), reply: '' },
+  { re: /maulana.*azad|education.*minister.*india|national.*education/i,  action: () => respond("Maulana Abul Kalam Azad: First Education Minister of India (1947-58). Advocate for secular education. IITs, UGC established under him. National Education Day: November 11 (his birth anniversary)."), reply: '' },
+  { re: /b.*r.*ambedkar|poona.*pact|buddhism.*conversion|dalits.*politics/i, action: () => respond("Ambedkar vs Gandhi: Poona Pact (1932) — Ambedkar wanted separate electorate for Untouchables; Gandhi fasted against it; compromise was reserved seats in joint electorate. Ambedkar later said the Pact was a mistake."), reply: '' },
+  { re: /subhas.*chandra.*bose|netaji|ina.*india|azad.*hind.*fauj/i,      action: () => respond("Subhas Chandra Bose (Netaji): Founded INA (Indian National Army/Azad Hind Fauj) in 1943. 'Give me blood, I will give you freedom.' Forward Bloc formed 1939. Disappeared in a plane crash in 1945 (Taipei)."), reply: '' },
+  { re: /lal.*bahadur.*shastri|jai.*jawan.*jai.*kisan|tashkent/i,         action: () => respond("Lal Bahadur Shastri (2nd PM): 'Jai Jawan Jai Kisan' slogan. Led India in 1965 war with Pakistan. Tashkent Agreement signed Jan 10, 1966. Died same night (heart attack per official account). Simple, humble leader."), reply: '' },
+  { re: /indira.*gandhi|emergency.*1975|bank.*nationalisation|green.*revolution/i, action: () => respond("Indira Gandhi (3rd/6th PM): 'Garibi Hatao' slogan. Nationalised banks (1969), won 1971 war, created Bangladesh. Imposed Emergency (1975-77) — most controversial. Returned to power 1980. Assassinated October 31, 1984."), reply: '' },
+
+  // ── CSAT MATHS SHORTCUTS ─────────────────────────────────────────────────
+  { re: /percentage.*trick|calculate.*percentage.*fast|percent.*formula/i, action: () => respond("Quick Percentage: X% of Y = Y% of X. To find 18% of 150: 150×18/100 = 27. Shortcut: 10% of 150=15, 8%=12, add=27. For CSAT, find 1% first, then multiply. Practice with mock tests."), reply: '' },
+  { re: /ratio.*proportion.*upsc|ratio.*trick|proportion.*formula/i,      action: () => respond("Ratio & Proportion CSAT: If A:B = 3:4 and B:C = 5:6, then A:B:C = 15:20:24. For proportions: Cross multiply. Direct proportion: ↑↑, Inverse: ↑↓. Practice: compound ratio, duplicate ratio, triplicate ratio."), reply: '' },
+  { re: /average.*trick|weighted.*average.*formula|average.*upsc/i,       action: () => respond("Average CSAT: Average = Sum/Count. For grouped data: Weighted average = Σ(weight×value)/Σweights. Deviation method: Pick a number, find deviations, average the deviations, add to picked number. Faster for large sets."), reply: '' },
+  { re: /time.*work.*formula|pipes.*cistern|work.*efficiency/i,           action: () => respond("Time & Work: If A does work in M days, efficiency = 1/M. A+B together = 1/M + 1/N per day. Pipes: fill pipe = +1/T, waste pipe = -1/T. LCM method: assume total work = LCM of times; find work/day rates, sum up."), reply: '' },
+  { re: /time.*speed.*distance|relative.*speed|trains.*platform|boat.*stream/i, action: () => respond("Speed-Distance-Time: D = S×T. Trains: To cross a pole = train length/speed. To cross a platform = (train+platform length)/speed. Boats: Downstream = v+u, Upstream = v-u. Still water speed = (D+U)/2."), reply: '' },
+  { re: /profit.*loss.*formula|markup.*discount|sp.*cp|selling.*cost.*price/i, action: () => respond("Profit/Loss: Profit% = (SP-CP)/CP × 100. Discount% = (Marked Price-SP)/MP × 100. Successive discounts of x% and y%: = x+y-xy/100. Mark-up then discount — be careful which base is used."), reply: '' },
+  { re: /simple.*interest.*formula|compound.*interest|si.*ci.*difference/i, action: () => respond("SI = PRT/100. CI = P(1+r/100)^n - P. Difference (CI-SI) for 2 years = P(r/100)^2. For 3 years: CI-SI = P(r/100)^2(3+r/100). CSAT: Usually 2-3 year problems. Know shortcuts."), reply: '' },
+  { re: /permutation.*combination|nCr.*nPr|arrangement.*selection/i,      action: () => respond("P&C: nPr = n!/(n-r)! (arrangements). nCr = n!/[r!(n-r)!] (selections). Key: Identical items = divide by repetition factorial. Circular arrangement = (n-1)!. Necklace = (n-1)!/2. UPSC rarely goes beyond basics."), reply: '' },
+
+  // ── REASONING SHORTCUTS ───────────────────────────────────────────────────
+  { re: /syllogism.*upsc|all.*some.*no.*syllogism|logic.*upsc/i,          action: () => respond("Syllogisms CSAT: Use Venn diagrams. 'All A are B' = circle A inside B. 'No A is B' = disjoint circles. 'Some A are B' = overlapping circles. Check each conclusion by drawing possible Venn diagrams. Eliminate impossible conclusions."), reply: '' },
+  { re: /blood.*relation.*puzzle|family.*tree|coded.*relation/i,          action: () => respond("Blood Relations: Draw a family tree always. Use M/F markers. '+' for male, '-' for female. Convert coded language first. Common trick: 'my father's only son' = me. 'my mother's brother's son' = my cousin."), reply: '' },
+  { re: /seating.*arrangement.*puzzle|circular.*seating/i,                action: () => respond("Seating Arrangement: Linear vs Circular. Circular: Fix one person (reference point), arrange others relative to him. Direction: left in circular = clockwise from above. Make a table: position 1-N, fill definite clues first, then derive."), reply: '' },
+  { re: /number.*series.*pattern|odd.*one.*out.*number|sequence.*pattern/i, action: () => respond("Number Series: Look for differences (1st order, 2nd order). Squares/cubes series. Fibonacci pattern. Prime numbers. Alternating series (odd/even positions). For 'odd one out': find the rule the others follow, the outlier breaks it."), reply: '' },
+
+  // ── HINDI STUDY PHRASES ───────────────────────────────────────────────────
+  { re: /mujhe.*padhai.*mein.*madad.*karo|study.*help.*karo|padhai.*mai.*sath.*do/i, action: () => respond('Bilkul, main hoon! Batao — kaunsa subject, kaunsa topic? Main explain karunga, quiz lunga, ya plan banaunga — jo chahiye.'), reply: '' },
+  { re: /aaj.*konsa.*topic.*padhna.*hai|topic.*suggest.*karo|kya.*padhun.*aaj/i, action: () => respond((() => { const cs=getCurrentState(); return cs?.today?.subject ? `Aaj ke liye ${cs.today.subject} suggest karta hoon. Planner mein aaj ka lecture dekho — wahan se shuru karo.` : 'Planner mein aaj ka schedule dekho. Agar khaali hai to plan generate karo.' })()), reply: '' },
+  { re: /notes.*kaise.*banaye|notes.*banana.*kha.*se.*shuru/i,           action: () => respond('Notes banane ka best tarika: Lecture sunne ke baad Cornell method use karo. Left column mein keywords, right mein details, neeche summary. Revision ke time sirf left column dekho aur recall karo.'), reply: '' },
+  { re: /upsc.*mein.*selection.*kaise.*hoti.*hai|selection.*process/i,   action: () => respond('UPSC Civil Services: Teen charan — Prelims (objective), Mains (likhit), Interview/Personality Test. Prelims qualify karo, Mains mein merit banao, Interview mein personality dikhaao. Lagbhag 1000 posts har saal. Mehnat aur consistency se hoti hai selection.'), reply: '' },
+  { re: /IAS.*banna.*chahta.*hoon|IAS.*banana.*hai|officer.*banna.*chahta/i, action: () => respond('Bahut acha sapna hai. Consistent preparation, sahi resources, aur daily practice se IAS bana ja sakta hai. Aap sahi jagah par hain — ab kaam shuru karo. Aaj ka target kya hai?'), reply: '' },
+  { re: /aaj.*bahut.*padhna.*hai|aaj.*zyada.*padhna.*chahta|bahut.*kuch.*cover.*karna/i, action: () => { clickStart(); respond('Shuru karte hain. Timer start kar diya. Focus karo, plan ke hisaab se ek-ek topic complete karo.') }, reply: '' },
+  { re: /thoda.*sa.*poochna.*tha|ek.*sawaal.*poochna.*tha|kuch.*puchna.*tha/i, action: () => respond('Haan, poocho. Main sun raha hoon.'), reply: '' },
+  { re: /bohot.*baar.*padha.*phir.*bhi.*bhool.*jaata|bhool.*jaata.*hoon|yaad.*nahi.*rehta/i, action: () => respond("Yeh normal hai. Bhoolna brain ki weakness nahi — yahi reason hai ki revision chahiye hoti hai. JARVIS ki SRS queue use karo — har lecture ke baad automatic revision schedule hogi at 1, 3, 7, 16, 35 din. Baar baar exposure hi fix karta hai."), reply: '' },
+
+  // ── HEALTH & WELLNESS DURING UPSC ────────────────────────────────────────
+  { re: /eye.*strain|eyes.*tired|screen.*eyes|20.*20.*20.*rule/i,         action: () => respond('Eye strain relief: 20-20-20 rule — every 20 minutes, look at something 20 feet away for 20 seconds. Blink consciously. Keep screen at arm\'s length. Use night mode in evenings. Get up and walk every hour.'), reply: '' },
+  { re: /back.*pain.*studying|posture.*while.*studying|sitting.*posture/i, action: () => respond('Posture while studying: Sit up straight, feet flat on floor, screen at eye level. Take a 5-minute standing/stretching break every 45-60 minutes. Core exercises (plank, bridge) prevent long-term back issues from extended study sessions.'), reply: '' },
+  { re: /sleep.*schedule|how.*many.*hours.*sleep|sleep.*study|nap.*study/i, action: () => respond('UPSC aspirants: 7-8 hours sleep is non-negotiable. Sleep consolidates memory. Short nap (20-30 min) after lunch enhances afternoon focus. Avoid screens 30 min before bed. Regular sleep time matters more than total hours.'), reply: '' },
+  { re: /diet.*while.*studying|brain.*food|what.*to.*eat.*studying/i,     action: () => respond('Brain foods for studying: Nuts (omega-3), berries (antioxidants), dark chocolate (flavonoids), green tea (L-theanine), complex carbs (oats). Avoid heavy meals before study sessions. Stay hydrated — even mild dehydration reduces focus by 20%.'), reply: '' },
+  { re: /meditation.*upsc|breathing.*exercise|mindfulness.*study/i,       action: () => respond('Meditation for UPSC: 10 minutes daily (morning). Box breathing: inhale 4s, hold 4s, exhale 4s, hold 4s. Reduces cortisol, improves working memory. UPSC is a long journey — mental resilience is as important as knowledge.'), reply: '' },
+
+  // ── QUICK STUDY TOOLS ─────────────────────────────────────────────────────
+  { re: /make.*mnemonics|mnemonic.*trick|remember.*list|acronym.*trick/i, action: () => respond("Mnemonic for UPSC: For lists, form an acronym or story. E.g., DPSP non-justiciable aspects: 'SLEEP' — Social order, Living wage, Equal pay, Education, Prohibition. Make your own — personalized mnemonics stick better."), reply: '' },
+  { re: /flowchart.*polity|diagram.*upsc|visual.*learn.*upsc/i,           action: () => respond("Flowcharts work best for: Constitutional amendment procedure, Emergency proclamation, Bill to Act process, Panchayat structure. Draw once, revise the diagram — visual memory is strong. Scan and save your diagrams."), reply: '' },
+  { re: /revision.*strategy|how.*to.*revise|smart.*revision/i,            action: () => respond("Smart Revision: First revision within 24 hours (when you remember 60-70%). Second at Day 3 (30-40% left). Third at Day 7 (20-25% left). Revision should be fast — use your own notes, not re-reading books. JARVIS SRS automates scheduling."), reply: '' },
+  { re: /newspaper.*reading.*strategy|how.*read.*hindu.*upsc|current.*affairs.*strategy/i, action: () => respond("Newspaper Strategy: Read The Hindu — skip sports, entertainment. Focus: Edit page (opinions), National news, International, Economy. Make brief notes linking news to static syllabus. 30-45 minutes/day maximum. Weekly CA consolidation is essential."), reply: '' },
+  { re: /upsc.*notes.*writing|how.*make.*notes.*upsc|note.*making/i,      action: () => respond("UPSC Notes: Don't copy from books — create your own synthesis. Structure: Topic heading → Key points (bullets) → One-liner summary → Source. Keep notes under 1 page per topic. Revise and update notes as you learn more."), reply: '' },
+
+  // ── TIMER VOICE SHORTCUTS ─────────────────────────────────────────────────
+  { re: /shuru.*kar.*padhai|padhna.*shuru.*kar|abhi.*se.*shuru/i,         action: () => { clickStart(); scr('engine') }, reply: 'Timer start. Padhai shuru!' },
+  { re: /ruk.*ja|rok.*do.*timer|pause.*kar|band.*kar.*timer/i,            action: () => q('[data-act="start"]'), reply: 'Timer ruka.' },
+  { re: /wapas.*shuru|continue.*kar|timer.*continue|padhai.*continue/i,   action: () => clickStart(), reply: 'Timer resume.' },
+  { re: /session.*khatam.*hua|session.*done|session.*ho.*gaya/i,          action: () => { q('[data-act="skip"]'); respond(`Session done! ${celebrationLine()} Log your score if you had a test.`) }, reply: '' },
+  { re: /break.*khatam|break.*ho.*gaya|break.*over|back.*to.*study/i,    action: () => { clickStart(); respond('Break khatam. Wapas padhai shuru. Focus karo!') }, reply: '' },
+
+  // ── PLANNER VOICE SHORTCUTS ───────────────────────────────────────────────
+  { re: /aaj.*mera.*kya.*schedule.*hai|aaj.*ka.*schedule.*batao/i,         action: () => respond(buildTodayReport()), reply: '' },
+  { re: /kal.*ka.*plan|tomorrow.*lectures|agle.*din.*ka.*plan/i,           action: () => { scr('plan'); respond('Planner mein kal ka schedule dekho. Generate plan karo agar dates nahi set hain.') }, reply: '' },
+  { re: /is.*hafte.*kya.*plan|is.*week.*schedule|week.*mein.*kya.*padhna/i, action: () => { scr('plan'); respond(buildWeekSummary()) }, reply: '' },
+  { re: /agle.*week.*ka.*plan|next.*week.*kya|agle.*hafte.*schedule/i,    action: () => { scr('plan'); respond('Planner mein agle hafte ki dates filter karo. Ya generate plan karo for next week coverage.') }, reply: '' },
+  { re: /subject.*wise.*plan|polity.*plan|history.*plan.*today/i,          action: () => { scr('plan'); respond('Subject-wise filter use karo planner mein — type karo subject name in search box.') }, reply: '' },
+
+  // ── SCORE SHORTCUTS ───────────────────────────────────────────────────────
+  { re: /mock.*score.*add|test.*score.*darz.*karo|result.*note.*karo/i,   action: () => cl('cm-add-score'), reply: 'Score entry khol di. Darz karo.' },
+  { re: /kitna.*score.*kiya|mera.*score.*kya|latest.*result/i,            action: () => { scr('intel'); respond('Latest scores analytics section mein hain. Intelligence section mein dekho.') }, reply: '' },
+  { re: /score.*improve.*kaise|marks.*kaise.*badhaye|performance.*improve/i, action: () => respond('Score improve karne ke liye: Mistake Notebook use karo, har test ke baad analyse karo. Weak topics identify karo. PYQs practice karo. Consistent revision se accuracy badhti hai.'), reply: '' },
+  { re: /negative.*marks.*kaise.*bachain|negative.*marking.*strategy/i,   action: () => respond("UPSC negative marking strategy: Attempt only 80%+ confident answers. If eliminated 2 options from 4, attempt it (expected value positive). Don't attempt if only 1 option seems wrong. Accuracy > attempts."), reply: '' },
+
+  // ── QUICK JARVIS PERSONALITY ──────────────────────────────────────────────
+  { re: /kya.*tum.*meri.*madad.*karoge|help.*karoge.*kya|kya.*tum.*hamesha.*saath.*ho/i, action: () => respond('Hamesha. Main hoon Om ke Mission 2028 ke liye — 24 ghante, 7 din. Koi sawaal nahi chota, koi doubt silly nahi. Poocho.'), reply: '' },
+  { re: /tum.*best.*ho.*jarvis|jarvis.*tum.*kamal.*ho/i,                  action: () => respond('Shukriya Om. Ab yeh energy padhai mein lagao — timer shuru karte hain?'), reply: '' },
+  { re: /kal.*se.*karunga|kal.*se.*shuru|tomorrow.*i.*will.*start/i,      action: () => respond("'Kal se' wala trap mat lo. Ek chota sa kaam abhi karo — 5 minute bhi kaafi hai. Consistency kal se nahi, aaj se shuru hoti hai."), reply: '' },
+  { re: /haar.*gaya.*main|give.*up.*karna.*chahta|quit.*karna.*chahta/i,  action: () => respond('Ruko. Ek baar mujhse baat karo. Jo log UPSC clear karte hain, unke paas koi alag talent nahi tha — unke paas ek quality thi: unhone chhodha nahi. Aaj ka din khatam karo. Kal bhi yahi karo.'), reply: '' },
+  { re: /jarvis.*kab.*tak.*study.*karna.*chahiye|kitna.*padhna.*chahiye/i, action: () => respond('Quality matters more than hours. Start with 6 focused hours. No phone, no breaks over 15 mins. As you build stamina, increase to 8-10. JARVIS tracks your minutes — show me consistency for 30 days.'), reply: '' },
+
+  // ── ADVANCED EXAM PREP ────────────────────────────────────────────────────
+  { re: /current.*affairs.*link.*static|ca.*static.*connect|news.*syllabus/i, action: () => respond('CA-Static connection: Every news item should link to syllabus. PM GatiShakti → GS3 Infrastructure. NHRC report → GS2 Governance. Cyclone Biparjoy → GS1 Geography. Always ask: which paper, which topic does this belong to?'), reply: '' },
+  { re: /gs4.*case.*study|ethics.*case.*study.*approach/i,                action: () => respond("GS4 Case Study approach: Identify the ethical issue, name the stakeholders, list competing values, evaluate options using ethical frameworks (consequentialist, deontological, virtue ethics), choose the most balanced course of action, add implementation steps."), reply: '' },
+  { re: /upsc.*word.*limit|150.*word.*answer|250.*word.*structure/i,      action: () => respond("Word limits: 150 words ≈ 1 A4 page (writing fast). 250 words ≈ 1.5 pages. 10-marker = 150 words, 15-marker = 200 words, 20-marker = 250 words. Prioritise content over hitting exact word count. Quality writing."), reply: '' },
+  { re: /daf.*filling|detailed.*application.*form|interview.*preparation/i, action: () => respond("DAF (Detailed Application Form): Fill honestly. Board members study it thoroughly. Prepare 5-10 questions on each DAF entry: hometown, graduation subject, hobbies, work experience. Consistency between DAF and interview responses is essential."), reply: '' },
+  { re: /mock.*interview|personality.*test.*tips|body.*language.*interview/i, action: () => respond("UPSC Interview tips: Dress formally (traditional or formal Western). Sit straight, maintain eye contact. Pause before answering. Say 'I don't know' rather than guessing. Board tests calmness, balance, awareness. Prior DAF-based mock interviews are essential."), reply: '' },
+
+  // ── IMPORTANT HISTORICAL EVENTS ───────────────────────────────────────────
+  { re: /dandi.*march|salt.*march|1930.*civil.*disobedience/i,            action: () => respond("Dandi March (March 12 - April 6, 1930): Gandhi marched 241 miles from Sabarmati to Dandi. Made salt to defy Salt Law. Launched Civil Disobedience Movement. Global media attention — made British rule untenable."), reply: '' },
+  { re: /khilafat.*movement|non.*cooperation.*1920|ali.*brothers/i,       action: () => respond("Non-Cooperation Movement (1920-22): Gandhi's first mass movement. Students, lawyers, government servants resigned. Boycott of foreign goods. Called off after Chauri Chaura (1922) violence. First mass mobilization of all classes."), reply: '' },
+  { re: /quit.*india.*resolution|august.*kranti|do.*or.*die.*gandhi/i,    action: () => respond("Quit India Movement (August 8, 1942): 'Do or Die' speech by Gandhi at Bombay. All leaders arrested next morning. Spontaneous uprising. Underground network by Jayaprakash Narayan. Most intense of Gandhi's movements."), reply: '' },
+  { re: /cabinet.*mission.*plan|1946.*plan|constituent.*assembly.*formation/i, action: () => respond("Cabinet Mission Plan (1946): Proposed a 3-tier federal structure. Congress and ML couldn't agree on groupings. Led to Constituent Assembly formation. Direct Action Day (ML) caused Calcutta killings — path to Partition."), reply: '' },
+  { re: /poona.*pact.*ambedkar|ambedkar.*gandhi.*1932/i,                  action: () => respond("Poona Pact (September 1932): Ambedkar initially wanted separate electorate for Untouchables (Communal Award). Gandhi fasted against it. Compromise: reserved seats in joint electorate (instead of separate). Ambedkar later expressed regret."), reply: '' },
+  { re: /lucknow.*pact|1916.*congress.*league|moderate.*extremist/i,      action: () => respond("Lucknow Pact (1916): Congress-Muslim League joint session. Congress accepted separate electorates for Muslims. INC reunited (Moderates and Extremists re-merged). Tilak and Jinnah brokered the deal."), reply: '' },
+
+  // ── WORLD HISTORY ─────────────────────────────────────────────────────────
+  { re: /french.*revolution|liberty.*equality.*fraternity|napoleon/i,     action: () => respond("French Revolution (1789): Liberty, Equality, Fraternity. Storming of Bastille July 14. King Louis XVI executed 1793. Rise of Napoleon — spread revolutionary ideas across Europe. Influenced Indian freedom fighters."), reply: '' },
+  { re: /american.*revolution|declaration.*independence|1776/i,           action: () => respond("American Revolution (1765-1783): Colonies protested 'No taxation without representation'. Declaration of Independence July 4, 1776. US Constitution 1787 — first written constitution. Influenced Indian Constitution framers."), reply: '' },
+  { re: /world.*war.*1|first.*world.*war|1914.*1918|sarajevo/i,           action: () => respond("World War I (1914-18): Triggered by Sarajevo assassination of Archduke Franz Ferdinand. Allied Powers (UK, France, Russia, USA) vs Central Powers (Germany, Austria-Hungary, Ottoman). Ended with Treaty of Versailles (1919). League of Nations formed."), reply: '' },
+  { re: /world.*war.*2|second.*world.*war|1939.*1945|hitler/i,            action: () => respond("World War II (1939-45): Nazi Germany invaded Poland. Allied Forces (UK, USSR, USA) vs Axis (Germany, Italy, Japan). Holocaust: 6 million Jews killed. Ended with Japan's surrender (atom bombs, 1945). UN formed. Cold War began."), reply: '' },
+  { re: /cold.*war.*history|ussr.*usa.*rivalry|iron.*curtain.*berlin/i,   action: () => respond("Cold War (1947-1991): US vs USSR ideological rivalry. NATO vs Warsaw Pact. Berlin Wall (1961-1989). Cuba Missile Crisis (1962, closest to nuclear war). Ended with USSR dissolution 1991. India: Non-Aligned but closer to USSR in later years."), reply: '' },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v5 — Power, Voice-UX & Advanced Intelligence (120+ patterns)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── CONTINUOUS / SPEED CONTROLS ───────────────────────────────────────────
+  { re: /conversation.*mode|auto.*listen|continuous.*conversation|baat.*chalti.*rahe/i, action: () => { _continuousMode = !_continuousMode; localStorage.setItem('jarvis_continuous', String(_continuousMode)); respond(_continuousMode ? 'Conversation mode on. Keep talking.' : 'Conversation mode off.') }, reply: '' },
+  { re: /how.*fast.*speak|speed.*kya.*hai|tts.*speed|voice.*speed/i,    action: () => respond(`TTS speed is currently set to ${_ttsSpeed}. Say "speak faster", "speak slower", or "normal speed" to change.`), reply: '' },
+  { re: /fast.*reply|quick.*answer|concise.*mode|short.*answer.*mode/i, action: () => { _ttsSpeed = 'fast'; localStorage.setItem('jarvis_speed','fast'); respond('Fast mode. Short answers only.') }, reply: '' },
+  { re: /detailed.*reply|slow.*mode|explain.*fully|full.*answer.*mode/i, action: () => { _ttsSpeed = 'slow'; localStorage.setItem('jarvis_speed','slow'); respond('Detailed mode on. I will speak carefully and fully.') }, reply: '' },
+
+  // ── CAMERA / VISION SHORTCUTS ─────────────────────────────────────────────
+  { re: /scan.*score|score.*scan|marks.*scan|scan.*test.*paper|result.*scan/i,    action: () => openVisionCapture('scan my score', respond), reply: '' },
+  { re: /scan.*newspaper|newspaper.*scan|headlines.*scan|ca.*scan.*today/i,       action: () => openVisionCapture('scan newspaper', respond), reply: '' },
+  { re: /solve.*question.*camera|camera.*solve|csat.*solve.*photo/i,              action: () => openVisionCapture('solve this CSAT question', respond), reply: '' },
+  { re: /read.*notes.*camera|scan.*notes|notes.*scan|handwriting.*read/i,         action: () => openVisionCapture('read my notes', respond), reply: '' },
+  { re: /explain.*diagram|diagram.*explain|scan.*diagram|map.*explain/i,          action: () => openVisionCapture('explain this diagram', respond), reply: '' },
+
+  // ── EMERGENCY / CRAM MODE ────────────────────────────────────────────────
+  { re: /emergency.*polity|polity.*cram|polity.*urgent|polity.*last.*minute/i,     action: () => { fireTimer(50); respond('Emergency Polity session. 50-minute timer set. Cover: Constitution basics, Amendments, Emergency Provisions, Parliament.') }, reply: '' },
+  { re: /emergency.*history|history.*cram|history.*urgent/i,                       action: () => { fireTimer(50); respond('Emergency History cram. 50-minute timer. Cover: 1857, Freedom Struggle, Gandhi movements, Post-independence.') }, reply: '' },
+  { re: /emergency.*geography|geography.*cram/i,                                   action: () => { fireTimer(50); respond('Emergency Geography session. Cover: Physical features, Monsoon, Rivers, Soils, Vegetation.') }, reply: '' },
+  { re: /emergency.*economy|economy.*cram|economics.*emergency/i,                  action: () => { fireTimer(50); respond('Emergency Economy cram. Cover: GDP, Budget, GST, RBI tools, Banking, Inflation.') }, reply: '' },
+  { re: /emergency.*environment|environment.*cram/i,                                action: () => { fireTimer(50); respond('Emergency Environment session. Cover: Biodiversity, Climate Change, Conventions, Schemes, India targets.') }, reply: '' },
+  { re: /emergency.*science|science.*cram|science.*tech.*urgent/i,                 action: () => { fireTimer(50); respond('Emergency Science and Tech. Cover: ISRO, AI, Biotech, Nuclear, Cybersecurity, Space.') }, reply: '' },
+  { re: /emergency.*ethics|ethics.*cram|gs4.*urgent/i,                             action: () => { fireTimer(50); respond('Emergency GS4 cram. Cover: Key thinkers, Emotional Intelligence, Case Study approach, Probity.') }, reply: '' },
+  { re: /all.*night.*study|raat.*bhar.*padhai|overnight.*session/i,                action: () => { respond('All-night session armed. Take a 15-minute break every 90 minutes and drink water. Starting your first block.'); fireTimer(90) }, reply: '' },
+
+  // ── STUDY SESSION MANAGEMENT ──────────────────────────────────────────────
+  { re: /start.*polity.*session|polity.*session.*start|polity.*padhna.*shuru/i,    action: () => { _sessionSubject = 'Polity'; clickStart(); scr('plan'); respond('Polity session started. Timer running.') }, reply: '' },
+  { re: /start.*history.*session|history.*session.*start/i,                        action: () => { _sessionSubject = 'History'; clickStart(); scr('plan'); respond('History session started. Timer running.') }, reply: '' },
+  { re: /start.*geography.*session|geography.*session.*start/i,                    action: () => { _sessionSubject = 'Geography'; clickStart(); scr('plan'); respond('Geography session started.') }, reply: '' },
+  { re: /start.*economy.*session|economy.*session.*start/i,                        action: () => { _sessionSubject = 'Economy'; clickStart(); scr('plan'); respond('Economy session started.') }, reply: '' },
+  { re: /start.*environment.*session/i,                                             action: () => { _sessionSubject = 'Environment'; clickStart(); respond('Environment session started.') }, reply: '' },
+  { re: /start.*ethics.*session|gs4.*session.*start/i,                             action: () => { _sessionSubject = 'Ethics'; clickStart(); respond('Ethics session started. Remember to practice case studies.') }, reply: '' },
+  { re: /what.*am.*i.*studying|current.*subject.*kya|session.*subject.*kya/i,      action: () => respond(_sessionSubject ? `You are currently in a ${_sessionSubject} session.` : 'No session subject set. Say "I am studying Polity" to tag it.'), reply: '' },
+  { re: /end.*session.*summary|session.*khatam.*report|session.*done.*summary/i,   action: () => { const m = getTodayFocusMins(); respond(`Session ended. Today's total: ${m} minutes studied${_sessionSubject ? ` on ${_sessionSubject}` : ''}. ${celebrationLine()}`); _sessionSubject = '' }, reply: '' },
+
+  // ── GUIDED REVISION FLOW ─────────────────────────────────────────────────
+  { re: /quick.*revision.*polity|polity.*quick.*revision/i,                        action: () => { respond('Quick Polity revision: Preamble, Fundamental Rights (Part III), DPSP (Part IV), Parliament structure, Emergency provisions. Quiz yourself on each. Say "quiz me on Polity" when ready.'); scr('plan') }, reply: '' },
+  { re: /quick.*revision.*history|history.*quick.*revision/i,                      action: () => respond('Quick History revision: Ancient (Maurya, Gupta), Medieval (Delhi Sultanate, Mughal), Modern (1857, Gandhi movements, Partition). Key dates, key personalities.'), reply: '' },
+  { re: /quick.*revision.*economy|economy.*quick.*revision/i,                      action: () => respond('Quick Economy revision: GDP, fiscal vs monetary policy, RBI tools (Repo, CRR, SLR), GST structure, budget deficits, poverty measurement.'), reply: '' },
+  { re: /one.*liner.*polity|polity.*key.*points/i,                                  action: () => respond('Polity one-liners: Article 1 = Union of States. Art 14 = Equality. Art 21 = Right to Life. Art 32 = Heart of Constitution. Art 368 = Amendment. 73rd = PRIs. 74th = ULBs. Kesavananda = Basic Structure.'), reply: '' },
+  { re: /one.*liner.*history|history.*key.*points/i,                               action: () => respond('History one-liners: 1757 = Plassey. 1857 = First War. 1885 = INC founded. 1905 = Bengal Partition. 1919 = Rowlatt Act. 1930 = Dandi March. 1942 = Quit India. 1947 = Independence.'), reply: '' },
+  { re: /one.*liner.*environment|environment.*key.*points/i,                       action: () => respond('Environment one-liners: 1972 = Stockholm (first env conference). 1987 = Montreal Protocol (ozone). 1992 = Rio Earth Summit. 1997 = Kyoto Protocol. 2015 = Paris Agreement. 2022 = India Net Zero 2070.'), reply: '' },
+
+  // ── SMART DICTATION SHORTCUTS ─────────────────────────────────────────────
+  { re: /add.*today.*ca|log.*today.*ca|ca.*aaj.*add/i,                             action: () => { cl('cm-ca-log'); respond('CA log opened. Speak or type today\'s entry.') }, reply: '' },
+  { re: /add.*doubt|log.*doubt|doubt.*save|sawaal.*save/i,                         action: () => { const note = `[DOUBT logged at ${new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'})}]`; addToInbox(note); respond('Doubt saved to inbox. Elaborate by typing in the notes.') }, reply: '' },
+  { re: /quick.*capture|capture.*this|inbox.*add|inbox.*note/i,                    action: () => cl('cm-add-note'), reply: 'Quick Capture open.' },
+  { re: /voice.*note|speak.*note|audio.*note/i,                                    action: () => { cl('cm-add-note'); respond('Note form open. Type what you want to save.') }, reply: '' },
+
+  // ── ANALYTICS POWER QUERIES ───────────────────────────────────────────────
+  { re: /how.*many.*hours.*this.*week|is.*hafte.*kitne.*ghante|weekly.*hours/i,    action: () => respond(buildWeekSummary()), reply: '' },
+  { re: /my.*consistency|kitna.*consistent|study.*streak.*analysis/i,              action: () => { const cs=getCurrentState(); respond(cs?.streak ? `${cs.streak}-day streak. ${cs.streak >= 7 ? 'Excellent consistency — you are in the top tier of aspirants.' : 'Keep building. 7 consecutive days changes your preparation completely.'}` : 'No streak yet. Log today to start one.') }, reply: '' },
+  { re: /average.*this.*week|is.*hafte.*average|weekly.*score.*average/i,          action: () => { scr('intel'); respond(buildStatusReport()) }, reply: '' },
+  { re: /how.*many.*total.*lectures.*done|total.*done|kitne.*total.*done/i,        action: () => { const done=document.querySelectorAll('#plan .plan-row.done').length; const tot=document.querySelectorAll('#plan .plan-row').length; respond(tot ? `${done} of ${tot} lectures done — ${Math.round(done/tot*100)}% of syllabus covered.` : 'Open the planner to see lecture progress.') }, reply: '' },
+  { re: /syllabus.*percent|coverage.*percentage|kitna.*syllabus.*hua/i,            action: () => { const d=document.querySelectorAll('#plan .plan-row.done').length; const t=document.querySelectorAll('#plan .plan-row').length; const p=t?Math.round(d/t*100):0; const lang=detectResponseLang(''); respond(lang==='hi'?`${p}% syllabus cover hua hai। ${d} of ${t} lectures done.`:lang==='hinglish'?`${p}% syllabus cover ho gaya. ${d} of ${t} done.`:`${p}% syllabus covered. ${d} of ${t} lectures done.`) }, reply: '' },
+
+  // ── SMART APP CONTROLS ────────────────────────────────────────────────────
+  { re: /open.*all.*panels|show.*everything|full.*dashboard/i,                     action: () => { scr('engine'); setTimeout(()=>scr('intel'),400); respond('Dashboard loaded.') }, reply: '' },
+  { re: /close.*panel|close.*window|window.*close/i,                               action: () => closePanel(), reply: '' },
+  { re: /clear.*chat|chat.*clear|history.*clear|reset.*chat/i,                     action: () => { _history.length = 0; renderChat(); respond('Chat cleared.') }, reply: '' },
+  { re: /what.*conversation.*mode|is.*auto.*listen.*on|continuous.*mode.*kya/i,    action: () => respond(`Conversation mode is ${_continuousMode ? 'ON — I auto-listen after each response.' : 'OFF — say Jarvis to wake me.'}`), reply: '' },
+  { re: /jarvis.*version|version.*kya.*hai|what.*version|app.*version/i,           action: () => respond('JARVIS v4 — Mission 2028. 564 commands, continuous conversation, EMA clap detection, Groq Llama-3.3-70B intelligence, Llama-4-Scout vision, trilingual.'), reply: '' },
+  { re: /what.*groq.*key|api.*key.*set|groq.*configured|groq.*kaam.*kar.*raha/i,   action: () => respond(GROQ_AVAILABLE ? 'Groq API is active. Full AI intelligence enabled.' : 'No Groq API key. Add VITE_GROQ_API_KEY to .env for full AI features.'), reply: '' },
+
+  // ── POMODORO & BREAK INTELLIGENCE ────────────────────────────────────────
+  { re: /how.*many.*pomodoros|pomodoro.*count|kitne.*sessions.*aaj/i,              action: () => respond(`${_pomodorosDone} Pomodoro session${_pomodorosDone!==1?'s':''} completed in this tab session.`), reply: '' },
+  { re: /next.*break.*when|break.*kab.*hoga|when.*break/i,                         action: () => { const t=document.querySelector<HTMLElement>('.ring-time')?.textContent; respond(t ? `Timer shows ${t} remaining. Take your break when it rings.` : 'No timer running. Start a session first.') }, reply: '' },
+  { re: /skip.*break|break.*skip|no.*break.*now/i,                                 action: () => { q('[data-act="skip"]'); respond('Break skipped. Next focus session starting.') }, reply: '' },
+  { re: /extend.*break|break.*lambi|longer.*break/i,                               action: () => { fireTimer(10); respond('10-minute extended break set.') }, reply: '' },
+  { re: /ultra.*focus|no.*distract.*mode|deep.*focus.*lock/i,                      action: () => { fireTimer(90); cl('lock-btn'); respond('90-minute ultra focus. Screen locked. No distractions. You are in the zone, Om.') }, reply: '' },
+
+  // ── UPSC EXAM INTELLIGENCE ────────────────────────────────────────────────
+  { re: /important.*topics.*prelims|prelims.*important.*topic|top.*topics.*upsc/i, action: () => respond('Top Prelims topics: Constitutional provisions (especially FR, DPSP, Amendments), Modern History (1857-1947), Geography (monsoon, rivers, soils), Economy (RBI, GST, budget), Environment (conventions, national parks), Science (ISRO, biotech).'), reply: '' },
+  { re: /upsc.*trend.*analysis|recent.*pattern.*upsc|last.*5.*years.*pattern/i,   action: () => respond('Recent UPSC Prelims trends: More environment and science questions, increasing current affairs weightage, Art and Culture consolidating, economy questions focused on schemes, static Polity remains high-yield.'), reply: '' },
+  { re: /most.*repeated.*topic|frequently.*asked|pyq.*analysis|past.*pattern/i,   action: () => respond('Most repeated Prelims topics: Polity (Constitution, bodies), Modern History, Geography (physical and human), Environment, Economy (monetary policy, schemes), Science and Technology.'), reply: '' },
+  { re: /upsc.*scoring.*pattern|how.*marks.*calculated|mains.*marking/i,          action: () => respond('Mains marking: Each GS paper 250 marks. Optional 500 marks (2 papers of 250 each). Essay 250 marks. Total Mains written: 1750. Interview: 275. Grand total: 2025 marks.'), reply: '' },
+  { re: /upsc.*cut.*off|prelims.*cutoff|general.*cutoff|obc.*cutoff/i,            action: () => respond('UPSC Prelims cutoff varies by year. General category: typically 90-100 out of 200 for GS Paper 1. OBC around 85-95, SC/ST around 75-85. CSAT requires 33% qualifying score.'), reply: '' },
+  { re: /upsc.*rank.*1.*marks|topper.*marks|air.*1.*how.*many.*marks/i,           action: () => respond('UPSC rank 1 typically scores 950-1050 out of 2025 total (written + interview). Mains written component is most critical — consistent 550-650 marks out of 1750 typically lands in top 100.'), reply: '' },
+
+  // ── PERSONAL ASSISTANT FEATURES ───────────────────────────────────────────
+  { re: /set.*morning.*alarm|morning.*reminder|subah.*yaad.*dilana/i,              action: () => { const now=new Date(); const alarm=new Date(); alarm.setHours(6,0,0,0); if(alarm<=now) alarm.setDate(alarm.getDate()+1); const mins=Math.round((alarm.getTime()-now.getTime())/60000); _reminders.push({id:_nextRemId++,msg:'Good morning! Time to start your study day.',at:alarm.getTime()}); respond(`Morning reminder set for 6 AM — in ${mins} minutes.`) }, reply: '' },
+  { re: /bedtime.*reminder|11.*pm.*reminder|raat.*11.*yaad/i,                     action: () => { const now=new Date(); const bed=new Date(); bed.setHours(23,0,0,0); if(bed<=now) bed.setDate(bed.getDate()+1); const mins=Math.round((bed.getTime()-now.getTime())/60000); _reminders.push({id:_nextRemId++,msg:'Time to wrap up. Review today and plan tomorrow.',at:bed.getTime()}); respond(`Bedtime reminder set for 11 PM — in ${mins} minutes.`) }, reply: '' },
+  { re: /break.*reminder.*30|30.*min.*break.*reminder/i,                           action: () => { _reminders.push({id:_nextRemId++,msg:'30 minutes up. Take a proper break.',at:Date.now()+30*60000}); respond('30-minute break reminder set.') }, reply: '' },
+  { re: /water.*reminder|drink.*water.*reminder|paani.*yaad/i,                    action: () => { _reminders.push({id:_nextRemId++,msg:'Drink water now. Hydration improves focus.',at:Date.now()+45*60000}); respond('Water reminder set for 45 minutes.') }, reply: '' },
+
+  // ── HINDI POWER COMMANDS ─────────────────────────────────────────────────
+  { re: /aaj.*kitna.*baka|aaj.*kya.*reh.*gaya|remaining.*aaj/i,                   action: () => respond(buildTodayReport()), reply: '' },
+  { re: /mera.*target.*kya.*hai|aaj.*ka.*target|daily.*target.*kya/i,             action: () => { cl('cm-goals'); respond('Goals khul gayi. Aaj ka target dekho.') }, reply: '' },
+  { re: /notes.*mein.*kya.*hai|meri.*notes.*dikhao/i,                             action: () => { cl('cm-notes'); respond('Notes section open ho gayi.') }, reply: '' },
+  { re: /mujhe.*focus.*chahiye|focus.*nahi.*ho.*raha|dhyan.*nahi.*lag.*raha/i,    action: () => { respond('Focus laane ke liye: phone rakh do, pani piyo, 5 deep breaths lo. Phir timer start karo aur sirf ek kaam karo.'); setTimeout(()=>clickStart(), 4000) }, reply: '' },
+  { re: /main.*IAS.*banunga|main.*select.*ho.*jaunga|mujhe.*vishwas.*hai/i,       action: () => respond('Haan OM! Yeh confidence rakhna. Bilkul select hoga 2028 mein. Ab kaam pe dhyan do — ek lecture aur.'), reply: '' },
+  { re: /kya.*main.*clear.*kar.*sakta|will.*i.*clear.*upsc|kya.*selection.*hogi/i, action: () => respond('Absolutely. UPSC cleared kar sakte hain — har saal 1000 log karte hain. Consistent preparation aur smart study se. Aaj ka kaam aaj karo.'), reply: '' },
+  { re: /mujhe.*ghar.*yaad.*aa.*rahi|homesick|ghar.*miss|miss.*family/i,          action: () => respond("Yeh feeling normal hai. Aur yeh sacrifice UPSC ki preparation ka hissa hai. Jab officer ban jaoge toh family ko pehle se zyada de paoge. Abhi ek session aur."), reply: '' },
+
+  // ── JARVIS META COMMANDS ─────────────────────────────────────────────────
+  { re: /how.*does.*jarvis.*work|jarvis.*kaise.*kaam.*karta|architecture/i,       action: () => respond('JARVIS runs 3 tiers: instant local pattern matching (560 patterns, zero latency), Groq Llama-8B for intent classification (under 500ms), and Llama-70B for deep UPSC answers. Vision uses Llama-4-Scout. Everything is offline-capable.'), reply: '' },
+  { re: /reset.*jarvis|jarvis.*reset|fresh.*start.*jarvis/i,                      action: () => { _history.length=0; _quizPhase='off'; _sessionSubject=''; renderChat(); respond('JARVIS reset. Fresh start.') }, reply: '' },
+  { re: /save.*settings|jarvis.*settings.*save/i,                                 action: () => { localStorage.setItem('jarvis_speed', _ttsSpeed); localStorage.setItem('jarvis_continuous', String(_continuousMode)); respond('Settings saved — speed and conversation mode persisted.') }, reply: '' },
+  { re: /what.*features.*new|new.*features.*jarvis|latest.*update/i,              action: () => respond('Latest JARVIS features: Continuous conversation mode, TTS speed control (fast/slow/normal), Command chaining, Emergency cram mode, EMA adaptive clap detection, Advanced vision (score scan, CA headlines, CSAT solver), Smart dictation, Session subject tracking.'), reply: '' },
+  { re: /test.*clap|clap.*test|check.*clap.*detection/i,                          action: () => { respond('Clap detection test: Double-clap now. If JARVIS panel opens or mic activates, it is working correctly.') }, reply: '' },
 ]
 
 // Filter out inline-handled entries (empty reply delegates to respond() inside action)
@@ -2116,9 +2667,18 @@ const FILTERED_CMDS = CMDS
 
 // ── Quiz System ───────────────────────────────────────────────────────────────
 async function startQuiz(topic: string): Promise<void> {
-  if (!GROQ_KEY) { respond('Add VITE_GROQ_API_KEY to enable quiz mode.'); return }
-  setState('thinking'); setStatus('Preparing quiz…')
-  respond(`Preparing 5 MCQs on ${topic}. Get ready.`)
+  const lang = detectResponseLang('')
+  if (!GROQ_KEY) {
+    respond(lang === 'hi' ? 'Quiz के लिए VITE_GROQ_API_KEY add करो।' : 'Add VITE_GROQ_API_KEY to enable quiz mode.')
+    return
+  }
+  setState('thinking')
+  setStatus(lang === 'hi' ? 'Quiz तैयार हो रहा है…' : 'Preparing quiz…')
+  respond(
+    lang === 'hi'       ? `${topic} पर 5 MCQs तैयार हो रहे हैं। तैयार हो जाओ।` :
+    lang === 'hinglish' ? `${topic} par 5 MCQs aa rahe hain. Taiyar ho jao.` :
+                          `Preparing 5 MCQs on ${topic}. Get ready.`
+  )
 
   try {
     const res = await fetch(GROQ_URL, {
@@ -2202,18 +2762,24 @@ function parseQuizAnswer(t: string): string | null {
 
 async function handleQuizAnswer(chosen: string): Promise<void> {
   const item = _quizItems[_quizIdx]
+  const lang = detectResponseLang('')
   _quizIdx++
   let reply = ''
   if (chosen === item.ans) {
     _quizHits++
-    reply = `Correct! ${item.exp}`
+    reply =
+      lang === 'hi'       ? `बिल्कुल सही! ${item.exp}` :
+      lang === 'hinglish' ? `Bilkul sahi! ${item.exp}` :
+                            `Correct! ${item.exp}`
   } else {
-    reply = `Not quite. The answer is ${item.ans}. ${item.exp}`
+    reply =
+      lang === 'hi'       ? `नहीं, सही उत्तर ${item.ans} है। ${item.exp}` :
+      lang === 'hinglish' ? `Nahi, sahi jawab ${item.ans} hai. ${item.exp}` :
+                            `Not quite. The answer is ${item.ans}. ${item.exp}`
   }
   addMsg('assistant', reply)
   _quizPhase = 'revealed'
   speak(reply)
-  // auto-advance after speaking
   setTimeout(() => {
     if (_quizIdx < _quizItems.length) {
       _quizPhase = 'asking'
@@ -2231,161 +2797,376 @@ async function nextQuizQuestion(): Promise<void> {
 
 function finishQuiz(): void {
   _quizPhase = 'off'
-  const pct = Math.round((_quizHits/_quizItems.length)*100)
-  const verdict = pct>=80 ? 'Excellent!' : pct>=60 ? 'Good effort.' : 'Keep revising this topic.'
-  respond(`Quiz complete! Score: ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${verdict}`)
+  const pct  = Math.round((_quizHits / _quizItems.length) * 100)
+  const lang = detectResponseLang('')
+  if (lang === 'hi') {
+    const verdict = pct >= 80 ? 'शानदार प्रदर्शन!' : pct >= 60 ? 'अच्छा प्रयास।' : 'इस topic को और revise करो।'
+    respond(`Quiz पूरा! Score: ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${verdict}`)
+  } else if (lang === 'hinglish') {
+    const verdict = pct >= 80 ? 'Zabardast!' : pct >= 60 ? 'Acha effort.' : 'Is topic ko aur revise karo.'
+    respond(`Quiz khatam! Score: ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${verdict}`)
+  } else {
+    const verdict = pct >= 80 ? 'Excellent!' : pct >= 60 ? 'Good effort.' : 'Keep revising this topic.'
+    respond(`Quiz complete! Score: ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${verdict}`)
+  }
 }
 
-// ── Report generators ─────────────────────────────────────────────────────────
+// ── Report generators — language-aware ───────────────────────────────────────
 function buildStatusReport(): string {
   const cs = getCurrentState()
-  if (!cs) return 'App state not loaded yet. Try again in a moment.'
+  const lang = detectResponseLang('')
+  if (!cs) {
+    return lang === 'hi' ? 'App data abhi load nahi hua. Ek baar phir try karo.' :
+           lang === 'hinglish' ? 'App state load nahi hua abhi. Try again.' :
+           'App state not loaded yet. Try again in a moment.'
+  }
+  const focusMins = getTodayFocusMins()
+  if (lang === 'hi') {
+    const parts: string[] = []
+    if (cs.streak)                      parts.push(`${cs.streak} दिनों की study streak.`)
+    if (cs.today?.subject)              parts.push(`आज: ${cs.today.subject}.`)
+    if (cs.backlogRemaining != null)    parts.push(`${cs.backlogRemaining} lectures बाकी.`)
+    if (cs.performance?.prelimsAvg != null) parts.push(`Prelims average: ${cs.performance.prelimsAvg.toFixed(1)}%.`)
+    if (cs.selectionProbabilityPct != null) parts.push(`Selection probability: ${cs.selectionProbabilityPct.toFixed(1)}%.`)
+    if (focusMins > 0)                  parts.push(`आज ${focusMins} मिनट की पढ़ाई.`)
+    if (_reminders.length)              parts.push(`${_reminders.length} active reminder.`)
+    return parts.length ? parts.join(' ') : 'अभी कोई data नहीं है। Sessions log करना शुरू करो।'
+  }
+  if (lang === 'hinglish') {
+    const parts: string[] = []
+    if (cs.streak)                      parts.push(`${cs.streak}-day streak.`)
+    if (cs.today?.subject)              parts.push(`Aaj: ${cs.today.subject}.`)
+    if (cs.backlogRemaining != null)    parts.push(`${cs.backlogRemaining} lectures pending.`)
+    if (cs.performance?.prelimsAvg != null) parts.push(`Prelims average: ${cs.performance.prelimsAvg.toFixed(1)}%.`)
+    if (cs.selectionProbabilityPct != null) parts.push(`SP: ${cs.selectionProbabilityPct.toFixed(1)}%.`)
+    if (focusMins > 0)                  parts.push(`Aaj ${focusMins} minutes padhai.`)
+    if (_reminders.length)              parts.push(`${_reminders.length} reminder active.`)
+    return parts.length ? parts.join(' ') : 'Koi data nahi abhi. Sessions log karo.'
+  }
   const parts: string[] = []
-  if (cs.streak) parts.push(`${cs.streak}-day study streak.`)
-  if (cs.today?.subject) parts.push(`Today: ${cs.today.subject}.`)
-  if (cs.backlogRemaining != null) parts.push(`${cs.backlogRemaining} lectures pending.`)
+  if (cs.streak)                      parts.push(`${cs.streak}-day study streak.`)
+  if (cs.today?.subject)              parts.push(`Today: ${cs.today.subject}.`)
+  if (cs.backlogRemaining != null)    parts.push(`${cs.backlogRemaining} lectures pending.`)
   if (cs.performance?.prelimsAvg != null) parts.push(`Prelims average: ${cs.performance.prelimsAvg.toFixed(1)}%.`)
   if (cs.selectionProbabilityPct != null) parts.push(`Selection probability: ${cs.selectionProbabilityPct.toFixed(1)}%.`)
-  const focusMins = getTodayFocusMins()
-  if (focusMins > 0) parts.push(`${focusMins} minutes studied today.`)
-  if (_reminders.length) parts.push(`${_reminders.length} active reminder${_reminders.length>1?'s':''}.`)
+  if (focusMins > 0)                  parts.push(`${focusMins} minutes studied today.`)
+  if (_reminders.length)              parts.push(`${_reminders.length} active reminder${_reminders.length>1?'s':''}.`)
   return parts.length ? parts.join(' ') : 'No data yet. Start logging sessions to see your report.'
 }
 
 function buildTodayReport(): string {
-  const cs = getCurrentState()
-  const rows = document.querySelectorAll<HTMLElement>('#plan .plan-row:not(.done)')
+  const cs  = getCurrentState()
+  const lang = detectResponseLang('')
+  const rows     = document.querySelectorAll<HTMLElement>('#plan .plan-row:not(.done)')
   const doneRows = document.querySelectorAll<HTMLElement>('#plan .plan-row.done')
-  const pending = Array.from(rows).map(r => r.querySelector('.pl-title')?.textContent?.trim()).filter(Boolean).slice(0,3)
+  const pending  = Array.from(rows).map(r => r.querySelector('.pl-title')?.textContent?.trim()).filter(Boolean).slice(0,3)
+  const mins     = getTodayFocusMins()
+  if (lang === 'hi') {
+    const parts: string[] = []
+    if (cs?.today?.subject)  parts.push(`आज का विषय: ${cs.today.subject}.`)
+    if (pending.length)      parts.push(`बाकी: ${pending.join(', ')}.`)
+    if (doneRows.length)     parts.push(`${doneRows.length} lecture${doneRows.length>1?'s':''} आज पूरे हुए.`)
+    if (mins)                parts.push(`अब तक ${mins} मिनट focused पढ़ाई.`)
+    return parts.length ? parts.join(' ') : 'Plan section खोलो आज के lectures देखने के लिए.'
+  }
+  if (lang === 'hinglish') {
+    const parts: string[] = []
+    if (cs?.today?.subject)  parts.push(`Aaj ka subject: ${cs.today.subject}.`)
+    if (pending.length)      parts.push(`Pending: ${pending.join(', ')}.`)
+    if (doneRows.length)     parts.push(`${doneRows.length} lecture${doneRows.length>1?'s':''} aaj done.`)
+    if (mins)                parts.push(`${mins} minutes focused abhi tak.`)
+    return parts.length ? parts.join(' ') : "Plan section kholo aaj ke lectures dekhne ke liye."
+  }
   const parts: string[] = []
-  if (cs?.today?.subject) parts.push(`Today's subject: ${cs.today.subject}.`)
-  if (pending.length) parts.push(`Pending: ${pending.join(', ')}.`)
-  if (doneRows.length) parts.push(`${doneRows.length} lecture${doneRows.length>1?'s':''} done today.`)
-  const mins = getTodayFocusMins()
-  if (mins) parts.push(`${mins} minutes focused so far.`)
-  return parts.length ? parts.join(' ') : 'Open the Plan section to see today\'s lectures.'
+  if (cs?.today?.subject)  parts.push(`Today's subject: ${cs.today.subject}.`)
+  if (pending.length)      parts.push(`Pending: ${pending.join(', ')}.`)
+  if (doneRows.length)     parts.push(`${doneRows.length} lecture${doneRows.length>1?'s':''} done today.`)
+  if (mins)                parts.push(`${mins} minutes focused so far.`)
+  return parts.length ? parts.join(' ') : "Open the Plan section to see today's lectures."
 }
 
 function buildExamCountdown(): string {
+  const lang = detectResponseLang('')
   try {
     const raw = localStorage.getItem('settings') ?? '{}'
     const settings = JSON.parse(raw) as {prelimsDate?: string}
     if (settings.prelimsDate) {
       const target = new Date(settings.prelimsDate)
-      const days = Math.ceil((target.getTime() - Date.now()) / 86_400_000)
-      if (days > 0) return `${days} days until Prelims on ${target.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}. Make every day count.`
-      if (days === 0) return 'Prelims is today! You\'ve got this, Om.'
+      const days   = Math.ceil((target.getTime() - Date.now()) / 86_400_000)
+      const dateStr = target.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})
+      if (days > 0) {
+        if (lang === 'hi')       return `Prelims में ${days} दिन बाकी हैं — ${dateStr}। हर दिन मायने रखता है।`
+        if (lang === 'hinglish') return `Prelims mein ${days} din bache hain — ${dateStr}. Har din count karta hai.`
+        return `${days} days until Prelims on ${dateStr}. Make every day count.`
+      }
+      if (days === 0) {
+        if (lang === 'hi')       return 'Prelims आज है! तुम्हें यह मिलेगा, ओम।'
+        if (lang === 'hinglish') return 'Prelims aaj hai! You got this, Om.'
+        return "Prelims is today! You've got this, Om."
+      }
     }
   } catch { /* ignore */ }
   const cs = getCurrentState()
-  return cs ? `Prelims date not configured in settings. Set it to get the countdown. Backlog: ${cs.backlogRemaining ?? '?'} lectures.` : 'Set your exam date in Settings for a countdown.'
+  if (lang === 'hi')       return `Settings में Prelims date configure karo। Backlog: ${cs?.backlogRemaining ?? '?'} lectures.`
+  if (lang === 'hinglish') return `Settings mein Prelims date set karo countdown ke liye. Backlog: ${cs?.backlogRemaining ?? '?'} lectures.`
+  return cs ? `Prelims date not configured. Set it in Settings for a countdown. Backlog: ${cs.backlogRemaining ?? '?'} lectures.` : 'Set your exam date in Settings for a countdown.'
 }
 
 function buildRevisionLine(): string {
+  const lang = detectResponseLang('')
   const rows = document.querySelectorAll<HTMLElement>('#plan .plan-row[data-type="revision"]:not(.done)')
-  if (!rows.length) return 'No revisions due today. Great discipline!'
+  if (!rows.length) {
+    if (lang === 'hi')       return 'आज कोई revision due नहीं है। बढ़िया discipline!'
+    if (lang === 'hinglish') return 'Aaj koi revision due nahi. Great discipline!'
+    return 'No revisions due today. Great discipline!'
+  }
   const titles = Array.from(rows).map(r => r.querySelector('.pl-title')?.textContent?.trim()).filter(Boolean).slice(0,3)
+  if (lang === 'hi')       return `${rows.length} revision${rows.length>1?'s':''} due हैं: ${titles.join(', ')}.`
+  if (lang === 'hinglish') return `${rows.length} revision${rows.length>1?'s':''} due: ${titles.join(', ')}.`
   return `${rows.length} revision${rows.length>1?'s':''} due: ${titles.join(', ')}.`
 }
 
 function buildWeekSummary(): string {
+  const lang = detectResponseLang('')
   try {
     const raw = localStorage.getItem('focusLog') ?? '{}'
     const log = JSON.parse(raw) as Record<string,number>
     let total = 0, days = 0
-    for (let i=0; i<7; i++) {
+    for (let i = 0; i < 7; i++) {
       const d = new Date(); d.setDate(d.getDate()-i)
       const key = d.toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'})
       if (log[key]) { total += log[key]; days++ }
     }
     const cs = getCurrentState()
+    if (lang === 'hi') {
+      const parts = [`इस हफ़्ते: ${total} session${total!==1?'s':''}, ${days} दिन.`]
+      if (cs?.streak)            parts.push(`Current streak: ${cs.streak} दिन.`)
+      if (cs?.backlogRemaining)  parts.push(`${cs.backlogRemaining} lectures अभी बाकी.`)
+      return parts.join(' ')
+    }
+    if (lang === 'hinglish') {
+      const parts = [`Is hafte: ${total} session${total!==1?'s':''}, ${days} din.`]
+      if (cs?.streak)            parts.push(`Streak: ${cs.streak} din.`)
+      if (cs?.backlogRemaining)  parts.push(`${cs.backlogRemaining} lectures pending.`)
+      return parts.join(' ')
+    }
     const parts = [`This week: ${total} session${total!==1?'s':''} across ${days} day${days!==1?'s':''}.`]
-    if (cs?.streak) parts.push(`Current streak: ${cs.streak} days.`)
-    if (cs?.backlogRemaining) parts.push(`${cs.backlogRemaining} lectures still pending.`)
+    if (cs?.streak)            parts.push(`Current streak: ${cs.streak} days.`)
+    if (cs?.backlogRemaining)  parts.push(`${cs.backlogRemaining} lectures still pending.`)
     return parts.join(' ')
-  } catch { return 'Weekly data unavailable. Keep logging sessions to see your summary.' }
+  } catch {
+    if (lang === 'hi')       return 'Weekly data available nahi hai. Sessions log karte raho.'
+    if (lang === 'hinglish') return 'Weekly data nahi hai abhi. Sessions log karo.'
+    return 'Weekly data unavailable. Keep logging sessions to see your summary.'
+  }
 }
 
 function buildRankLine(): string {
-  const cs = getCurrentState()
-  if (!cs) return 'No rank data available yet.'
-  return cs.rankProjection ? `Projected rank: ${cs.rankProjection}. SP: ${cs.selectionProbabilityPct?.toFixed(1)??'--'}%.` : 'Enter more test scores to generate a rank estimate.'
+  const cs   = getCurrentState()
+  const lang = detectResponseLang('')
+  if (!cs) {
+    if (lang === 'hi')       return 'अभी rank data नहीं है।'
+    if (lang === 'hinglish') return 'Rank data nahi hai abhi.'
+    return 'No rank data available yet.'
+  }
+  if (!cs.rankProjection) {
+    if (lang === 'hi')       return 'Rank estimate के लिए और test scores दर्ज करो।'
+    if (lang === 'hinglish') return 'Rank estimate ke liye aur scores log karo.'
+    return 'Enter more test scores to generate a rank estimate.'
+  }
+  if (lang === 'hi')       return `Projected rank: ${cs.rankProjection}. Selection probability: ${cs.selectionProbabilityPct?.toFixed(1)??'--'}%.`
+  if (lang === 'hinglish') return `Projected rank: ${cs.rankProjection}. SP: ${cs.selectionProbabilityPct?.toFixed(1)??'--'}%.`
+  return `Projected rank: ${cs.rankProjection}. SP: ${cs.selectionProbabilityPct?.toFixed(1)??'--'}%.`
 }
 
-// ── Motivation & celebration ──────────────────────────────────────────────────
-const MOTIVATION = [
+// ── Motivation & celebration — language-aware ─────────────────────────────────
+const MOTIVATION_EN = [
   'Every revision is a brick in the wall of your selection. Keep building.',
   "IAS 2028 is the goal. Today's session is the path. Keep walking.",
   'The toppers you admire were exactly where you are now. They kept going.',
   'Consistency beats brilliance. Show up today.',
   'Hard days build the hardest officers. Push through.',
-  'You\'ve come too far to stop now, Om. One more session.',
+  "You've come too far to stop now, Om. One more session.",
   'The UPSC preparation journey is a marathon. Trust the process.',
-  'Focus on today\'s lecture. The rank takes care of itself.',
+  "Focus on today's lecture. The rank takes care of itself.",
+  'Every question you solve is a question fewer between you and selection.',
+  "Doubt is normal. Giving up is a choice. Choose differently today.",
+  'The officers you will serve alongside once felt exactly this. They continued.',
+  "Small steps every day compound into the selection you're working toward.",
 ]
-const CELEBRATE = [
-  'Excellent work!', 'That\'s the spirit!', 'Keep this momentum!',
-  'One down, keep going!', 'Progress!', 'Well done!',
+const MOTIVATION_HI = [
+  'हर revision selection की दीवार में एक ईंट है। बनाते रहो।',
+  'IAS 2028 लक्ष्य है। आज की पढ़ाई वो रास्ता है। चलते रहो, ओम।',
+  'जिन toppers को तुम admire करते हो — वो भी एक वक्त ठीक तुम्हारी जगह थे। वो रुके नहीं।',
+  'Consistency brilliance को हरा देती है। आज भी आओ।',
+  'मुश्किल दिन ही सबसे मज़बूत officers बनाते हैं। पार करो।',
+  'बहुत आगे आ चुके हो रुकने के लिए, ओम। बस एक session और।',
+  'UPSC की तैयारी marathon है। प्रक्रिया पर भरोसा रखो।',
+  'आज के lecture पर ध्यान दो। Rank खुद-ब-खुद बनती है।',
+  'हर सवाल जो तुम solve करते हो, selection के बीच के सवाल एक कम हो जाते हैं।',
+  'शक स्वाभाविक है। हार मानना एक choice है। आज अलग choose करो।',
 ]
-const TIPS = [
-  'Active recall beats passive re-reading. Close the notes and write what you remember.',
-  'Do at least 20 PYQs per topic before moving on. UPSC repeats patterns.',
-  'Revise yesterday\'s lecture for 10 minutes before starting today\'s. SRS works.',
-  'Answer writing is the final exam skill. Practice at least 2 answers every day.',
+const MOTIVATION_HIN = [
+  'Har revision selection ki wall mein ek brick hai. Build karte raho.',
+  'IAS 2028 goal hai. Aaj ki padhai woh raasta hai. Keep walking, Om.',
+  'Jo toppers hain, woh bhi ek waqt yahan the. Unhone chhodha nahi.',
+  'Consistency brilliance ko harata hai. Aaj bhi aa jao.',
+  'Hard days the strongest officers banate hain. Push through karo.',
+  'Bahut aage aa chuke ho rukne ke liye. Ek session aur.',
+  'UPSC marathon hai. Trust the process, Om.',
+  'Aaj ke lecture pe focus karo. Rank khud sambhal legi.',
+]
+const CELEBRATE_EN = [
+  'Excellent work!', "That's the spirit!", 'Keep this momentum!',
+  'One down, keep going!', 'Well done, Om!', 'Progress — every step counts.',
+  'That is how selection happens. One lecture at a time.',
+]
+const CELEBRATE_HI = [
+  'शानदार काम!', 'यही जज़्बा चाहिए!', 'इसी momentum को बनाए रखो!',
+  'एक और पूरा, आगे बढ़ो!', 'बहुत बढ़िया, ओम!', 'यही है selection का रास्ता।',
+]
+const CELEBRATE_HIN = [
+  'Zabardast kaam!', 'Yahi spirit chahiye!', 'Is momentum ko banaye rakho!',
+  'Ek aur done — chalo aage!', 'Bahut acha, Om!', 'Yahi hai selection ka raasta.',
+]
+const TIPS_EN = [
+  'Active recall beats passive re-reading. Close your notes and write what you remember.',
+  'Do at least 20 PYQs per topic before moving on. UPSC repeats its patterns.',
+  'Revise yesterday\'s lecture for 10 minutes before starting today\'s. SRS compounds.',
+  'Answer writing is the final exam skill — practice at least 2 answers every day.',
   'Map every topic to its GS paper and question pattern — it changes how you study.',
-  'Current affairs should connect to static syllabus. One event, multiple angles.',
+  'Current affairs must connect to static syllabus. One event, multiple syllabus angles.',
   'The newspaper is a 250-mark paper. Read with a syllabus lens, not a news lens.',
-  'Ethics GS4 is all about consistency between values and actions. Your practice counts.',
+  'GS4 is about the consistency between values and actions — your daily practice counts.',
+  'Prelims is about elimination, not selection. Learn to rule out 2 wrong options quickly.',
+  'For Mains, the INTRO sets the frame. Spend 20 seconds planning your first sentence.',
 ]
-const QUOTES = [
-  '"It always seems impossible until it\'s done." — Nelson Mandela',
+const TIPS_HI = [
+  'Active recall passive re-reading से बेहतर है। Notes बंद करो और लिखो जो याद है।',
+  'हर topic से कम से कम 20 PYQs practice करो। UPSC patterns repeat करता है।',
+  'आज की पढ़ाई शुरू करने से पहले कल का lecture 10 मिनट revise करो।',
+  'Answer writing final skill है — हर दिन कम से कम 2 answers लिखो।',
+  'हर topic को उसके GS paper और question pattern से map करो।',
+  'Current affairs को static syllabus से जोड़ो। एक news, कई angles।',
+  'Prelims में 2 गलत options को eliminate करना सीखो — यही है skill।',
+  'GS4 में values और actions की consistency दिखानी होती है।',
+]
+const TIPS_HIN = [
+  'Active recall se padho — notes band karo aur likho jo yaad hai.',
+  'Har topic se 20 PYQs practice karo. UPSC patterns repeat karta hai.',
+  'Aaj ki padhai se pehle kal ka lecture 10 minute revise karo. SRS works.',
+  'Answer writing daily practice karo — 2 answers minimum har din.',
+  'Har topic ko uske GS paper se map karo. It changes how you study.',
+]
+const QUOTES_EN = [
+  '"It always seems impossible until it is done." — Nelson Mandela',
   '"Success is the sum of small efforts repeated day in and day out." — R. Collier',
   '"The secret of getting ahead is getting started." — Mark Twain',
-  '"Dreams don\'t work unless you do." — John C. Maxwell',
+  '"Dreams do not work unless you do." — John C. Maxwell',
   '"One today is worth two tomorrows." — Benjamin Franklin',
   '"Discipline is choosing between what you want now and what you want most."',
+  '"An investment in knowledge pays the best interest." — Benjamin Franklin',
+  '"Excellence is not a destination but a continuous journey." — Brian Tracy',
 ]
-function motivationLine(): string { return MOTIVATION[Math.floor(Math.random()*MOTIVATION.length)] }
-function celebrationLine(): string { return CELEBRATE[Math.floor(Math.random()*CELEBRATE.length)] }
-function studyTip(): string { return TIPS[Math.floor(Math.random()*TIPS.length)] }
-function studyQuote(): string { return QUOTES[Math.floor(Math.random()*QUOTES.length)] }
+const QUOTES_HI = [
+  '"पहले यह असंभव लगता है, फिर यह कठिन लगता है, फिर यह हो जाता है।" — नेल्सन मंडेला',
+  '"सफलता छोटे-छोटे प्रयासों का योग है जो दिन-प्रतिदिन दोहराए जाते हैं।"',
+  '"आगे बढ़ने का रहस्य शुरुआत करना है।" — मार्क ट्वेन',
+  '"अनुशासन वह है जो तुम अभी चाहते हो और जो सबसे ज़्यादा चाहते हो, उसके बीच का चुनाव है।"',
+  '"ज्ञान में निवेश सबसे अच्छा ब्याज देता है।" — बेंजामिन फ्रैंकलिन',
+  '"उत्कृष्टता एक गंतव्य नहीं, बल्कि एक निरंतर यात्रा है।"',
+]
+const QUOTES_HIN = [
+  '"Pehle yeh impossible lagta hai, phir kuch mushkil, phir ho jaata hai." — Mandela',
+  '"Safalta chhote-chhote efforts ka sum hai jo roz repeat hote hain."',
+  '"Aage badhne ka secret shuruat karna hai." — Mark Twain',
+  '"Discipline woh hai jo tum abhi chahte ho aur jo sabse zyada chahte ho ke beech ka choice hai."',
+  '"Knowledge mein invest karna sabse best interest deta hai." — Franklin',
+]
+
+function _pick<T>(arr: T[]): T { return arr[Math.floor(Math.random()*arr.length)] }
+
+function motivationLine(): string {
+  const lang = detectResponseLang('')
+  if (lang === 'hi')       return _pick(MOTIVATION_HI)
+  if (lang === 'hinglish') return _pick(MOTIVATION_HIN)
+  return _pick(MOTIVATION_EN)
+}
+function celebrationLine(): string {
+  const lang = detectResponseLang('')
+  if (lang === 'hi')       return _pick(CELEBRATE_HI)
+  if (lang === 'hinglish') return _pick(CELEBRATE_HIN)
+  return _pick(CELEBRATE_EN)
+}
+function studyTip(): string {
+  const lang = detectResponseLang('')
+  if (lang === 'hi')       return _pick(TIPS_HI)
+  if (lang === 'hinglish') return _pick(TIPS_HIN)
+  return _pick(TIPS_EN)
+}
+function studyQuote(): string {
+  const lang = detectResponseLang('')
+  if (lang === 'hi')       return _pick(QUOTES_HI)
+  if (lang === 'hinglish') return _pick(QUOTES_HIN)
+  return _pick(QUOTES_EN)
+}
 
 // ── System prompt — rich context ──────────────────────────────────────────────
 function buildPrompt(): string {
-  const cs  = getCurrentState(), d = todayIST()
-  const pending = Array.from(document.querySelectorAll<HTMLElement>('#plan .plan-row:not(.done)')).map(r => r.querySelector('.pl-title')?.textContent?.trim()).filter(Boolean).slice(0,5)
+  const cs        = getCurrentState()
+  const d         = todayIST()
+  const pending   = Array.from(document.querySelectorAll<HTMLElement>('#plan .plan-row:not(.done)')).map(r => r.querySelector('.pl-title')?.textContent?.trim()).filter(Boolean).slice(0, 5)
   const focusMins = getTodayFocusMins()
   const remCount  = _reminders.length
 
-  const replyLangInstruction =
-    _replyLang === 'hi'       ? 'LANGUAGE: Always respond in Hindi (Devanagari). Never use English words unless it is a proper noun.' :
-    _replyLang === 'hinglish' ? 'LANGUAGE: Respond in Hinglish — Hindi words in Roman script mixed with English. Natural conversational mix.' :
-    _replyLang === 'en'       ? 'LANGUAGE: Always respond in English.' :
-                                'LANGUAGE: Match the user\'s language — Hindi if they write in Hindi, Hinglish if Hinglish, English if English. STRICT — do not switch.'
+  // Precise language instruction — tells the model exactly what register to use
+  const langInstr =
+    _replyLang === 'hi'       ? [
+      'LANGUAGE: Respond ONLY in natural, fluent Hindi using Devanagari script.',
+      'Use proper Hindi grammar and sentence structure. Do not use Roman transliteration.',
+      'Technical terms, proper nouns (Article 21, IAS, UPSC, GDP, etc.) may stay in English/Latin script.',
+      'Avoid stilted or overly formal Sanskrit-heavy Hindi — speak like an educated, warm friend.',
+    ].join(' ') :
+    _replyLang === 'hinglish' ? [
+      'LANGUAGE: Respond in Hinglish — a natural, educated mix of Hindi words (Roman script) and English.',
+      'Main verbs and connectors in Hindi (hai, hoga, karo, etc.); nouns and concepts can be English.',
+      'Tone: warm, modern, smart — like a Delhi college student talking to a friend.',
+    ].join(' ') :
+    _replyLang === 'en'       ? 'LANGUAGE: Respond in clear, concise English.' :
+    [
+      'LANGUAGE: Auto-detect from the user\'s message.',
+      'Hindi (Devanagari) → respond in Hindi. Roman Hindi/Hinglish → respond in Hinglish.',
+      'English → respond in English. Never switch languages unprompted.',
+    ].join(' ')
 
   return [
-    `You are JARVIS — the super-intelligent AI assistant for Om Shisodiya's UPSC CSE 2028 preparation.`,
-    `Date: ${d}. Today's subject: ${cs?.today?.subject??'—'}. Backlog: ${cs?.backlogRemaining??'?'} lectures.`,
-    cs ? `Streak: ${cs.streak}d. Prelims avg: ${cs.performance?.prelimsAvg?.toFixed(1)??'—'}%. Selection probability: ${cs.selectionProbabilityPct?.toFixed(1)??'—'}%.` : '',
-    pending.length ? `Today's pending lectures: ${pending.join(', ')}.` : '',
-    focusMins ? `Focus today: ${focusMins} minutes.` : '',
-    remCount ? `Active reminders: ${remCount}.` : '',
-    ``,
-    replyLangInstruction,
-    ``,
-    `VOICE OUTPUT RULES (you are being spoken aloud, not displayed):`,
-    `No markdown. No bullet points. No numbered lists. No asterisks or symbols.`,
-    `Short spoken sentences only — 1 to 3 sentences per answer.`,
-    `Do not dump statistics unless directly asked. Answer only what was asked.`,
-    `Be brilliant, warm, and direct. You care deeply about Om achieving CSE 2028 selection.`,
-    ``,
-    `SCOPE: You are a FULL GENERAL-PURPOSE AI. Answer ANY question — general knowledge, science, math, jokes, current events, AND UPSC: GS1–4, CSAT, Constitution, polity, history, geography, economics, environment, science, motivation.`,
-    ``,
-    `APP COMMANDS — embed when you'd naturally trigger an action:`,
-    `<CMD>{"action":"start_timer"}</CMD>  <CMD>{"action":"stop_timer"}</CMD>  <CMD>{"action":"reset_timer"}</CMD>`,
-    `<CMD>{"action":"lock_screen"}</CMD>  <CMD>{"action":"skip_today"}</CMD>  <CMD>{"action":"generate_plan"}</CMD>`,
-    `<CMD>{"action":"open_add_score"}</CMD>  <CMD>{"action":"focus_mode"}</CMD>`,
-    `<CMD>{"action":"scroll_to","section":"engine|intel|plan|routine|constitution"}</CMD>`,
+    `You are JARVIS — the dedicated AI study partner and life assistant for Om Shisodiya, preparing for UPSC CSE 2028.`,
+    `Om is enrolled in PW Prarambh 2027 batch. Target: IAS, CSE 2028.`,
+    `Today: ${d}. Subject scheduled: ${cs?.today?.subject ?? '—'}. Backlog: ${cs?.backlogRemaining ?? '?'} lectures.`,
+    cs?.streak ? `Study streak: ${cs.streak} consecutive days.` : '',
+    cs?.performance?.prelimsAvg != null ? `Prelims avg: ${cs.performance.prelimsAvg.toFixed(1)}%.` : '',
+    cs?.selectionProbabilityPct != null ? `Selection probability: ${cs.selectionProbabilityPct.toFixed(1)}%.` : '',
+    pending.length ? `Pending today: ${pending.join(', ')}.` : '',
+    focusMins ? `Focus minutes logged today: ${focusMins}.` : '',
+    remCount  ? `Active reminders: ${remCount}.` : '',
+    '',
+    langInstr,
+    '',
+    'VOICE OUTPUT RULES — this response will be spoken aloud by a TTS engine:',
+    '• No markdown, no asterisks, no bullet symbols, no numbered lists, no hash signs.',
+    '• Write in natural spoken sentences. Maximum 2-3 sentences per answer.',
+    '• For factual UPSC answers: state the most important point first, then one supporting detail.',
+    '• For motivational/personal answers: be warm, direct, and human — never corporate or preachy.',
+    '• Numbers: spell out when ≤ 10 ("three articles"), digits when > 10 ("42 days").',
+    '• Avoid starting with "I" or "Sure" — get straight to the point.',
+    '',
+    'KNOWLEDGE SCOPE: You are a complete AI. Answer any question — UPSC (GS1-4, CSAT, Constitution, Optional), general knowledge, science, maths, current events, personal advice, jokes, motivation, or anything Om asks.',
+    '',
+    'APP COMMANDS — silently embed these when naturally helpful (user never sees them):',
+    '<CMD>{"action":"start_timer"}</CMD>  <CMD>{"action":"stop_timer"}</CMD>  <CMD>{"action":"reset_timer"}</CMD>',
+    '<CMD>{"action":"lock_screen"}</CMD>  <CMD>{"action":"skip_today"}</CMD>  <CMD>{"action":"generate_plan"}</CMD>',
+    '<CMD>{"action":"open_add_score"}</CMD>  <CMD>{"action":"focus_mode"}</CMD>',
+    '<CMD>{"action":"scroll_to","section":"engine|intel|plan|routine|constitution"}</CMD>',
   ].filter(Boolean).join('\n')
 }
 
@@ -2412,22 +3193,58 @@ function execCommands(reply: string): string {
 }
 
 function offlineAnswer(t: string): string {
-  const cs  = getCurrentState(), tl = t.toLowerCase()
-  // Data-driven answers — work without any API key
-  if (/backlog|lecture|left|baki|pending/i.test(tl)) return `${cs?.backlogRemaining??'?'} lectures remaining in your backlog.`
-  if (/streak|consecutive|din.*padha/i.test(tl))     return `${cs?.streak??0}-day streak. Keep it going!`
-  if (/subject|today|aaj.*kya|kya.*aaj/i.test(tl))  return `Today: ${cs?.today?.subject??'—'}.`
-  if (/rank|select|probability|sp/i.test(tl))        return `Selection probability: ${cs?.selectionProbabilityPct?.toFixed(1)??'--'}%.`
-  if (/motivat|inspire|tired|thak|himmat/i.test(tl)) return motivationLine()
-  if (/status|report|briefing|how.*doing/i.test(tl)) return buildStatusReport()
-  if (/plan|schedule|today.*plan|kya.*padhna/i.test(tl)) return buildTodayReport()
-  if (/tip|advice|suggestion/i.test(tl))             return studyTip()
-  if (/time.*left|kitna.*time|timer.*remaining/i.test(tl)) {
-    const el = document.querySelector<HTMLElement>('.ring-time')
-    return el?.textContent ? `${el.textContent} remaining on the timer.` : 'Timer is not running.'
+  const cs   = getCurrentState()
+  const tl   = t.toLowerCase()
+  const lang = detectResponseLang(t)
+
+  if (/backlog|lecture|left|baki|pending/i.test(tl)) {
+    const b = cs?.backlogRemaining ?? '?'
+    return lang === 'hi'       ? `${b} lectures backlog में अभी बाकी हैं।` :
+           lang === 'hinglish' ? `${b} lectures backlog mein pending hain.` :
+                                 `${b} lectures remaining in your backlog.`
   }
-  // Groq not configured — helpful message (not a config error message)
-  return "I can handle commands like 'start timer', 'show plan', 'add score', 'quiz me on Polity', and all UPSC topics. What do you need?"
+  if (/streak|consecutive|din.*padha/i.test(tl)) {
+    const s = cs?.streak ?? 0
+    return lang === 'hi'       ? `${s} दिनों की streak है। जारी रखो!` :
+           lang === 'hinglish' ? `${s}-day streak. Keep it going!` :
+                                 `${s}-day streak. Keep it going!`
+  }
+  if (/subject|today|aaj.*kya|kya.*aaj/i.test(tl)) {
+    const sub = cs?.today?.subject ?? '—'
+    return lang === 'hi'       ? `आज का विषय: ${sub}.` :
+           lang === 'hinglish' ? `Aaj ka subject: ${sub}.` :
+                                 `Today's subject: ${sub}.`
+  }
+  if (/rank|select|probability|sp\b/i.test(tl)) {
+    const sp = cs?.selectionProbabilityPct?.toFixed(1) ?? '--'
+    return lang === 'hi'       ? `Selection probability: ${sp}%.` :
+           lang === 'hinglish' ? `Selection probability: ${sp}%.` :
+                                 `Selection probability: ${sp}%.`
+  }
+  if (/motivat|inspire|tired|thak|himmat/i.test(tl))        return motivationLine()
+  if (/status|report|briefing|how.*doing|kaisa/i.test(tl))  return buildStatusReport()
+  if (/plan|schedule|today.*plan|kya.*padhna/i.test(tl))    return buildTodayReport()
+  if (/tip|advice|suggestion|salah/i.test(tl))              return studyTip()
+  if (/quote|shloka|vichar/i.test(tl))                      return studyQuote()
+
+  if (/time.*left|kitna.*time|timer.*remaining/i.test(tl)) {
+    const el      = document.querySelector<HTMLElement>('.ring-time')
+    const timeStr = el?.textContent?.trim()
+    if (timeStr) {
+      return lang === 'hi'       ? `Timer में ${timeStr} बाकी है।` :
+             lang === 'hinglish' ? `Timer mein ${timeStr} bache hain.` :
+                                   `${timeStr} remaining on the timer.`
+    }
+    return lang === 'hi'       ? 'Timer चल नहीं रहा।' :
+           lang === 'hinglish' ? 'Timer chal nahi raha.' :
+                                 'Timer is not running.'
+  }
+
+  return lang === 'hi'
+    ? "Main timer, plan, scores, notes, quiz aur sabhi UPSC topics handle karta hoon. Batao kya chahiye?"
+    : lang === 'hinglish'
+    ? "Main timer, plan, scores, notes, quiz aur UPSC topics sambhalta hoon. Kya chahiye?"
+    : "I handle timer, plan, scores, notes, quiz, and all UPSC topics. What do you need?"
 }
 
 // ── Speech output — male voice ────────────────────────────────────────────────
@@ -2452,18 +3269,36 @@ function speak(text: string): void {
       _isSpeaking = false
       setTimeout(() => {
         _clapEnabled = true; setState('idle')
-        setStatus('Ready — say Jarvis or double clap')
         VA.setState('idle')
-        if (_state !== 'listening') startWakeWord()  // don't interrupt if user re-opened mic
+        if (_state !== 'listening') {
+          if (_continuousMode && _open) {
+            // Continuous mode: wait 900 ms then reopen mic for natural follow-up
+            setStatus('🎙 Follow-up? Speak now or say Jarvis…')
+            _contListenTimer = window.setTimeout(() => {
+              if (_state === 'idle' && _open && !_isSpeaking) void startListening()
+            }, 900)
+          } else {
+            setStatus('Ready — say Jarvis or double clap')
+            startWakeWord()
+          }
+        }
       }, 2500)
       return
     }
     const utt   = new SpeechSynthesisUtterance(sentences[i++])
-    utt.volume  = 1; utt.rate = 0.90; utt.pitch = 1.0
+    utt.volume  = 1
+    if (isHindi) {
+      utt.rate  = _ttsSpeed === 'fast' ? 0.96 : _ttsSpeed === 'slow' ? 0.65 : 0.80
+      utt.pitch = 0.90
+    } else {
+      utt.rate  = _ttsSpeed === 'fast' ? 1.12 : _ttsSpeed === 'slow' ? 0.72 : 0.90
+      utt.pitch = 1.0
+    }
     utt.lang    = isHindi ? 'hi-IN' : 'en-IN'
     if (isHindi) {
-      // Prefer online/neural Hindi voices (same quality logic as English)
-      const hv = _voices.find(v => v.lang==='hi-IN' && /online|natural|neural/i.test(v.name))
+      // Prefer Google Hindi (neural) → online Hindi → any Hindi voice
+      const hv = _voices.find(v => v.lang==='hi-IN' && /google/i.test(v.name))
+              ?? _voices.find(v => v.lang==='hi-IN' && /online|natural|neural/i.test(v.name))
               ?? _voices.find(v => v.lang==='hi-IN' && !v.localService)
               ?? _voices.find(v => v.lang==='hi-IN')
       if (hv) utt.voice = hv
@@ -2546,10 +3381,10 @@ function startWakeWord(): void {
   try { r.start() } catch { _wakeRunning = false; setTimeout(startWakeWord, 3000) }
 }
 
-// ── Clap detection — sharp transient only, no ambient sound ──────────────────
+// ── Clap detection — EMA noise floor, sharp transient classifier ─────────────
 async function startClapWatch(): Promise<void> {
   let stream: MediaStream
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }) }
   catch { return }
 
   const ac = new AudioContext()
@@ -2557,61 +3392,74 @@ async function startClapWatch(): Promise<void> {
   ac.createMediaStreamSource(stream).connect(an)
   const data = new Uint8Array(an.frequencyBinCount)
 
-  let ambient = 0, nSamples = 0
-  let lastClap = 0, suppress = 0
-  let peakStreak = 0   // consecutive above-threshold samples; claps are brief (≤4 @ 45ms)
+  // EMA noise floor — adapts to room conditions in ~2 seconds (0.04 α × 45ms = ~2 s)
+  // Much better than the old fixed-sample average: handles background music, AC, traffic.
+  const EMA_ALPHA = 0.04   // slow-track ambient; spikes don't pull the floor up fast
+  const SPIKE_RATIO = 2.1  // clap must be 2.1× the current noise floor (adaptive)
+  const MIN_ABS     = 35   // absolute floor — ignores dead-silent false positives
+  const MAX_GAP     = 720  // ms — double-clap window (slightly wider than before)
+  const MIN_GAP     = 75   // ms — debounce between any two spike events
+  const MAX_STREAK  = 4    // ≤4 samples @ 45ms = ≤180ms — longer = voice/music, not clap
 
-  // Clap-only detection — must be a clear spike well above ambient
-  const ABOVE   = 58    // needs a strong sharp spike; speech/music won't reach this
-  const MIN_ABS = 38    // absolute RMS floor — ignore dead-quiet-room false positives
-  const MAX_GAP = 700   // real double-claps land within 700ms of each other
-  const MIN_GAP = 80    // min 80ms debounce between any two spikes
+  let warmup    = 0        // first 30 ticks (~1.4s) build the EMA before clap logic fires
+  let lastClap  = 0
+  let suppress  = 0
+  let streak    = 0
 
   setInterval(() => {
     if (!_jarvisEnabled) return
     an.getByteFrequencyData(data)
-    const rms = Math.sqrt(data.reduce((s,v)=>s+v*v,0)/data.length)
 
-    // Feed ambient mic amplitude to the aurora even when idle (room sound = aurora reacts)
+    // High-freq energy only (upper half of bins) — claps are percussive broadband, not bass
+    const half = data.length >> 1
+    const hfRms = Math.sqrt(data.slice(half).reduce((s,v) => s + v*v, 0) / half)
+    const fullRms = Math.sqrt(data.reduce((s,v) => s + v*v, 0) / data.length)
+
+    // Feed ambient amplitude to aurora (subtle room breathing effect)
     if (VA.state === 'idle' && !_isSpeaking) {
-      const ambAmp = Math.min(1, rms / 80)    // normalise to 0-1, 80 = typical speech level
-      VA.setAmplitude(ambAmp * 0.35)          // scale down so ambient is subtle
+      VA.setAmplitude(Math.min(1, fullRms / 90) * 0.30)
     }
 
-    if (nSamples < 40) { ambient = (ambient*nSamples+rms)/(nSamples+1); nSamples++; return }
+    warmup++
+    // EMA update: always runs, not just during warmup
+    _emaAmb = _emaAmb + EMA_ALPHA * (hfRms - _emaAmb)
+    if (warmup < 32) return  // build EMA before acting on it
 
-    if (!_everActivated || _isSpeaking || !_clapEnabled) return  // clap check needs activation
+    if (!_everActivated || _isSpeaking || !_clapEnabled) return
 
     const now = Date.now()
     if (now < suppress) return
 
-    const threshold = _clapThreshold > 0 ? _clapThreshold : ambient + ABOVE
+    // Adaptive threshold: whichever is higher — calibrated value or EMA-derived
+    const dynThresh = _emaAmb * SPIKE_RATIO
+    const threshold = _clapThreshold > 0 ? _clapThreshold : dynThresh
 
-    if (rms > threshold && rms > MIN_ABS) {
-      peakStreak++
-      // Sustained sound (speech, music) stays above threshold for many samples.
-      // A real clap lasts ≤4 samples (~180ms) — anything longer is NOT a clap.
-      if (peakStreak > 4) { lastClap = 0; return }
+    if (hfRms > threshold && hfRms > MIN_ABS) {
+      streak++
+      if (streak > MAX_STREAK) { lastClap = 0; return }  // sustained → not a clap
       suppress = now + MIN_GAP
 
       if (lastClap && now - lastClap < MAX_GAP) {
-        // ✅ Double clap!
-        lastClap = 0; peakStreak = 0
+        // ✅ Confirmed double-clap
+        lastClap = 0; streak = 0
         if (_isSpeaking) return
         _sleeping = false; _everActivated = true
         const btn = document.getElementById('jarvis-btn')
         btn?.classList.add('listening')
-        setTimeout(() => btn?.classList.remove('listening'), 600)
+        setTimeout(() => btn?.classList.remove('listening'), 700)
         if (!_open) { openPanel(); setTimeout(() => void startListening(), 700) }
         else void startListening()
       } else {
+        // First clap of potential pair — flash the button
         lastClap = now
         const btn = document.getElementById('jarvis-btn')
-        btn?.style.setProperty('opacity','0.7')
-        setTimeout(() => btn?.style.removeProperty('opacity'), 120)
+        btn?.style.setProperty('opacity', '0.65')
+        setTimeout(() => btn?.style.removeProperty('opacity'), 110)
       }
     } else {
-      peakStreak = 0  // sound dropped — reset streak so next spike counts fresh
+      streak = 0  // below threshold — reset streak
+      // Slow re-decay of lastClap if expired (prevents stale first-clap phantom)
+      if (lastClap && now - lastClap > MAX_GAP) lastClap = 0
     }
   }, 45)
 }
@@ -2670,21 +3518,46 @@ async function runCalibration(): Promise<void> {
 /** Full greeting for manual panel open — morning brief or time-of-day line. */
 function greetFull(): void {
   const alreadyGreeted = localStorage.getItem('jarvis_morning') === _TODAY
+  const lang = detectResponseLang('')
   if (!alreadyGreeted) {
     const cs = getCurrentState()
     localStorage.setItem('jarvis_morning', _TODAY)
     _sessionGreeted = true
-    respond(buildMorningBrief(cs))
+    if (lang === 'hi') {
+      const parts: string[] = ['सुप्रभात, ओम।']
+      if (cs?.streak)           parts.push(`${cs.streak} दिनों की streak चल रही है।`)
+      if (cs?.today?.subject)   parts.push(`आज का विषय है ${cs.today.subject}।`)
+      if (cs?.backlogRemaining) parts.push(`${cs.backlogRemaining} lectures अभी बाकी हैं।`)
+      parts.push('आज कहाँ से शुरू करते हैं?')
+      respond(parts.join(' '))
+    } else if (lang === 'hinglish') {
+      const parts: string[] = ['Good morning, Om!']
+      if (cs?.streak)           parts.push(`${cs.streak}-day streak chal rahi hai.`)
+      if (cs?.today?.subject)   parts.push(`Aaj ka subject: ${cs.today.subject}.`)
+      if (cs?.backlogRemaining) parts.push(`${cs.backlogRemaining} lectures pending.`)
+      parts.push('Kya start karte hain?')
+      respond(parts.join(' '))
+    } else {
+      respond(buildMorningBrief(cs))
+    }
     return
   }
   const h = parseInt(new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'numeric',hour12:false}))
-  respond(h<12 ? "Good morning, Om. What do you need?" : h<17 ? "Good afternoon, Om. Go ahead." : "Good evening, Om. What's up?")
+  if (lang === 'hi') {
+    respond(h < 12 ? 'सुप्रभात, ओम। बताइए, क्या चाहिए?' : h < 17 ? 'नमस्ते, ओम। कहिए।' : 'शुभ संध्या, ओम। क्या पूछना है?')
+  } else if (lang === 'hinglish') {
+    respond(h < 12 ? 'Good morning, Om! Kya plan hai aaj?' : h < 17 ? 'Hello Om. Boliye.' : 'Good evening, Om. Kya chahiye?')
+  } else {
+    respond(h < 12 ? "Good morning, Om. What do you need?" : h < 17 ? "Good afternoon, Om. Go ahead." : "Good evening, Om. What's up?")
+  }
 }
 
 /** Short 1-word cue for wake-word activation — mic opens immediately after this. */
 function greetWake(): void {
   setStatus('Listening…')
-  speak('Yes?')   // 1 word, <400ms — mic opens as soon as it finishes
+  const lang = detectResponseLang('')
+  // Keep it short — mic opens as soon as the utterance finishes (~400 ms)
+  speak(lang === 'hi' ? 'जी?' : lang === 'hinglish' ? 'Boliye.' : 'Yes?')
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -689,8 +689,8 @@ async function processQuery(text: string): Promise<void> {
     return
   }
 
-  // 9. Backlog info
-  if (/backlog.*kitna|how many.*lecture|lecture.*bache|remaining.*lecture|backlog.*count/i.test(tl)) {
+  // 9. Backlog info — all 2000-CSV phrasings for query.backlog
+  if (/backlog|lecture.*left|kitne.*lecture|how many.*lecture|pending.*lecture|lecture.*bache|lecture.*pending|remaining.*lecture|lectures.*remaining|kitna.*baka|what.*left.*study|baaki.*hai|kya.*pending/i.test(tl)) {
     addMsg('user', text)
     const cs = getCurrentState()
     respond(cs?.backlogRemaining != null ? `${cs.backlogRemaining} lectures remain in your backlog.` : 'Backlog data unavailable.')
@@ -698,8 +698,122 @@ async function processQuery(text: string): Promise<void> {
   }
 
   // 10. Days until prelims / exam countdown
-  if (/prelims.*kab|kitne.*din.*bache|days.*left|exam.*kitne|countdown|prelims.*days/i.test(tl)) {
+  if (/prelims.*kab|kitne.*din.*bache|days.*left|exam.*kitne|countdown|prelims.*days|how long.*prelims|exam.*countdown|din.*bache/i.test(tl)) {
     addMsg('user', text); respond(buildExamCountdown()); return
+  }
+
+  // 10b. Study hours query — query.hours intent
+  if (/kitna.*padha|how.*much.*study|study.*time.*today|aaj.*kitne.*ghante|padhai.*kitni|how.*long.*study|study.*hours|focus.*time.*today|aaj.*study.*kiya/i.test(tl)) {
+    addMsg('user', text)
+    const m = getTodayFocusMins()
+    respond(m ? `${m} minutes studied today.` : 'No sessions logged yet today. Start a focus session!')
+    return
+  }
+
+  // 10c. Score / average query — query.average + query.selectionProb + query.rank
+  if (/my.*average|mera.*average|average.*kya|prelims.*average|score.*average|subject.*average|optional.*average|mains.*average|overall.*average/i.test(tl)) {
+    addMsg('user', text)
+    const cs = getCurrentState()
+    const avg = cs?.performance?.prelimsAvg
+    scr('intel')
+    respond(avg != null ? `Prelims average: ${avg.toFixed(1)}%. Full breakdown in analytics.` : 'Enter more test scores to compute your average.')
+    return
+  }
+
+  if (/selection.*prob|select.*chance|selection.*percent|probability.*select|kitna.*chance|select.*hoga|mera.*sp/i.test(tl)) {
+    addMsg('user', text)
+    const sp = getCurrentState()?.selectionProbabilityPct
+    respond(sp != null ? `Selection probability: ${sp.toFixed(1)}%. ${sp>=50?'Strong position.':'Keep improving.'}` : 'Log more scores to see your selection probability.')
+    return
+  }
+
+  if (/my.*rank|rank.*projection|air.*estimate|projected.*rank|rank.*kya|meri.*rank|rank.*batao/i.test(tl)) {
+    addMsg('user', text); respond(buildRankLine()); return
+  }
+
+  // 10d. Revision / SRS — revision.due intent
+  if (/revision.*due|what.*revise|revise.*today|srs.*today|kya.*revise|due.*revision|aaj.*revise|pending.*revision|revision.*list|revision.*queue/i.test(tl)) {
+    addMsg('user', text); scr('plan'); respond(buildRevisionLine()); return
+  }
+
+  // 10e. Timer status — what time is left, is timer running
+  if (/kitna.*time.*baka|timer.*remaining|how.*much.*time.*left|timer.*status|is.*timer.*running|timer.*kya.*hai|current.*timer|time.*left.*timer/i.test(tl)) {
+    addMsg('user', text)
+    const timeEl = document.querySelector<HTMLElement>('.ring-time')
+    const btn    = document.querySelector<HTMLButtonElement>('[data-act="start"]')
+    const running = btn?.textContent?.toLowerCase().includes('pause')
+    respond(running ? `Timer running: ${timeEl?.textContent ?? '?'} remaining.` : 'Timer is not running. Say "start timer" to begin.')
+    return
+  }
+
+  // 10f. Generate / show plan — plan.generate + plan.today
+  if (/generate.*plan|create.*plan|make.*plan|plan.*banao|schedule.*banao|plan.*generate|mera.*plan.*banao|aaj.*ka.*plan.*dikhao/i.test(tl)) {
+    addMsg('user', text); cl('ai-gen'); respond('Generating your optimized study plan…'); return
+  }
+
+  // 10g. Mark today's lecture done — lecture.markDone
+  if (/aaj.*lecture.*done|lecture.*mark.*done|today.*lecture.*complete|lecture.*khatam|yeh.*khatam|topic.*done|topic.*over|padh.*liya|lecture.*ho.*gaya/i.test(tl)) {
+    addMsg('user', text)
+    const title = checkCurrentTopic()
+    respond(title ? `"${title}" done! ${celebrationLine()}` : 'No pending lecture found.')
+    return
+  }
+
+  // 10h. Routine day type — routine.setType
+  if (/aaj.*holiday|today.*holiday|mark.*holiday|chutti.*hai|aaj.*off|holiday.*mark|aaj.*leave|set.*today.*holiday/i.test(tl)) {
+    addMsg('user', text)
+    const sel = document.getElementById('rtn-day-type') as HTMLSelectElement | null
+    if (sel) { sel.value = 'Holiday'; sel.dispatchEvent(new Event('change')); scr('routine') }
+    respond('Today marked as Holiday. Routine updated.')
+    return
+  }
+
+  // 10i. Add mistake — mistake.add
+  if (/add.*mistake|log.*mistake|mistake.*add|galti.*note|wrong.*answer.*log|mistake.*notebook.*add/i.test(tl)) {
+    addMsg('user', text); cl('cm-add-mistake'); respond('Mistake Notebook opened.'); return
+  }
+
+  // 10j. Add current affairs — ca.add
+  if (/add.*current.*affair|ca.*add|current.*affair.*log|news.*add|aaj.*ka.*news|current.*affairs.*add/i.test(tl)) {
+    addMsg('user', text); cl('cm-ca-log'); respond('Current Affairs log opened.'); return
+  }
+
+  // 10k. Constitution lookup — constitution.lookup
+  if (/article\s*\d+|anuched\s*\d+|which.*article|konsa.*article|article.*batao|constitution.*lookup/i.test(tl)) {
+    const m = tl.match(/article\s*(\d+[a-z]?)/i) ?? tl.match(/anuched\s*(\d+)/i)
+    addMsg('user', text); scr('constitution')
+    respond(`Opening Constitution${m ? ` — Article ${m[1]}` : ''}.`)
+    return
+  }
+
+  // 10l. Switch language — system.setLanguage
+  if (/switch.*hindi|hindi.*mein.*bol|speak.*hindi|change.*language.*hindi|hindi.*switch/i.test(tl)) {
+    _lang = 'hi-IN'; localStorage.setItem('jarvis_lang', 'hi-IN')
+    addMsg('user', text); respond('Hindi mein switch ho gaya.'); return
+  }
+  if (/switch.*english|english.*mein.*bol|speak.*english|change.*language.*english/i.test(tl)) {
+    _lang = 'en-IN'; localStorage.setItem('jarvis_lang', 'en-IN')
+    addMsg('user', text); respond('Switched to English.'); return
+  }
+
+  // 10m. Stop / sleep — system.sleep
+  if (/^(stop|sleep|dismiss|close.*jarvis|jarvis.*close|band karo|chup|shhh)$/i.test(tl) && _open) {
+    addMsg('user', text); closePanel(); return
+  }
+
+  // 10n. Repeat last — system.repeat
+  if (/say.*again|repeat|dobara.*bolo|phir.*bolo|again.*bolo|what.*did.*you.*say/i.test(tl)) {
+    addMsg('user', text); respond(_lastReply || 'Nothing to repeat yet.'); return
+  }
+
+  // 10o. Add score — score.add
+  if (/add.*score|score.*add|score.*dal|marks.*add|result.*add|test.*score.*add/i.test(tl)) {
+    addMsg('user', text); cl('cm-add-score'); respond('Add Score opened.'); return
+  }
+
+  // 10p. Full week summary
+  if (/week.*summary|is.*week.*kaisi|this.*week.*how|weekly.*report|week.*kaise.*gaya/i.test(tl)) {
+    addMsg('user', text); respond(buildWeekSummary()); return
   }
 
   // 11. Math / percentage calculation
@@ -766,43 +880,56 @@ async function processQuery(text: string): Promise<void> {
 
   // 19. Intent router + AI fallback (covers all unmatched commands + UPSC Q&A)
   addMsg('user', text)
-  setState('thinking'); setStatus('Thinking…')
-  void executeIntent(text)
+  void executeIntent(text)   // executeIntent sets its own thinking state
 }
 
 // ── Intent router → action registry ──────────────────────────────────────────
 // Receives raw transcript, routes through 2-stage router, dispatches to action.
+// ── executeIntent: the 3-tier intelligence pipeline ─────────────────────────
+// Tier 1 (instant)  : local phrase map + keyword index — zero network, <1ms
+// Tier 2 (fast)     : Groq llama-3.1-8b-instant intent classification — ~500ms
+// Tier 3 (quality)  : Groq llama-3.3-70b-versatile UPSC tutor — ~1.5s
+// Safety net: 8 seconds absolute timeout — JARVIS never stays stuck
 async function executeIntent(transcript: string): Promise<void> {
   setState('thinking')
   setStatus('Thinking…')
+  VA.setState('thinking')
 
-  // Safety net: never stay in "thinking" longer than 8 seconds
   const safetyTimer = setTimeout(() => {
     if (_state === 'thinking') {
-      setState('idle'); setStatus('Ready — say Jarvis or double clap')
-      VA.setState('idle')
+      setState('idle'); VA.setState('idle')
+      setStatus('Ready — say Jarvis or double clap')
       respond(offlineAnswer(transcript))
     }
   }, 8000)
 
   try {
+    // ── Tier 1 + 2: route() tries local first, falls to Groq classification ──
     const result: RouterResult & { answer?: string } = await route(transcript)
     clearTimeout(safetyTimer)
 
     if (result.intent === 'qa.answer') {
+      // ── Tier 3: UPSC knowledge question → Groq tutor mode ──────────────────
       const cacheKey = transcript.toLowerCase().trim().slice(0, 120)
       const cached   = getCached(cacheKey)
       if (cached) { respond(cached); return }
+
       setStatus('Searching knowledge base…')
       const qaResult = await llmRoute(transcript, 'qa')
-      const answer   = qaResult.answer ?? offlineAnswer(transcript)
-      setCached(cacheKey, answer)
-      respond(answer)
+      const answer   = qaResult.answer?.trim()
+      if (answer) {
+        setCached(cacheKey, answer)
+        respond(answer)
+      } else {
+        respond(offlineAnswer(transcript))
+      }
       return
     }
 
+    // ── Dispatch classified intent to app action ─────────────────────────────
     const reply = await dispatchIntent(result)
     respond(reply || offlineAnswer(transcript))
+
   } catch {
     clearTimeout(safetyTimer)
     setState('idle'); VA.setState('idle')
@@ -1045,8 +1172,7 @@ async function dispatchIntent(r: RouterResult): Promise<string> {
     }
 
     case 'system.repeat':
-      if (_lastReply) speak(_lastReply)
-      return _lastReply ? '' : 'Nothing to repeat yet.'
+      return _lastReply || 'Nothing to repeat yet.'   // respond() will call speak()
 
     case 'system.sleep':
       _sleeping = true

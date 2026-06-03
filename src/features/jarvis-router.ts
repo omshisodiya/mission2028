@@ -201,7 +201,8 @@ export async function llmRoute(transcript: string, mode: 'classify' | 'qa' = 'cl
 export async function route(transcript: string): Promise<RouterResult & { answer?: string }> {
   const local = localRoute(transcript)
   // High-confidence local match → instant response
-  if (local && local.confidence >= 0.50) return local
+  // Lower threshold: 0.25 so more 2000-CSV commands resolve locally without Groq
+  if (local && local.confidence >= 0.25) return local
   // Low-confidence or no match → ask Groq to classify
   return llmRoute(transcript, 'classify')
 }

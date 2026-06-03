@@ -42,17 +42,35 @@ loadVoices()
 
 function selectBestVoice(): void {
   if (!_voices.length) return
-  const isFemale = (v: SpeechSynthesisVoice) =>
-    /female|woman|girl|zira|heera|kalpana|samantha|karen|moira|fiona/i.test(v.name)
-  const isMale = (v: SpeechSynthesisVoice) =>
-    /male|man|boy|ravi|david|daniel|james|thomas|aaron/i.test(v.name)
 
-  const indian = _voices.filter(v => v.lang === 'hi-IN' || v.lang === 'en-IN')
-  const english = _voices.filter(v => v.lang.startsWith('en'))
-  const pool = indian.length ? indian : english.length ? english : _voices
+  // Score voices: Online/Neural > Natural > Google Neural > anything
+  // These Microsoft "Online" voices are streamed from Azure and sound genuinely human
+  function score(v: SpeechSynthesisVoice): number {
+    let s = 0
+    // Quality tier — highest to lowest
+    if (/online.*natural|natural.*online/i.test(v.name)) s += 200   // Microsoft Azure Neural streamed
+    if (/online/i.test(v.name))                          s += 150   // Any Microsoft online voice
+    if (/neural|wavenet|neural2/i.test(v.name))          s += 120   // Neural voices
+    if (/google/i.test(v.name) && v.localService === false) s += 80  // Google cloud voice
+    if (!v.localService)                                 s += 40    // Any cloud/streamed voice
+    // Language preference: India English > UK > US
+    if (v.lang === 'en-IN') s += 35
+    if (v.lang === 'en-GB') s += 25
+    if (v.lang === 'en-AU') s += 20
+    if (v.lang === 'en-US') s += 15
+    if (v.lang.startsWith('en')) s += 5
+    // Gender match
+    const femaleKw = /female|woman|aria|jenny|zira|heera|kalpana|sonia|neerja|priya/i
+    const maleKw   = /male|man|ravi|david|guy|james|mark|kumar/i
+    if (_voiceGender === 'female' && femaleKw.test(v.name)) s += 60
+    if (_voiceGender === 'male'   && maleKw.test(v.name))   s += 60
+    return s
+  }
 
-  const byGender = pool.filter(_voiceGender === 'female' ? isFemale : isMale)
-  _selectedVoice = byGender[0] ?? pool[0] ?? null
+  const sorted = [..._voices].sort((a, b) => score(b) - score(a))
+  _selectedVoice = sorted[0] ?? null
+  console.info('[JARVIS voice]', _selectedVoice?.name, '|', _selectedVoice?.lang,
+    '| local:', _selectedVoice?.localService)
 }
 
 // ── Clap calibration ───────────────────────────────────────────────────────────
@@ -952,7 +970,13 @@ function buildSystemPrompt(): string {
     `• Match his energy and language EXACTLY. Never switch language unless he does.`,
     `• For UPSC terms (like 'Article', 'Directive Principles'), keep them in English even in Hindi responses.`,
     ``,
-    `PERSONALITY: You are JARVIS — highly capable, concise, motivating. Address him as "Om" or "Commander". Never say "I can't" or "I don't know" — always find a way. You are his personal UPSC tutor, strategist, assistant, and command center — all in one.`,
+    `VOICE OUTPUT RULES — you are SPEAKING out loud, not writing:`,
+    `No markdown, no bold, no bullet points, no numbered lists, no dashes.`,
+    `Keep it short and conversational. 1-2 sentences for quick queries.`,
+    `For explanations use flowing natural speech, not lists.`,
+    `Say what you are doing BEFORE embedding commands.`,
+    ``,
+    `PERSONALITY: You are JARVIS — confident, warm, human. Address him as "Om". Sound like a knowledgeable friend, not a robot. Never say you cannot help.`,
   ]
   return parts.filter(Boolean).join('\n')
 }
@@ -1063,47 +1087,77 @@ function handleOffline(q: string): string {
 
 let _isSpeaking = false   // guard: stop recognition while speaking
 
+/** Make text sound more natural by adding breathing pauses at logical points. */
+function humanise(text: string): string {
+  return text
+    // Add pause after sentence-ending punctuation
+    .replace(/([.!?])\s+/g, '$1  ')
+    // Add slight pause after commas (already there, just ensure spacing)
+    .replace(/,\s*/g, ',  ')
+    // Remove markdown bold/italic that sounds robotic
+    .replace(/\*\*?(.*?)\*\*?/g, '$1')
+    .replace(/_{1,2}(.*?)_{1,2}/g, '$1')
+    // Remove backticks
+    .replace(/`(.*?)`/g, '$1')
+    .trim()
+}
+
 function speak(text: string): void {
   _synth.cancel()
   if (!_voices.length) loadVoices()
-
-  const utt = new SpeechSynthesisUtterance(text)
   const isHindi = /[ऀ-ॿ]/.test(text)
+  const processed = humanise(text)
 
-  // Natural, human-sounding settings
-  utt.volume = 1
-  if (_voiceGender === 'female') {
-    utt.rate  = 1.0    // natural pace
-    utt.pitch = 1.15   // slightly higher, natural female
-  } else {
-    utt.rate  = 0.95   // slightly slower, authoritative
-    utt.pitch = 0.82   // deeper, natural male
+  // Split into sentences for more natural chunked delivery (avoids robotic monotone)
+  const chunks = processed
+    .split(/(?<=[.!?।])\s+/)
+    .filter(s => s.trim().length > 0)
+    .slice(0, 8)   // max 8 chunks to avoid timeout
+
+  if (chunks.length === 0) return
+
+  let idx = 0
+  _isSpeaking = true
+  _recognition?.stop(); _recognition = null
+  setState('speaking', isHindi ? 'बोल रहा हूँ…' : 'Speaking…')
+
+  function sayNext(): void {
+    if (idx >= chunks.length) {
+      _isSpeaking = false
+      setState('idle', 'Jarvis बोलें या type करें | Ready')
+      setTimeout(() => { if (!_wakeActive) startWakeWordListener() }, 800)
+      return
+    }
+    const utt = new SpeechSynthesisUtterance(chunks[idx++])
+    utt.volume = 1
+    utt.lang   = isHindi ? 'hi-IN' : 'en-IN'
+
+    // Humanoid voice settings — key: DON'T change pitch artificially
+    // Let the selected voice's natural pitch do the work
+    if (_voiceGender === 'female') {
+      utt.rate  = 0.92   // slightly slower = more natural, less robotic
+      utt.pitch = 1.0    // neutral — let the voice's own pitch be natural
+    } else {
+      utt.rate  = 0.88   // calm, measured pace
+      utt.pitch = 1.0    // neutral — deeper voices don't need pitch lowering
+    }
+
+    // Voice selection: prioritize Hindi voice for Hindi, else use best available
+    if (isHindi) {
+      const hiVoice = _voices.find(v => v.lang === 'hi-IN' && /online|natural/i.test(v.name))
+                   ?? _voices.find(v => v.lang === 'hi-IN')
+      if (hiVoice) utt.voice = hiVoice
+      else if (_selectedVoice) utt.voice = _selectedVoice
+    } else {
+      if (_selectedVoice) utt.voice = _selectedVoice
+    }
+
+    utt.onend   = sayNext
+    utt.onerror = sayNext   // skip chunk on error, don't freeze
+    _synth.speak(utt)
   }
 
-  if (isHindi) {
-    utt.lang = 'hi-IN'
-    const hiVoice = _voices.find(v => v.lang === 'hi-IN')
-    if (hiVoice) utt.voice = hiVoice
-    else if (_selectedVoice) utt.voice = _selectedVoice
-  } else {
-    utt.lang = 'en-IN'
-    if (_selectedVoice) utt.voice = _selectedVoice
-  }
-
-  utt.onstart = () => {
-    _isSpeaking = true
-    // Stop any active recognition while JARVIS speaks — prevents self-listening loop
-    _recognition?.stop(); _recognition = null
-    setState('speaking', isHindi ? 'बोल रहा हूँ…' : 'Speaking…')
-  }
-  utt.onend = () => {
-    _isSpeaking = false
-    setState('idle', 'Jarvis बोलें या type करें | Ready')
-    // Restart wake word after a short delay so it doesn't catch echo
-    setTimeout(() => { if (!_open) startWakeWordListener() }, 800)
-  }
-  utt.onerror = () => { _isSpeaking = false; setState('idle', 'Ready') }
-  _synth.speak(utt)
+  sayNext()
 }
 
 // ── Greeting ──────────────────────────────────────────────────────────────────

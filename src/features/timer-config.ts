@@ -59,7 +59,7 @@ function setup(): void {
   window.addEventListener('jarvis:set-timer', (e: Event) => {
     const detail = (e as CustomEvent<{ focus: number }>).detail
     if (!detail?.focus) return
-    cfg.focus = Math.max(1, Math.min(180, Number(detail.focus)))
+    cfg.focus = Math.max(1, Math.min(120, Number(detail.focus)))  // UI cap is 120 min
     store()?.set('timerConfig', cfg)
     if (iv) { clearInterval(iv!); iv = null }
     running = false

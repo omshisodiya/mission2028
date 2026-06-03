@@ -83,10 +83,10 @@ export function showAnswerLog(onDone: OnDone): void {
 
 /** Re-render the answer-writing tracker bar chart in #plan with real data. */
 export async function bindAnswerTracker(): Promise<void> {
-  const counts = await weeklyAnswerCounts(6).catch(() => [] as number[])
-  if (!counts.length) return
-
-  const total = counts.reduce((s, v) => s + v, 0)
+  const rawCounts = await weeklyAnswerCounts(6).catch(() => [] as number[])
+  // Pad to exactly 6 weeks so bar indices are always valid
+  const counts = Array.from({ length: 6 }, (_, i) => rawCounts[i] ?? 0)
+  const total  = counts.reduce((s, v) => s + v, 0)
 
   // Find the Answer-writing tracker panel by its card-label text
   let trackerPanel: HTMLElement | null = null
@@ -103,7 +103,7 @@ export async function bindAnswerTracker(): Promise<void> {
   if (totalEl) totalEl.textContent = `${total} answers`
 
   // Update bar heights
-  const maxCount = Math.max(...counts, 1)
+  const maxCount = Math.max(...counts, 1)  // guard: never 0 via spread
   const bars = panel.querySelectorAll<HTMLElement>('.col')
   counts.forEach((v, i) => {
     if (i < bars.length) {
@@ -113,8 +113,8 @@ export async function bindAnswerTracker(): Promise<void> {
     }
   })
 
-  // Add "Log Answer" button if not already present
-  const head = panel.querySelector<HTMLElement>('[style*="space-between"]')
+  // Add "Log Answer" button if not already present — use card-label as anchor, not CSS
+  const head = panel.querySelector<HTMLElement>('.card-label') ?? panel.querySelector<HTMLElement>('h3,h4,[class*="head"]')
   if (head && !panel.querySelector('#al-add-btn')) {
     const btn = document.createElement('button')
     btn.id = 'al-add-btn'

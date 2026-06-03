@@ -68,8 +68,7 @@ export function showAddScore(onDone: OnDone): void {
             </div>
           </div>
           <div style="margin-top:8px;font-size:12px;color:var(--muted);font-family:var(--font-mono);">
-            Score = Correct×2 − Wrong×0.66 &nbsp;|&nbsp;
-            Accuracy = Correct/Attempted×100
+            UPSC GS: Correct×2 − Wrong×⅔ &nbsp;|&nbsp; CSAT: Correct×2.5 (no negative) &nbsp;|&nbsp; Accuracy = Correct/Attempted
           </div>
         </details>
         <div class="as-score-display" id="as-pct">—</div>
@@ -100,15 +99,23 @@ export function showAddScore(onDone: OnDone): void {
   const wrongIn    = overlay.querySelector<HTMLInputElement>('[name=wrong]')
   const pctEl      = document.getElementById('as-pct')!
   function updatePct() {
-    const cor = parseFloat(correctIn?.value ?? '')
-    const wrg = parseFloat(wrongIn?.value ?? '')
-    const att = parseFloat(attemptedIn?.value ?? '')
+    const cor  = parseFloat(correctIn?.value ?? '')
+    const wrg  = parseFloat(wrongIn?.value ?? '')
+    const att  = parseFloat(attemptedIn?.value ?? '')
+    const catEl = overlay.querySelector<HTMLSelectElement>('[name=category]')
+    const isCsat = catEl?.value === 'csat'
+
     if (!isNaN(cor) && !isNaN(wrg)) {
-      const ts  = cor * 2 - wrg * 0.66
-      const acc = !isNaN(att) && att > 0 ? (cor / att * 100).toFixed(1) + '%' : '—'
-      pctEl.textContent = `Score: ${ts.toFixed(1)} · Accuracy: ${acc}`
-      if (!isNaN(ts)) { scoreIn.value = ts.toFixed(2) }
+      // Correct UPSC formula: GS = 2 correct − 2/3 wrong; CSAT = 2.5 correct, no negative
+      const ts   = isCsat ? cor * 2.5 : cor * 2 - wrg * (2 / 3)
+      const acc  = !isNaN(att) && att > 0 ? (cor / att * 100).toFixed(1) + '%' : '—'
+      const warn = (!isNaN(att) && att > 0 && cor > att) ? ' ⚠ correct > attempted' :
+                   (!isNaN(att) && att > 0 && (cor + wrg) > att) ? ' ⚠ correct+wrong > attempted' : ''
+      pctEl.style.color = warn ? 'var(--bad,#e05555)' : ''
+      pctEl.textContent = `Score: ${ts.toFixed(1)} · Accuracy: ${acc}${warn}`
+      if (!isNaN(ts)) scoreIn.value = ts.toFixed(2)
     } else {
+      pctEl.style.color = ''
       const s = parseFloat(scoreIn.value), m = parseFloat(maxIn.value)
       pctEl.textContent = (!isNaN(s) && !isNaN(m) && m > 0)
         ? (s / m * 100).toFixed(1) + '%' : '—'
@@ -136,6 +143,17 @@ export function showAddScore(onDone: OnDone): void {
     const attempted = parseInt(fd.get('attempted') as string) || null
     const correct   = parseInt(fd.get('correct') as string)   || null
     const wrong     = parseInt(fd.get('wrong') as string)     || null
+
+    // MCQ validation
+    if (attempted !== null && correct !== null && correct > attempted) {
+      err.textContent = 'Correct answers cannot exceed attempted.'; return
+    }
+    if (attempted !== null && correct !== null && wrong !== null && (correct + wrong) > attempted) {
+      err.textContent = 'Correct + Wrong cannot exceed attempted.'; return
+    }
+    if (score > max_score) {
+      err.textContent = 'Score cannot exceed max score.'; return
+    }
     btn.disabled = true
     btn.textContent = 'Saving…'
     err.textContent = ''

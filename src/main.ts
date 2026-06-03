@@ -155,6 +155,94 @@ async function syncAndBoot(userId: string): Promise<void> {
   void initConstitution()
   initConfigurableTimer()
   initJarvis()
+
+  // Phase 6+: Global enhancements
+  injectKeyboardShortcutsHelp()
+  injectOfflineIndicator()
+}
+
+// ── Keyboard shortcuts help panel ─────────────────────────────────────────────
+function injectKeyboardShortcutsHelp(): void {
+  // ? key shows shortcuts modal
+  document.addEventListener('keydown', e => {
+    if (e.key === '?' && !['INPUT','TEXTAREA','SELECT'].includes((e.target as HTMLElement).tagName)) {
+      e.preventDefault()
+      showShortcutsModal()
+    }
+  })
+}
+
+function showShortcutsModal(): void {
+  if (document.getElementById('shortcuts-modal')) return
+  const m = document.createElement('div')
+  m.id = 'shortcuts-modal'
+  m.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(5,7,15,.92);backdrop-filter:blur(10px);padding:20px;'
+  m.innerHTML = `
+    <div style="background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r);padding:28px 32px;width:100%;max-width:520px;max-height:80vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;color:var(--accent);">⬡ KEYBOARD SHORTCUTS</span>
+        <button id="sc-close" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;">&times;</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;line-height:1.8;">
+        ${[
+          ['J',           'Toggle JARVIS panel'],
+          ['?',           'Show this shortcuts guide'],
+          ['Ctrl+K / Cmd+K', 'Open command menu'],
+          ['Escape',      'Close any open panel'],
+          ['Double-clap', 'Wake JARVIS (after first "Jarvis")'],
+          ['',            ''],
+          ['Voice: "start timer"', 'Start focus session'],
+          ['Voice: "show plan"', 'Navigate to planner'],
+          ['Voice: "add score"', 'Open score entry'],
+          ['Voice: "quiz me on Polity"', 'Start MCQ quiz'],
+          ['Voice: "emergency Polity"', 'Emergency cram mode'],
+          ['Voice: "interview practice"', 'UPSC interview simulation'],
+          ['Voice: "daily reflection"', 'Voice journal entry'],
+          ['Voice: "ambient mode"', 'Silent focus mode'],
+          ['Voice: "scan score"', 'Camera score reader'],
+        ].map(([k, v]) => k ? `
+          <tr style="border-bottom:1px solid var(--line-2);">
+            <td style="padding:6px 12px 6px 0;font-family:var(--font-mono);color:var(--accent);white-space:nowrap;">${k}</td>
+            <td style="padding:6px 0;color:var(--ink-soft);">${v}</td>
+          </tr>` : '<tr><td colspan="2" style="height:8px;"></td></tr>').join('')}
+      </table>
+      <p style="margin-top:16px;font-size:11.5px;color:var(--muted);font-family:var(--font-mono);">
+        743 voice commands available — say "Jarvis, what can you do?" for a full list.
+      </p>
+    </div>
+  `
+  document.body.appendChild(m)
+  document.getElementById('sc-close')?.addEventListener('click', () => m.remove())
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  // ESC closes
+  const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { m.remove(); document.removeEventListener('keydown', esc) } }
+  document.addEventListener('keydown', esc)
+}
+
+// ── Offline status indicator ──────────────────────────────────────────────────
+function injectOfflineIndicator(): void {
+  const banner = document.createElement('div')
+  banner.id = 'offline-banner'
+  banner.style.cssText = [
+    'position:fixed;bottom:0;left:0;right:0;z-index:9000;',
+    'background:rgba(224,85,85,.92);backdrop-filter:blur(8px);',
+    'color:#fff;text-align:center;padding:8px 16px;font-family:var(--font-mono);',
+    'font-size:12px;letter-spacing:.06em;transform:translateY(100%);transition:transform .3s ease;',
+    'display:flex;align-items:center;justify-content:center;gap:12px;',
+  ].join('')
+  banner.innerHTML = `
+    <span>📴 OFFLINE — changes are saved locally and will sync when you reconnect</span>
+    <button onclick="this.parentElement.style.transform='translateY(100%)'" style="background:none;border:1px solid rgba(255,255,255,.4);border-radius:4px;color:#fff;padding:2px 8px;cursor:pointer;font-size:11px;">Dismiss</button>
+  `
+  document.body.appendChild(banner)
+
+  window.addEventListener('offline', () => {
+    banner.style.transform = 'translateY(0)'
+  })
+  window.addEventListener('online', () => {
+    banner.style.transform = 'translateY(100%)'
+  })
+  if (!navigator.onLine) banner.style.transform = 'translateY(0)'
 }
 
 // ── Add Score in command menu ─────────────────────────────────────────────────

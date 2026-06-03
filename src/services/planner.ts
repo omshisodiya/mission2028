@@ -123,6 +123,13 @@ export function computePlan(
   today: string,
   fixedRevisions: FixedRevision[] = [],
 ): PlanResult {
+  // Guard: exam date must be in the future; if past, extend it 365 days from today
+  const effectiveExamDate = settings.examDate > today
+    ? settings.examDate
+    : addDays(today, 365)  // graceful fallback — planner keeps working
+
+  const resolvedSettings = { ...settings, examDate: effectiveExamDate }
+
   // Only undone lectures enter the backlog
   const backlog = allLectures
     .filter(l => !l.done)
@@ -140,8 +147,8 @@ export function computePlan(
   }
 
   // ── 1. Build day calendar: today → examDate ─────────────────────────────────
-  const bufferStart = addDays(settings.examDate, -settings.bufferDays)
-  const totalDays   = diffDays(today, settings.examDate)
+  const bufferStart = addDays(resolvedSettings.examDate, -resolvedSettings.bufferDays)
+  const totalDays   = diffDays(today, resolvedSettings.examDate)
   const calendar: PlanDay[] = []
 
   for (let i = 0; i <= totalDays; i++) {

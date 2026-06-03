@@ -1868,13 +1868,64 @@ async function processQuery(text: string): Promise<void> {
     return
   }
 
+  // ── JARVIS App Integration Helpers ───────────────────────────────────────
+
+  // Score entry guidance (UPSC formula coaching)
+  if (/how.*calculate.*score|upsc.*score.*formula|negative.*marking.*formula|scoring.*upsc/i.test(tl)) {
+    addMsg('user', text)
+    respond(L(detectResponseLang(text),
+      'UPSC GS Prelims: Each correct = 2 marks, each wrong = minus 2/3 mark. Formula: Score = Correct × 2 − Wrong × 0.667. Attempt only when 60%+ confident. CSAT has no negative marking: each correct = 2.5 marks.',
+      'UPSC GS Prelims: सही = 2 marks, गलत = minus 2/3 mark। Formula: Score = Correct × 2 − Wrong × 0.667। 60%+ confidence पर ही attempt करो। CSAT में negative नहीं: सही = 2.5 marks।',
+      'UPSC GS: Sahi = 2 marks, galat = minus 2/3. Formula: Correct×2 − Wrong×0.667. 60%+ confident ho tabhi attempt karo. CSAT mein negative nahi hai.'
+    )); return
+  }
+
+  // Export data guidance
+  if (/export.*data|backup.*data|download.*data|data.*export/i.test(tl)) {
+    addMsg('user', text); cl('cm-export-btn')
+    respond(L(detectResponseLang(text),
+      'Export panel opened. Choose JSON for full backup or CSV for spreadsheet. Export works only when online.',
+      'Export panel खुल गया। JSON for full backup, CSV for spreadsheet। Online होने पर ही export होगा।',
+      'Export panel khul gaya. JSON = full backup, CSV = spreadsheet. Online hona zaroori hai.'
+    )); return
+  }
+
+  // Settings guidance
+  if (/exam.*date.*set|set.*exam.*date|change.*exam.*date|exam.*date.*kab.*set/i.test(tl)) {
+    addMsg('user', text); cl('cm-settings')
+    respond(L(detectResponseLang(text),
+      'Settings opened. Set your Prelims date in the Exam Dates section. The date must be in the future. The planner recalculates automatically.',
+      'Settings खुल गई। Exam Dates section में Prelims date set करो। Date future में होनी चाहिए।',
+      'Settings khuli. Exam Dates section mein Prelims date set karo. Date future mein honi chahiye.'
+    )); return
+  }
+
+  // Sync status
+  if (/sync.*working|data.*synced|is.*data.*saved|kya.*data.*save.*hua/i.test(tl)) {
+    addMsg('user', text)
+    const online = navigator.onLine
+    const qSize  = Object.keys(JSON.parse(localStorage.getItem('mission2028_sync_queue') ?? '{}')).length
+    const lang   = detectResponseLang(text)
+    respond(L(lang,
+      online
+        ? (qSize ? `Online. ${qSize} changes syncing to cloud right now.` : 'Online. All data is synced to the cloud.')
+        : `Offline. ${qSize} changes queued — will sync when you reconnect. Your data is safe locally.`,
+      online
+        ? (qSize ? `Online. ${qSize} changes cloud mein sync ho rahe hain.` : 'Online. Sab data cloud mein sync ho gaya है।')
+        : `Offline। ${qSize} changes queue में हैं — reconnect पर sync होंगे।`,
+      online
+        ? (qSize ? `Online. ${qSize} changes sync ho rahe hain.` : 'Online. Data synced hai.')
+        : `Offline. ${qSize} changes queued hain — reconnect hone pe sync honge.`
+    )); return
+  }
+
   // ── Wake Word with "Hey Jarvis" prefix enhancement ───────────────────────
   if (/^(?:hey|yo|bhai|oi|ok|hello)\s+jarvis\b/i.test(tl)) {
     const cmd = tl.replace(/^(?:hey|yo|bhai|oi|ok|hello)\s+jarvis\s*/i, '').trim()
     if (cmd) { void processQuery(cmd); return }
   }
 
-  // 18. CMDS — fast pattern-action table (693+ patterns)
+  // 18. CMDS — fast pattern-action table (743+ patterns)
   for (const cmd of CMDS) {
     if (cmd.re.test(tl)) {
       addMsg('user', text)

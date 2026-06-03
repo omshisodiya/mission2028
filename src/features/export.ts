@@ -72,15 +72,33 @@ export function injectExportButton(): void {
   card.innerHTML = `
     <span class="cm-no">↓</span>
     <span class="cm-t">Export Data</span>
-    <span class="cm-d">Download JSON backup</span>
+    <span class="cm-d" id="cm-export-desc">JSON or CSV backup of all data</span>
   `
   card.addEventListener('click', async e => {
     e.preventDefault()
+    const desc = document.getElementById('cm-export-desc')!
+
+    // Show format choice
+    const fmt = confirm('Export as JSON?\n\nClick OK for JSON (full data)\nClick Cancel for CSV (spreadsheet)')
     card.style.opacity = '.5'
-    card.querySelector('.cm-d')!.textContent = 'Exporting…'
-    try { await exportJSON() } catch (err) { console.error('[export]', err) }
+    desc.textContent   = 'Exporting — please wait…'
+
+    try {
+      if (fmt) {
+        await exportJSON()
+        desc.textContent = 'JSON downloaded!'
+      } else {
+        await exportCSV()
+        desc.textContent = 'CSV downloaded!'
+      }
+    } catch (err) {
+      console.error('[export]', err)
+      const isOffline = !navigator.onLine
+      desc.textContent = isOffline ? 'Offline — connect to export cloud data.' : 'Export failed. Try again.'
+    }
+
     card.style.opacity = ''
-    card.querySelector('.cm-d')!.textContent = 'Download JSON backup'
+    setTimeout(() => { desc.textContent = 'JSON or CSV backup of all data' }, 4000)
   })
   grid.appendChild(card)
 }

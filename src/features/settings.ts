@@ -22,7 +22,11 @@ export function loadSettings(): PlannerSettings {
 }
 
 export function saveSettings(s: PlannerSettings): void {
-  getStore()?.set('settings', s)
+  const store = getStore()
+  if (!store) return
+  // Merge with existing store entry so non-PlannerSettings keys (e.g. focusMode) are preserved
+  const existing = (store.get('settings', {}) ?? {}) as object
+  store.set('settings', { ...existing, ...s })
 }
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
@@ -109,17 +113,34 @@ export function showSettings(onSave: (s: PlannerSettings) => void): void {
     sl?.addEventListener('input', () => { if (vl) vl.textContent = parseFloat(sl.value).toFixed(1) + '×' })
   })
 
+  const saveErr = document.createElement('p')
+  saveErr.style.cssText = 'color:var(--bad,#e05555);font-family:var(--font-mono);font-size:11.5px;margin:4px 0 0;min-height:16px;'
+  document.querySelector('.st-save-row')?.insertAdjacentElement('beforebegin', saveErr)
+
   document.getElementById('st-save')?.addEventListener('click', () => {
+    saveErr.textContent = ''
+    const examDateVal = (document.getElementById('exam-date') as HTMLInputElement)?.value ?? DEFAULT_SETTINGS.examDate
+    const today = new Date().toISOString().slice(0, 10)
+    if (examDateVal && examDateVal <= today) {
+      saveErr.textContent = 'Exam date must be in the future.'
+      return
+    }
+    const weekCap = Object.fromEntries(
+      DAYS.map(d => [d, Math.max(0, Math.min(720, parseInt((document.getElementById(`cap-${d}`) as HTMLInputElement)?.value ?? '0')))])
+    )
+    const totalCap = Object.values(weekCap).reduce((a, b) => a + b, 0)
+    if (totalCap === 0) {
+      saveErr.textContent = 'At least one day must have study capacity > 0.'
+      return
+    }
     const s: PlannerSettings = {
-      weekdayCapacity: Object.fromEntries(
-        DAYS.map(d => [d, parseInt((document.getElementById(`cap-${d}`) as HTMLInputElement)?.value ?? '0')])
-      ),
-      examDate:   (document.getElementById('exam-date') as HTMLInputElement)?.value ?? DEFAULT_SETTINGS.examDate,
-      bufferDays: parseInt((document.getElementById('buf-days') as HTMLInputElement)?.value ?? '60'),
+      weekdayCapacity: weekCap,
+      examDate:   examDateVal,
+      bufferDays: Math.max(0, Math.min(180, parseInt((document.getElementById('buf-days') as HTMLInputElement)?.value ?? '60'))),
       subjectWeightage: Object.fromEntries(
         SUBJECTS.map(sub => {
-          const id = sub.replace(/\s+/g, '-')
-          const val = parseFloat((document.getElementById(`wt-${id}`) as HTMLInputElement)?.value ?? '1.0')
+          const id  = sub.replace(/\s+/g, '-')
+          const val = Math.max(0.5, Math.min(2.0, parseFloat((document.getElementById(`wt-${id}`) as HTMLInputElement)?.value ?? '1.0')))
           return [sub, val]
         })
       ),

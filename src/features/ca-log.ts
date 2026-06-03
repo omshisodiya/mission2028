@@ -127,8 +127,9 @@ export async function bindCAFeed(): Promise<void> {
 
   const MONTH_ABBR = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
   feedDiv.innerHTML = entries.map(e => {
-    const [, m, d] = e.ca_date.split('-').map(Number)
-    const dateStr = `${MONTH_ABBR[m - 1]} ${String(d).padStart(2, '0')}`
+    const parts = (e.ca_date ?? '').split('-').map(Number)
+    const m = parts[1] ?? 1; const d = parts[2] ?? 1
+    const dateStr = `${MONTH_ABBR[(m - 1)] ?? '?'} ${String(d).padStart(2, '0')}`
     const gs = e.gs_paper ?? 'GS'
     return `
       <div class="feed-item">

@@ -22,6 +22,7 @@ import { initFocusMode } from './features/focus-mode'
 import { injectExportButton } from './features/export'
 import { initConfigurableTimer } from './features/timer-config'
 import { initScreenLock } from './features/screen-lock'
+import { initJarvis } from './features/jarvis'
 // checkStartupLock already imported at the top
 
 // UI shells mount synchronously so sections are always visible.
@@ -147,9 +148,10 @@ async function syncAndBoot(userId: string): Promise<void> {
   injectAddScoreToMenu()
   injectExportButton()
 
-  // Phase 6: Constitution + configurable timer
+  // Phase 6: Constitution + configurable timer + JARVIS
   void initConstitution()
   initConfigurableTimer()
+  initJarvis()
 }
 
 // ── Add Score in command menu ─────────────────────────────────────────────────

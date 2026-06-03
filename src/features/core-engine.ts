@@ -417,27 +417,34 @@ function bindBriefing(s: CoreState): void {
   const parts: string[] = []
 
   // Today's plan
-  if (s.today.targetQuestions > 0)       parts.push(`${s.today.targetQuestions} MCQs target`)
-  if (s.today.mainsTarget >= 1)          parts.push(`${s.today.mainsTarget} answer to write`)
+  const mcqCount = s.today.targetQuestions
+  if (mcqCount > 0)              parts.push(`${mcqCount} MCQ${mcqCount === 1 ? '' : 's'} target`)
+  const ansCount = s.today.mainsTarget
+  if (ansCount >= 1)             parts.push(`write ${ansCount} mains answer${ansCount > 1 ? 's' : ''}`)
 
   // Study hours
-  if (s.hours.today > 0)                 parts.push(`${s.hours.today.toFixed(1)}h logged`)
-  else                                   parts.push('0h — start the focus timer')
+  if (s.hours.today > 0)        parts.push(`${s.hours.today.toFixed(1)}h logged today`)
+  else                          parts.push('0h logged — use the focus timer to track study')
 
   // Consistency
-  if (s.consistencyPct != null)          parts.push(`consistency ${s.consistencyPct}%`)
+  if (s.consistencyPct != null) parts.push(`${s.consistencyPct}% consistency`)
 
   // Test performance
-  if (s.performance.prelimsAvg != null)  parts.push(`prelims avg ${s.performance.prelimsAvg.toFixed(1)}%`)
-  if (s.selectionProbabilityPct != null) parts.push(`SP ${s.selectionProbabilityPct.toFixed(1)}% → ${s.rankProjection}`)
+  if (s.performance.prelimsAvg != null) parts.push(`prelims avg ${s.performance.prelimsAvg.toFixed(1)}%`)
+  // Guard: only show rank projection if both values are present and non-null
+  if (s.selectionProbabilityPct != null && s.rankProjection) {
+    parts.push(`SP ${s.selectionProbabilityPct.toFixed(1)}% → ${s.rankProjection}`)
+  } else if (s.selectionProbabilityPct != null) {
+    parts.push(`SP ${s.selectionProbabilityPct.toFixed(1)}%`)
+  }
 
   // Backlog
-  if (s.backlogRemaining > 0)            parts.push(`${s.backlogRemaining} lectures in backlog`)
-  else if (s.cumulative.testsTaken > 0)  parts.push('backlog cleared')
+  if (s.backlogRemaining > 0)    parts.push(`${s.backlogRemaining} lectures in backlog`)
+  else if (s.cumulative.testsTaken > 0) parts.push('all lectures cleared')
 
   el.textContent = parts.length
     ? parts.join(' · ')
-    : `${s.today.subject} day — log your routine inputs to see your briefing.`
+    : `${s.today.subject || 'Study'} day — log your routine inputs to see your briefing.`
 }
 
 // routine card — patch hours display after focus timer fires

@@ -157,6 +157,7 @@ async function syncAndBoot(userId: string): Promise<void> {
   initJarvis()
 
   // Phase 6+: Global enhancements
+  injectToastSystem()
   injectKeyboardShortcutsHelp()
   injectOfflineIndicator()
 }
@@ -217,6 +218,55 @@ function showShortcutsModal(): void {
   // ESC closes
   const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { m.remove(); document.removeEventListener('keydown', esc) } }
   document.addEventListener('keydown', esc)
+}
+
+// ── Global Toast Notification System ─────────────────────────────────────────
+// Lightweight, accessible toasts for save confirmations, sync status, milestones.
+// Usage (from any module): window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg, type } }))
+function injectToastSystem(): void {
+  const container = document.createElement('div')
+  container.id = 'toast-container'
+  container.style.cssText = [
+    'position:fixed;top:16px;right:16px;z-index:10000;',
+    'display:flex;flex-direction:column;gap:8px;pointer-events:none;',
+    'max-width:320px;',
+  ].join('')
+  document.body.appendChild(container)
+
+  window.addEventListener('app:toast', ((e: CustomEvent<{ msg: string; type?: 'success'|'error'|'info'|'warn' }>) => {
+    const { msg, type = 'info' } = e.detail
+    const colors: Record<string, string> = {
+      success: 'rgba(69,224,168,.95)',
+      error:   'rgba(224,85,85,.95)',
+      warn:    'rgba(240,181,74,.95)',
+      info:    'rgba(80,120,200,.95)',
+    }
+    const icons: Record<string, string> = { success:'✓', error:'✕', warn:'⚠', info:'ℹ' }
+    const t = document.createElement('div')
+    t.style.cssText = [
+      `background:${colors[type]};color:${type==='warn'?'#000':'#fff'};`,
+      'border-radius:8px;padding:10px 14px;font-family:var(--font-mono);font-size:12px;',
+      'display:flex;align-items:center;gap:8px;pointer-events:auto;',
+      'box-shadow:0 4px 20px rgba(0,0,0,.35);',
+      'animation:toast-in .25s ease forwards;',
+      'max-width:100%;word-break:break-word;',
+    ].join('')
+    t.innerHTML = `<span style="font-weight:700;flex-shrink:0;">${icons[type]}</span><span>${msg}</span>`
+    container.appendChild(t)
+    // Auto-remove after 3.5 s
+    setTimeout(() => {
+      t.style.animation = 'toast-out .25s ease forwards'
+      setTimeout(() => t.remove(), 250)
+    }, 3500)
+  }) as EventListener)
+
+  // Inject toast keyframes
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes toast-in  { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes toast-out { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(20px)} }
+  `
+  document.head.appendChild(style)
 }
 
 // ── Offline status indicator ──────────────────────────────────────────────────

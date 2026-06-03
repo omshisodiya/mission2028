@@ -70,13 +70,12 @@ async function _flush(): Promise<void> {
     _retries++
     localStorage.setItem(RETRY_KEY, String(_retries))
     if (_retries >= MAX_RETRIES) {
-      // Persistent failure — discard queue to prevent infinite loop; local data intact
       console.warn('[store-sync] Max retries reached; discarding sync queue.')
       _retries = 0
       localStorage.setItem(RETRY_KEY, '0')
       localStorage.setItem(QUEUE_KEY, '{}')
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Sync failed after 5 retries — local data is safe.', type: 'warn' } }))
     } else {
-      // Re-queue on transient failure
       _queue = { ...snap, ..._queue }
       localStorage.setItem(QUEUE_KEY, JSON.stringify(_queue))
     }
@@ -85,6 +84,11 @@ async function _flush(): Promise<void> {
     localStorage.setItem(RETRY_KEY, '0')
   }
 }
+
+// Fire a toast when coming back online
+window.addEventListener('online', () => {
+  window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: '✓ Back online — syncing data', type: 'success' } }))
+})
 
 // Flush the queue when the browser comes back online
 window.addEventListener('online', () => void _flush())

@@ -312,20 +312,54 @@ const clickStart = () => {
   if (btn && (btn.textContent?.toLowerCase().includes('start') || btn.textContent?.toLowerCase().includes('resume'))) btn.click()
 }
 
+/** Convert spoken number text to an integer.
+ *  Handles: "24", "2 4", "twenty four", "twenty-four", "bees", "chaubees" */
+function parseSpokenMinutes(text: string): number | null {
+  const t = text.toLowerCase().trim()
+
+  // 1. Plain digits: "24 minutes"
+  const plain = t.match(/\b(\d{1,3})\s*(?:min|minute|minutes|mins|minat|मिनट)/i)
+  if (plain) { const n = parseInt(plain[1]); if (n >= 1 && n <= 180) return n }
+
+  // 2. Two separate digits heard as "2 4 minutes" → join → "24"
+  const split = t.match(/\b(\d)\s+(\d)\s*(?:min|minute|minutes|mins|minat|मिनट)/i)
+  if (split) { const n = parseInt(split[1] + split[2]); if (n >= 1 && n <= 180) return n }
+
+  // 3. Three separate digits "1 2 0" → "120"
+  const split3 = t.match(/\b(\d)\s+(\d)\s+(\d)\s*(?:min|minute|minutes)/i)
+  if (split3) { const n = parseInt(split3[1]+split3[2]+split3[3]); if (n >= 1 && n <= 180) return n }
+
+  // 4. English word numbers
+  const TENS: Record<string, number>  = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, ninety:90 }
+  const ONES: Record<string, number>  = {
+    one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,
+    eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,
+    seventeen:17,eighteen:18,nineteen:19
+  }
+  if (t.match(/min|minat/i)) {
+    const words = t.replace(/-/g,' ').split(/\s+/)
+    let total = 0
+    for (const w of words) {
+      if (TENS[w]) total += TENS[w]
+      else if (ONES[w]) total += ONES[w]
+    }
+    if (total >= 1 && total <= 180) return total
+  }
+
+  return null
+}
+
 async function processQuery(text: string): Promise<void> {
   if (isVisionTrigger(text)) { addMsg('user', text); openVisionCapture(text, respond); return }
 
-  // Custom timer minutes: "50 minute ka timer"
-  const minsMatch = text.match(/(\d+)\s*(?:min|minute|minutes|mins)/i)
-  if (minsMatch) {
-    const mins = parseInt(minsMatch[1])
-    if (mins >= 1 && mins <= 180) {
-      addMsg('user', text)
-      window.dispatchEvent(new CustomEvent('jarvis:set-timer', { detail: { focus: mins } }))
-      setTimeout(clickStart, 350)
-      respond(`${mins} minute ka timer set karke start kiya.`)
-      return
-    }
+  // Smart timer minutes parser — handles "24", "2 4", "twenty four", etc.
+  const mins = parseSpokenMinutes(text)
+  if (mins !== null) {
+    addMsg('user', text)
+    window.dispatchEvent(new CustomEvent('jarvis:set-timer', { detail: { focus: mins } }))
+    setTimeout(clickStart, 350)
+    respond(`${mins} minute ka timer set karke start kiya.`)
+    return
   }
 
   // Quick commands
@@ -506,31 +540,48 @@ async function startClapWatch(): Promise<void> {
 
   let ambient = 0, nSamples = 0
   let lastClap = 0, suppress = 0
-  const ABOVE = 34, MAX_GAP = 1200, MIN_GAP = 55
+
+  // More sensitive defaults — clap detection needs to work in real rooms
+  const ABOVE   = 22    // lowered from 34 — detect softer claps
+  const MAX_GAP = 1400  // up to 1.4s between claps
+  const MIN_GAP = 50    // min 50ms gap (debounce)
 
   setInterval(() => {
     if (_isSpeaking || !_clapEnabled) return
     an.getByteFrequencyData(data)
     const rms = Math.sqrt(data.reduce((s,v)=>s+v*v,0)/data.length)
 
+    // Auto-calibrate ambient for first 2 seconds
     if (nSamples < 40) { ambient = (ambient*nSamples+rms)/(nSamples+1); nSamples++; return }
 
     const now = Date.now()
     if (now < suppress) return
 
+    // Use stored calibrated threshold if available, else ambient-relative
     const threshold = _clapThreshold > 0 ? _clapThreshold : ambient + ABOVE
     if (rms > threshold) {
       suppress = now + MIN_GAP
+
       if (lastClap && now - lastClap < MAX_GAP) {
+        // ✅ Double clap!
         lastClap = 0
         if (_isSpeaking) return
-        document.getElementById('jarvis-btn')?.classList.add('listening')
-        setTimeout(() => document.getElementById('jarvis-btn')?.classList.remove('listening'), 500)
+        // Flash the button
+        const btn = document.getElementById('jarvis-btn')
+        btn?.classList.add('listening')
+        setTimeout(() => btn?.classList.remove('listening'), 600)
+
         if (!_open) { openPanel(); setTimeout(() => void startListening(), 700) }
         else void startListening()
-      } else { lastClap = now }
+      } else {
+        lastClap = now
+        // Single clap detected — briefly dim button so user gets feedback
+        const btn = document.getElementById('jarvis-btn')
+        btn?.style.setProperty('opacity', '0.7')
+        setTimeout(() => btn?.style.removeProperty('opacity'), 120)
+      }
     }
-  }, 50)
+  }, 45)  // slightly faster polling
 }
 
 // ── Calibration ───────────────────────────────────────────────────────────────

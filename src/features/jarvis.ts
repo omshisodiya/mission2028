@@ -14,6 +14,9 @@ import { todayIST } from '../services/core'
 type JState = 'idle' | 'listening' | 'thinking' | 'speaking'
 interface Message { role: 'user' | 'assistant'; content: string }
 
+// Session memory — persists context within the browser session
+const _memory: Record<string, string> = {}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let _state: JState = 'idle'
 let _history: Message[] = []
@@ -90,10 +93,8 @@ export function initJarvis(): void {
   btn.id = 'jarvis-btn'
   btn.title = 'Mission JARVIS — AI Assistant (press J or double clap)'
   // The canvas for wave animation sits INSIDE the button ring
-  btn.innerHTML = `
-    <canvas id="jarvis-btn-canvas"></canvas>
-    <span class="jb-icon" style="position:relative;z-index:2;">J</span>
-  `
+  // Pure aura orb — no text, just the living canvas animation
+  btn.innerHTML = `<canvas id="jarvis-btn-canvas"></canvas>`
   btn.addEventListener('click', togglePanel)
   document.body.appendChild(btn)
 
@@ -336,86 +337,121 @@ function resizeCanvas(): void {
   if (_ctx) _ctx.scale(devicePixelRatio, devicePixelRatio)
 }
 
-// Siri-style wave descriptors — 5 layered organic waves
-const SIRI_WAVES = [
-  { freq: 1.3, speed: 1.8,  phase: 0.0,  ampMul: 1.00, r:240, g:181, b: 74, opacity: 0.95, lw: 3.0 },
-  { freq: 2.1, speed:-1.5,  phase: 0.9,  ampMul: 0.75, r:255, g:220, b:110, opacity: 0.70, lw: 2.2 },
-  { freq: 0.8, speed: 2.3,  phase: 2.2,  ampMul: 0.55, r:255, g:245, b:165, opacity: 0.50, lw: 2.5 },
-  { freq: 3.2, speed:-0.9,  phase: 1.5,  ampMul: 0.35, r:200, g:155, b: 55, opacity: 0.40, lw: 1.5 },
-  { freq: 1.8, speed: 1.0,  phase: 3.3,  ampMul: 0.20, r:255, g:255, b:200, opacity: 0.25, lw: 1.0 },
-]
-
 function startAnimation(): void {
   cancelAnimationFrame(_rafId)
-  // Draw on the button's canvas (waves flow inside the ring)
   const btnCanvas = document.getElementById('jarvis-btn-canvas') as HTMLCanvasElement | null
   if (!btnCanvas) return
   const btn = document.getElementById('jarvis-btn')!
-  const size = btn.offsetWidth || 68
-  btnCanvas.width  = size * devicePixelRatio
-  btnCanvas.height = size * devicePixelRatio
-  btnCanvas.style.width  = size + 'px'
-  btnCanvas.style.height = size + 'px'
-  const c2 = btnCanvas.getContext('2d')!
-  c2.scale(devicePixelRatio, devicePixelRatio)
-  const W = size, H = size
+  const size = btn.offsetWidth || 72
+  const dpr  = devicePixelRatio
+  btnCanvas.width  = size * dpr
+  btnCanvas.height = size * dpr
+  const c = btnCanvas.getContext('2d')!
+  c.scale(dpr, dpr)
+  const W = size, H = size, cx = W / 2, cy = H / 2, R = W / 2 - 1
   let t = 0
-  const fft = new Uint8Array(128)
+  const fft = new Uint8Array(64)
 
   function frame(): void {
     _rafId = requestAnimationFrame(frame)
-    const c = c2   // draw on the button canvas
     c.clearRect(0, 0, W, H)
-    t += 0.012
+    t += 0.014
 
-    // Get real mic amplitude (0-1)
-    let audioAmp = 0
+    // Clip everything to the circle
+    c.save()
+    c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.clip()
+
+    // Mic amplitude
+    let amp = 0
     if (_analyser) {
       _analyser.getByteFrequencyData(fft)
-      audioAmp = fft.reduce((s, v) => s + v, 0) / fft.length / 255
+      amp = fft.reduce((s, v) => s + v, 0) / fft.length / 255
     }
 
-    // State → target wave height
-    const baseH = H * 0.5
-    let maxAmp: number
-    switch (_state) {
-      case 'idle':      maxAmp = baseH * 0.10 + Math.sin(t * 0.8) * baseH * 0.03; break
-      case 'listening': maxAmp = baseH * 0.22 + audioAmp * baseH * 0.28; break
-      case 'thinking':  maxAmp = baseH * 0.14 + Math.sin(t * 3.5) * baseH * 0.06; break
-      case 'speaking':  maxAmp = baseH * 0.18 + Math.sin(t * 7) * baseH * 0.10 + audioAmp * baseH * 0.15; break
+    // State intensity — how energetic the orb is
+    const intensity = _state === 'idle'     ? 0.45 + Math.sin(t * 1.1) * 0.08
+                   : _state === 'listening' ? 0.75 + amp * 0.35 + Math.sin(t * 5) * 0.08
+                   : _state === 'thinking'  ? 0.60 + Math.sin(t * 3.2) * 0.12
+                   :  /* speaking */          0.68 + amp * 0.20 + Math.sin(t * 9) * 0.12
+
+    // ── 1. Dark void background ──────────────────────────────────────────────
+    c.fillStyle = '#05070a'
+    c.fillRect(0, 0, W, H)
+
+    // ── 2. Deep core bloom ───────────────────────────────────────────────────
+    const coreR  = R * (0.38 + intensity * 0.18)
+    const bloom  = c.createRadialGradient(cx, cy, 0, cx, cy, coreR)
+    bloom.addColorStop(0,   `rgba(255,235,140,${intensity * 0.95})`)
+    bloom.addColorStop(0.3, `rgba(240,181,74, ${intensity * 0.65})`)
+    bloom.addColorStop(0.7, `rgba(200,130,40, ${intensity * 0.20})`)
+    bloom.addColorStop(1,   'rgba(200,130,40,0)')
+    c.fillStyle = bloom
+    c.beginPath(); c.arc(cx, cy, coreR, 0, Math.PI * 2); c.fill()
+
+    // ── 3. Mid aura ring (breathing) ─────────────────────────────────────────
+    const midR = R * (0.65 + Math.sin(t * 0.9) * 0.05)
+    const mid  = c.createRadialGradient(cx, cy, midR * 0.5, cx, cy, midR)
+    mid.addColorStop(0,   'rgba(240,181,74,0)')
+    mid.addColorStop(0.6, `rgba(240,181,74,${intensity * 0.18})`)
+    mid.addColorStop(1,   'rgba(240,181,74,0)')
+    c.fillStyle = mid
+    c.beginPath(); c.arc(cx, cy, midR, 0, Math.PI * 2); c.fill()
+
+    // ── 4. Orbital energy particles ──────────────────────────────────────────
+    const pCount  = _state === 'listening' ? 8 : _state === 'speaking' ? 10 : 5
+    const pSpeed  = _state === 'idle' ? 0.4 : 1.4
+    for (let i = 0; i < pCount; i++) {
+      const a  = (i / pCount) * Math.PI * 2 + t * pSpeed + i * 0.3
+      const pr = R * (0.72 + Math.sin(t * 2.5 + i * 1.3) * 0.10)
+      const px = cx + Math.cos(a) * pr
+      const py = cy + Math.sin(a) * pr
+      const ps = R * 0.07 * intensity
+      const pg = c.createRadialGradient(px, py, 0, px, py, ps * 3)
+      pg.addColorStop(0, `rgba(255,245,180,${intensity * 1.0})`)
+      pg.addColorStop(0.5, `rgba(240,181,74,${intensity * 0.4})`)
+      pg.addColorStop(1,   'rgba(240,181,74,0)')
+      c.fillStyle = pg
+      c.beginPath(); c.arc(px, py, ps * 3, 0, Math.PI * 2); c.fill()
     }
 
-    // ── Siri waves ──────────────────────────────────────────────────────────
-    SIRI_WAVES.forEach(w => {
-      const amp = maxAmp * w.ampMul
-      c.beginPath()
-      c.shadowColor = `rgba(${w.r},${w.g},${w.b},0.55)`
-      c.shadowBlur  = _state === 'idle' ? 6 : 18
-      c.strokeStyle = `rgba(${w.r},${w.g},${w.b},${w.opacity})`
-      c.lineWidth   = w.lw
-      c.lineCap     = 'round'
-      c.lineJoin    = 'round'
-
-      for (let x = 0; x <= W; x += 2) {
-        // Envelope: taper smoothly at both edges (Siri characteristic)
-        const env = Math.pow(Math.sin((x / W) * Math.PI), 0.7)
-        const y   = H / 2 + amp * env *
-                    Math.sin((x / W) * w.freq * Math.PI * 2 + t * w.speed + w.phase)
-        x === 0 ? c.moveTo(x, y) : c.lineTo(x, y)
+    // ── 5. Aura spikes / voice energy (non-idle) ─────────────────────────────
+    if (_state !== 'idle') {
+      const spikes = 16
+      for (let i = 0; i < spikes; i++) {
+        const a    = (i / spikes) * Math.PI * 2 + t * 0.8
+        const sAmp = amp * R * 0.28 + Math.sin(t * 4 + i * 0.7) * R * 0.09 * intensity
+        const x1   = cx + Math.cos(a) * R * 0.60
+        const y1   = cy + Math.sin(a) * R * 0.60
+        const x2   = cx + Math.cos(a) * (R * 0.60 + sAmp)
+        const y2   = cy + Math.sin(a) * (R * 0.60 + sAmp)
+        const alpha = intensity * (0.4 + amp * 0.5)
+        c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2)
+        c.strokeStyle = `rgba(255,215,100,${alpha})`
+        c.lineWidth = 1.8; c.lineCap = 'round'; c.stroke()
       }
-      c.stroke()
-      c.shadowBlur = 0
-    })
+    }
 
-    // ── Soft centre glow (replaces the arc reactor) ─────────────────────────
-    const glowSize = _state === 'listening'
-      ? 28 + audioAmp * 20 + Math.sin(t * 6) * 4
-      : _state === 'idle' ? 18 + Math.sin(t * 1.2) * 4 : 22
-    const g = c.createRadialGradient(W/2, H/2, 0, W/2, H/2, glowSize)
-    g.addColorStop(0, 'rgba(240,181,74,.45)')
-    g.addColorStop(1, 'rgba(240,181,74,0)')
-    c.beginPath(); c.arc(W/2, H/2, glowSize, 0, Math.PI * 2)
-    c.fillStyle = g; c.fill()
+    // ── 6. Rotating aurora arc ring ───────────────────────────────────────────
+    const rSpeed = _state === 'thinking' ? 1.5 : 0.35
+    for (let i = 0; i < 6; i++) {
+      const startA = (i / 6) * Math.PI * 2 + t * rSpeed
+      const sweep  = (Math.PI / 4) * (0.6 + Math.sin(t + i) * 0.4)
+      const alpha  = (0.5 + Math.sin(t * 1.5 + i * 1.1) * 0.3) * intensity * 0.7
+      c.beginPath()
+      c.arc(cx, cy, R * 0.88, startA, startA + sweep)
+      c.strokeStyle = `rgba(255,200,80,${alpha})`
+      c.lineWidth = 2.2; c.stroke()
+    }
+
+    // ── 7. Outer soft halo ────────────────────────────────────────────────────
+    const halo = c.createRadialGradient(cx, cy, R * 0.78, cx, cy, R)
+    halo.addColorStop(0, 'rgba(240,181,74,0)')
+    halo.addColorStop(0.5, `rgba(240,181,74,${intensity * 0.12})`)
+    halo.addColorStop(1, 'rgba(240,181,74,0)')
+    c.fillStyle = halo
+    c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.fill()
+
+    c.restore()
   }
   frame()
 }
@@ -1006,13 +1042,17 @@ function buildSystemPrompt(): string {
     `• Match his energy and language EXACTLY. Never switch language unless he does.`,
     `• For UPSC terms (like 'Article', 'Directive Principles'), keep them in English even in Hindi responses.`,
     ``,
-    `VOICE OUTPUT RULES — you are SPEAKING out loud, not writing:`,
-    `No markdown, no bold, no bullet points, no numbered lists, no dashes.`,
-    `Keep it short and conversational. 1-2 sentences for quick queries.`,
-    `For explanations use flowing natural speech, not lists.`,
-    `Say what you are doing BEFORE embedding commands.`,
+    `SESSION CONTEXT:`,
+    Object.keys(_memory).length ? Object.entries(_memory).map(([k,v]) => `  ${k}: ${v}`).join('\n') : '  (none yet)',
     ``,
-    `PERSONALITY: You are JARVIS — confident, warm, human. Address him as "Om". Sound like a knowledgeable friend, not a robot. Never say you cannot help.`,
+    `VOICE SPEECH RULES — critical:`,
+    `You are speaking aloud. Never use markdown, bullets, numbers, bold, dashes, backticks.`,
+    `Short conversational replies. 1 sentence for simple actions. 2-3 for explanations.`,
+    `Sound warm and human like a trusted friend who knows UPSC deeply.`,
+    `When you learn something about Om's preferences or progress, remember it in the conversation.`,
+    `Never start with "I" — start with "Om," or the action or the answer directly.`,
+    ``,
+    `PERSONALITY: JARVIS — advanced, warm, human AI for Om's UPSC journey. You know his full prep status. You are proactive, perceptive, and never robotic. Address him as "Om", never "Commander".`,
   ]
   return parts.filter(Boolean).join('\n')
 }

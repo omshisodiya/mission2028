@@ -16,6 +16,7 @@ import { initConstitution } from './features/constitution'
 import { initFocusMode } from './features/focus-mode'
 import { injectExportButton } from './features/export'
 import { initConfigurableTimer } from './features/timer-config'
+import { initScreenLock } from './features/screen-lock'
 
 // UI shells mount synchronously so sections are always visible.
 mountPlannerUI()
@@ -40,9 +41,9 @@ mountRoutineSection()
 // Focus Mode inits immediately (reads saved preference from store on first boot)
 // — called before auth so it's active as soon as the engine runs
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initFocusMode)
+  document.addEventListener('DOMContentLoaded', () => { initFocusMode(); initScreenLock() })
 } else {
-  initFocusMode()
+  initFocusMode(); initScreenLock()
 }
 
 // Register service worker for PWA / offline

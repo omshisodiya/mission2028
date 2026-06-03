@@ -78,15 +78,32 @@ body[data-va=speaking]  .va-dot{background:#ffe39a;box-shadow:0 0 10px #ffe39a;}
 .va-tx{font-family:'Sora',system-ui,sans-serif;font-weight:500;font-size:clamp(20px,3.2vw,32px);line-height:1.28;color:#eaf0ff;max-width:760px;text-shadow:0 2px 30px rgba(0,0,0,.65);}
 .va-caret{display:inline-block;width:3px;height:1em;background:#f0b54a;margin-left:3px;vertical-align:-2px;border-radius:2px;animation:vaBlink 1s steps(1) infinite;}
 @keyframes vaBlink{50%{opacity:0}}
-/* ── Master toggle ── */
-#va-toggle{position:fixed;top:18px;right:120px;z-index:850;height:36px;display:flex;align-items:center;gap:8px;
-  padding:0 16px 0 12px;background:rgba(5,7,15,.92);border:1.5px solid rgba(240,181,74,.25);border-radius:20px;
-  cursor:pointer;color:#6f7d9e;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
-  transition:border-color .25s,color .25s,box-shadow .25s;backdrop-filter:blur(12px);user-select:none;white-space:nowrap;}
-#va-toggle:hover{border-color:rgba(240,181,74,.5);color:#b9c6e6;}
-#va-toggle.on{border-color:rgba(240,181,74,.6);color:#f0b54a;box-shadow:0 0 18px rgba(240,181,74,.18);}
-#va-toggle .vd{width:7px;height:7px;border-radius:50%;background:#6f7d9e;flex-shrink:0;transition:background .25s,box-shadow .25s;}
-#va-toggle.on .vd{background:#f0b54a;box-shadow:0 0 8px #f0b54a;}
+/* ── Master toggle (top-right, always visible) ── */
+#va-toggle{
+  position:fixed;top:16px;right:16px;z-index:900;
+  height:38px;display:flex;align-items:center;gap:9px;
+  padding:0 18px 0 14px;
+  background:rgba(5,7,15,.95);
+  border:1.5px solid rgba(240,181,74,.22);
+  border-radius:22px;cursor:pointer;
+  color:#6f7d9e;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  transition:border-color .25s,color .25s,box-shadow .3s,background .25s;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  user-select:none;white-space:nowrap;
+}
+#va-toggle:hover{border-color:rgba(240,181,74,.5);color:#b9c6e6;background:rgba(8,11,22,.98);}
+#va-toggle.on{
+  border-color:rgba(240,181,74,.65);color:#f0b54a;
+  box-shadow:0 0 0 1px rgba(240,181,74,.15),0 4px 20px rgba(240,181,74,.14);
+}
+#va-toggle .vd{
+  width:9px;height:9px;border-radius:50%;background:#6f7d9e;
+  flex-shrink:0;transition:background .25s,box-shadow .3s;
+}
+#va-toggle.on .vd{background:#f0b54a;box-shadow:0 0 10px rgba(240,181,74,.8);}
+/* OFF state: greyed, clearly disabled-looking */
+#va-toggle:not(.on){opacity:.65;}
+#va-toggle:not(.on):hover{opacity:1;}
 /* ── Hide all when disabled ── */
 body.va-off .va-aurora{opacity:0!important;}body.va-off #va-glow{opacity:0!important;}
 body.va-off #va-rim{box-shadow:none!important;}body.va-off #va-dim,body.va-off #va-ring,body.va-off #va-dock{display:none;}
@@ -106,8 +123,10 @@ body.va-off #va-rim{box-shadow:none!important;}body.va-off #va-dim,body.va-off #
   <span class="va-label"><span class="va-dot"></span><span id="va-st">Listening…</span></span>
   <div class="va-tx" id="va-tx"></div>
 </div>
-<button id="va-toggle" title="Toggle JARVIS on / off">
-  <span class="vd"></span><span id="va-tl">JARVIS</span>
+<button id="va-toggle" title="Toggle JARVIS voice assistant on / off">
+  <span class="vd"></span>
+  <span style="font-family:'JetBrains Mono',ui-monospace,monospace;">⬡ JARVIS</span>
+  <span id="va-tl" style="font-size:9px;padding:2px 6px;border-radius:4px;border:1px solid currentColor;letter-spacing:.1em;">ON</span>
 </button>
 
 <script>
@@ -186,7 +205,7 @@ body.va-off #va-rim{box-shadow:none!important;}body.va-off #va-dim,body.va-off #
     enabled=on;localStorage.setItem('jarvis_enabled',String(on));
     body.classList.toggle('va-off',!on);
     if(tog)tog.classList.toggle('on',on);
-    if(tlbl)tlbl.textContent=on?'JARVIS':'OFF';
+    if(tlbl)tlbl.textContent=on?'ON':'OFF';
     if(!on)window.VA.setState('idle');
     var fn=window.__jarvisToggle;
     if(fn&&typeof fn==='function')fn._enabled=on;

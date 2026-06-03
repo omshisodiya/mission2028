@@ -143,18 +143,22 @@ export async function llmRoute(transcript: string, mode: 'classify' | 'qa' = 'cl
   const edgeFnUrl = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/jarvis-router` : ''
 
   if (edgeFnUrl) {
-    // Preferred path — Groq key stays server-side
+    // Preferred path — Groq key stays server-side (4s timeout to prevent 30s hang)
+    const ctrl = new AbortController()
+    const tid  = setTimeout(() => ctrl.abort(), 4000)
     try {
       const res = await fetch(edgeFnUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript, mode }),
+        signal: ctrl.signal,
       })
+      clearTimeout(tid)
       if (!res.ok) throw new Error(`Edge ${res.status}`)
       const d = await res.json() as RouterResult & { answer?: string }
       if (!_allIntentIds.includes(d.intent ?? '')) d.intent = 'qa.answer'
       return d
-    } catch { /* fall through to direct */ }
+    } catch { clearTimeout(tid) /* fall through to direct Groq call */ }
   }
 
   // Direct browser Groq call (fallback when Edge Function not deployed)

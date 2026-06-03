@@ -112,14 +112,14 @@ function setJarvisEnabled(on: boolean): void {
   _jarvisEnabled = on
   localStorage.setItem('jarvis_enabled', String(on))
   const btn = document.getElementById('jarvis-btn')
-  const tog = document.getElementById('jarvis-master-toggle')
+  const tog = document.getElementById('va-toggle')
   const lbl = tog?.querySelector<HTMLElement>('span:last-child')
 
   if (on) {
     document.body.classList.remove('va-off')
     btn?.classList.remove('disabled')
     tog?.classList.add('on')
-    if (lbl) lbl.textContent = 'JARVIS'
+    if (lbl) lbl.textContent = 'ON'
     startWakeWord()
   } else {
     _wakeRec?.stop(); _wakeRec = null; _wakeRunning = false
@@ -175,12 +175,13 @@ export function initJarvis(): void {
   ;(window as Window & { __jarvisToggle?: () => void }).__jarvisToggle = toggleJarvis
   startAura()
 
-  // Toggle button already mounted early in main.ts — just wire the click handler
-  const tog = document.getElementById('jarvis-master-toggle')
-  if (tog) {
-    tog.onclick = toggleJarvis
-    if (_jarvisEnabled) tog.classList.add('on')
-    else document.getElementById('jarvis-btn')?.classList.add('disabled')
+  // Toggle button (mounted in index.html) — wire the full handler + sync state label
+  const togBtn = document.getElementById('va-toggle')
+  if (togBtn) {
+    togBtn.onclick = toggleJarvis
+    const lbl = togBtn.querySelector<HTMLElement>('#va-tl')
+    if (_jarvisEnabled) { togBtn.classList.add('on'); if (lbl) lbl.textContent = 'ON' }
+    else { togBtn.classList.remove('on'); document.getElementById('jarvis-btn')?.classList.add('disabled'); if (lbl) lbl.textContent = 'OFF' }
   }
 
   setTimeout(() => {
@@ -297,8 +298,7 @@ function togglePanel(): void {
 function openPanel(): void {
   if (_open) return
   _open = true
-  // Show the Siri aurora immediately when panel opens — not just during voice
-  VA.setState('thinking')
+  // Aurora stays at ambient idle — only activates on actual voice
 
   const p = document.createElement('div')
   p.id = 'jarvis-panel'
@@ -679,24 +679,38 @@ async function executeIntent(transcript: string): Promise<void> {
   setState('thinking')
   setStatus('Thinking…')
 
-  const result: RouterResult & { answer?: string } = await route(transcript)
+  // Safety net: never stay in "thinking" longer than 8 seconds
+  const safetyTimer = setTimeout(() => {
+    if (_state === 'thinking') {
+      setState('idle'); setStatus('Ready — say Jarvis or double clap')
+      VA.setState('idle')
+      respond(offlineAnswer(transcript))
+    }
+  }, 8000)
 
-  if (result.intent === 'qa.answer') {
-    // Check cache first (UPSC knowledge questions are often repeated)
-    const cacheKey = transcript.toLowerCase().trim().slice(0, 120)
-    const cached   = getCached(cacheKey)
-    if (cached) { respond(cached); return }
+  try {
+    const result: RouterResult & { answer?: string } = await route(transcript)
+    clearTimeout(safetyTimer)
 
-    setStatus('Searching knowledge base…')
-    const qaResult = await llmRoute(transcript, 'qa')
-    const answer   = qaResult.answer ?? offlineAnswer(transcript)
-    setCached(cacheKey, answer)
-    respond(answer)
-    return
+    if (result.intent === 'qa.answer') {
+      const cacheKey = transcript.toLowerCase().trim().slice(0, 120)
+      const cached   = getCached(cacheKey)
+      if (cached) { respond(cached); return }
+      setStatus('Searching knowledge base…')
+      const qaResult = await llmRoute(transcript, 'qa')
+      const answer   = qaResult.answer ?? offlineAnswer(transcript)
+      setCached(cacheKey, answer)
+      respond(answer)
+      return
+    }
+
+    const reply = await dispatchIntent(result)
+    respond(reply || offlineAnswer(transcript))
+  } catch {
+    clearTimeout(safetyTimer)
+    setState('idle'); VA.setState('idle')
+    respond(offlineAnswer(transcript))
   }
-
-  const reply = await dispatchIntent(result)
-  if (reply) respond(reply)
 }
 
 // ── Language-aware response helpers ──────────────────────────────────────────

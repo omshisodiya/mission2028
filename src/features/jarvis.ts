@@ -105,20 +105,21 @@ function setJarvisEnabled(on: boolean): void {
   localStorage.setItem('jarvis_enabled', String(on))
   const btn = document.getElementById('jarvis-btn')
   const tog = document.getElementById('jarvis-master-toggle')
+  const lbl = tog?.querySelector<HTMLElement>('span:last-child')
+
   if (on) {
     btn?.classList.remove('disabled')
     tog?.classList.add('on')
-    if (tog) (tog.querySelector('.jmt-dot + span') as HTMLElement | null)!.textContent = 'JARVIS'
+    if (lbl) lbl.textContent = 'JARVIS'
     startWakeWord()
   } else {
-    // Shut down fully
     _wakeRec?.stop(); _wakeRec = null; _wakeRunning = false
     if (_open) closePanel()
     _synth.cancel()
     VA.setState('idle')
     btn?.classList.add('disabled')
     tog?.classList.remove('on')
-    if (tog) (tog.querySelector('.jmt-dot + span') as HTMLElement | null)!.textContent = 'OFF'
+    if (lbl) lbl.textContent = 'OFF'
   }
 }
 
@@ -285,6 +286,8 @@ function togglePanel(): void {
 function openPanel(): void {
   if (_open) return
   _open = true
+  // Show the Siri aurora immediately when panel opens — not just during voice
+  VA.setState('thinking')
 
   const p = document.createElement('div')
   p.id = 'jarvis-panel'
@@ -353,13 +356,13 @@ function startAura(): void {
       // Real mic amplitude while listening
       _analyser.getByteFrequencyData(fft)
       amp = fft.reduce((s,v)=>s+v,0)/fft.length/255
-    } else if (_state === 'speaking') {
+    } else if (VA.state === 'speaking') {
       // Synthesised amplitude while TTS plays (SpeechSynthesis has no AudioNode)
-      amp = 0.35 + Math.abs(Math.sin(t * 3.2)) * 0.50
-    } else if (_state === 'thinking') {
-      amp = 0.12 + Math.sin(t * 1.8) * 0.06
+      amp = 0.35 + Math.abs(Math.sin(t * 3.2)) * 0.52
+    } else if (VA.state === 'thinking') {
+      amp = 0.14 + Math.abs(Math.sin(t * 1.6)) * 0.10
     }
-    VA.setAmplitude(amp)   // feed the aurora + waveform every frame
+    VA.setAmplitude(amp)
 
     const inten = _state === 'idle'      ? 0.42 + Math.sin(t*1.1)*0.07
                 : _state === 'listening' ? 0.75 + amp*0.35 + Math.sin(t*6)*0.08

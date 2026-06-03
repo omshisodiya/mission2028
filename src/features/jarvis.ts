@@ -126,6 +126,8 @@ function setJarvisEnabled(on: boolean): void {
 }
 
 function toggleJarvis(): void { setJarvisEnabled(!_jarvisEnabled) }
+// Expose to the early toggle button mounted before auth
+;(window as Window & { __jarvisToggle?: () => void }).__jarvisToggle = toggleJarvis
 
 // ── Voice — permanently male ──────────────────────────────────────────────────
 function loadVoices(): void { _voices = _synth.getVoices(); pickMaleVoice() }
@@ -166,15 +168,13 @@ export function initJarvis(): void {
   if (!_jarvisEnabled) document.body.classList.add('va-disabled')
   startAura()
 
-  // ── Master on/off toggle button ──────────────────────────────────────────
-  const tog = document.createElement('button')
-  tog.id = 'jarvis-master-toggle'
-  tog.title = 'Toggle JARVIS voice assistant on / off'
-  tog.innerHTML = `<span class="jmt-dot"></span><span>${_jarvisEnabled ? 'JARVIS' : 'OFF'}</span>`
-  tog.addEventListener('click', toggleJarvis)
-  document.body.appendChild(tog)
-  if (_jarvisEnabled) tog.classList.add('on')
-  else document.getElementById('jarvis-btn')?.classList.add('disabled')
+  // Toggle button already mounted early in main.ts — just wire the click handler
+  const tog = document.getElementById('jarvis-master-toggle')
+  if (tog) {
+    tog.onclick = toggleJarvis
+    if (_jarvisEnabled) tog.classList.add('on')
+    else document.getElementById('jarvis-btn')?.classList.add('disabled')
+  }
 
   setTimeout(() => {
     if (_jarvisEnabled) {

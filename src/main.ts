@@ -3,6 +3,48 @@
 import { checkStartupLock } from './features/screen-lock'
 checkStartupLock()
 
+// ── Voice overlay + JARVIS toggle: mount before auth ─────────────────────────
+// Pure CSS/canvas — no auth, no network, no data needed.
+// The aurora is visible from the very first frame of the page.
+import { initVAOverlay, VA } from './features/va-overlay'
+initVAOverlay()
+
+// Inject the master toggle button immediately so user can see ⬡ JARVIS toggle
+// before the full JARVIS init (which waits for auth + sync).
+;(function mountToggleEarly() {
+  if (document.getElementById('jarvis-master-toggle')) return
+  const tog = document.createElement('button')
+  tog.id = 'jarvis-master-toggle'
+  tog.title = 'Toggle JARVIS voice assistant on / off'
+  const enabled = localStorage.getItem('jarvis_enabled') !== 'false'
+  tog.className = enabled ? 'on' : ''
+  if (!enabled) document.body.classList.add('va-disabled')
+  tog.innerHTML = `<span class="jmt-dot"></span><span>${enabled ? 'JARVIS' : 'OFF'}</span>`
+  tog.addEventListener('click', () => {
+    // Delegate to full toggleJarvis() once JARVIS is initialised; otherwise just update UI
+    const w = window as Window & { __jarvisToggle?: () => void }
+    if (w.__jarvisToggle) { w.__jarvisToggle(); return }
+    const on = !tog.classList.contains('on')
+    tog.classList.toggle('on', on)
+    localStorage.setItem('jarvis_enabled', String(on))
+    document.body.classList.toggle('va-disabled', !on)
+    const lbl = tog.querySelector<HTMLElement>('span:last-child')
+    if (lbl) lbl.textContent = on ? 'JARVIS' : 'OFF'
+    const dot = tog.querySelector<HTMLElement>('.jmt-dot')
+    if (dot) dot.style.background = on ? 'var(--accent,#f0b54a)' : ''
+    if (!on) VA.setState('idle')
+  })
+  document.body.appendChild(tog)
+})()
+
+// Brief splash: show aurora in 'thinking' state for 1s so user sees the design
+setTimeout(() => {
+  if (VA.state === 'idle' && localStorage.getItem('jarvis_enabled') !== 'false') {
+    VA.setState('thinking')
+    setTimeout(() => { if (VA.state === 'thinking') VA.setState('idle') }, 1800)
+  }
+}, 800)
+
 // Engine and UI shells boot immediately — auth + data sync happen in background.
 import './engine/image-slot.js'
 import './engine/engine.js'

@@ -45,6 +45,7 @@ let _quizPhase: QuizPhase = 'off'
 let _quizItems: MCQItem[] = []
 let _quizIdx  = 0
 let _quizHits = 0
+let _quizTopic = ''   // tracked for SRS integration + memory
 
 // Reminders
 const _reminders: Reminder[] = []
@@ -131,6 +132,107 @@ let _lastUserQuery   = ''
 
 // Clap noise floor: EMA of ambient RMS — updates every 45 ms for smarter calibration
 let _emaAmb = 40   // starts at 40 dB, converges within seconds
+
+// ── Cross-Session Memory — persisted across browser restarts ─────────────────
+interface JarvisMemory {
+  weakTopics:    string[]           // topics user has flagged or failed quiz on
+  strongTopics:  string[]           // topics user has marked as mastered
+  quizScores:    Record<string, number[]>  // topic → array of recent scores (%)
+  lastSubject:   string             // subject from last study session
+  lastDate:      string             // YYYY-MM-DD of last session
+  wakeCtx:       string             // what was happening at last close (for resume greeting)
+  milestones: {
+    streak7:     boolean            // first 7-day streak
+    coverage50:  boolean            // 50% syllabus covered
+    score70:     boolean            // SP hit 70%+
+    sessions100: boolean            // 100 total Pomodoro sessions
+    streak30:    boolean            // 30-day streak
+    coverage100: boolean            // 100% coverage
+  }
+  vocabIdx:      number             // cycling index for UPSC vocabulary word of the day
+  evalCount:     number             // total answer evaluations done
+  debateCount:   number             // total debates completed
+  lastMotivDate: string             // date of last proactive motivation (to avoid spam)
+}
+const _MEM_KEY = 'jarvis_mem_v1'
+function _defaultMem(): JarvisMemory {
+  return {
+    weakTopics: [], strongTopics: [], quizScores: {},
+    lastSubject: '', lastDate: '', wakeCtx: '',
+    milestones: { streak7: false, coverage50: false, score70: false, sessions100: false, streak30: false, coverage100: false },
+    vocabIdx: 0, evalCount: 0, debateCount: 0, lastMotivDate: ''
+  }
+}
+let _mem: JarvisMemory = (() => {
+  try { return { ..._defaultMem(), ...JSON.parse(localStorage.getItem(_MEM_KEY) ?? 'null') } }
+  catch { return _defaultMem() }
+})()
+function saveMem(): void { localStorage.setItem(_MEM_KEY, JSON.stringify(_mem)) }
+
+// ── Focus Guardian — detects distraction during active Pomodoro ──────────────
+let _lastActivityMs   = Date.now()
+let _focusGuardianId  = 0
+function pingActivity(): void { _lastActivityMs = Date.now() }
+
+// ── Emotion detection — adjust tone based on transcript sentiment ─────────────
+type EmotionTone = 'neutral' | 'stressed' | 'tired' | 'excited' | 'confused' | 'sad'
+function detectEmotion(t: string): EmotionTone {
+  const tl = t.toLowerCase()
+  if (/tired|thak|thaki|exhausted|neend|nind|aankhein|bore|bored|bore.*ho|ho.*gaya.*thak/i.test(tl)) return 'tired'
+  if (/stressed|tension|anxious|nervous|dar|scared|pressure|overwhelm|pagal|dil.*ghabra/i.test(tl)) return 'stressed'
+  if (/don.t understand|samajh.*nahi|confused|confuse|kya.*matlab|what.*mean|explain.*again|dobara/i.test(tl)) return 'confused'
+  if (/sad|dukhi|upset|crying|rona|rone|depressed|hopeless|kya.*faida|pointless/i.test(tl)) return 'sad'
+  if (/amazing|excellent|great|fantastic|perfect|acha.*hua|kar.*liya|done|success|selected|cleared/i.test(tl)) return 'excited'
+  return 'neutral'
+}
+
+// ── UPSC Vocabulary bank ───────────────────────────────────────────────────────
+const UPSC_VOCAB: Array<{ word: string; meaning: string; example: string }> = [
+  { word: 'Locus Standi', meaning: 'Legal right to bring a case before court. In PILs, even a stranger to the dispute can have locus standi for public interest.', example: 'In Vishaka vs State of Rajasthan, NGOs had locus standi to petition the SC.' },
+  { word: 'Sub Judice', meaning: 'Matter currently under judicial consideration. Sub judice matters cannot be discussed in Parliament.', example: 'Article 105 restricts Parliamentary debate on sub judice matters.' },
+  { word: 'Ultra Vires', meaning: 'Beyond the powers. A law beyond the legislature\'s competence is ultra vires and void.', example: 'A State law on a Union List subject is ultra vires Article 245.' },
+  { word: 'Ratio Decidendi', meaning: 'The legal reasoning forming a binding precedent. Only ratio decidendi binds future courts, not obiter dicta.', example: 'The ratio in Kesavananda Bharati established the Basic Structure doctrine.' },
+  { word: 'Obiter Dicta', meaning: 'Judges\' remarks in passing — not binding precedent but persuasive.', example: 'Bhagwati J\'s broad reading of Art 21 in Maneka Gandhi was initially obiter dicta.' },
+  { word: 'Certiorari', meaning: 'Writ to quash an order of a lower court or tribunal that acted without jurisdiction or in error.', example: 'High Courts issue certiorari under Article 226 to quash faulty tribunal orders.' },
+  { word: 'Mandamus', meaning: 'Writ commanding a public authority to perform a mandatory public duty it has refused.', example: 'Mandamus was issued to the Election Commission to notify bye-elections.' },
+  { word: 'Quo Warranto', meaning: '"By what authority" — challenges whether a person holds a public office lawfully.', example: 'Quo warranto was used to challenge an allegedly unlawful gubernatorial appointment.' },
+  { word: 'Lis Pendens', meaning: 'Pending lawsuit. Property transfer during lis pendens is subject to the suit\'s outcome.', example: 'Lis pendens doctrine prevents defeating court orders through transfers.' },
+  { word: 'Ex Facie', meaning: 'On the face of it, apparent from the document itself without further investigation.', example: 'The provision was ex facie unconstitutional — it plainly violated Article 14.' },
+  { word: 'Colourable Legislation', meaning: 'What cannot be done directly cannot be done indirectly. A law colourable in form but illegal in substance.', example: 'A State law dressed as "health regulation" but actually controlling interstate trade is colourable.' },
+  { word: 'Pith and Substance', meaning: 'Doctrine to determine which legislative list a law truly belongs to — look at its real character.', example: 'In pith and substance, the law was on banking (Union List), not money-lending (State List).' },
+  { word: 'Ancillary Powers', meaning: 'Powers necessary and incidental to an enumerated power in the legislative lists.', example: 'Parliament\'s power to tax income carries ancillary power to prevent tax evasion.' },
+  { word: 'Repugnancy', meaning: 'Conflict between Central and State laws on Concurrent List subjects. Central law prevails (Art 254).', example: 'State tenancy law was repugnant to the Central Rent Control Act and was void.' },
+  { word: 'Casus Omissus', meaning: 'Case omitted by law — a gap in legislation. Courts cannot fill it; only Parliament can.', example: 'The court refused to supply the casus omissus by reading in a non-existent exception.' },
+  { word: 'Ejusdem Generis', meaning: 'General words following specific words are limited to the same class as the specific words.', example: '"Vehicles, carriages, and other conveyances" — ejusdem generis limits "other" to road transport.' },
+  { word: 'Noscitur a Sociis', meaning: 'A word\'s meaning is known by its associates. Ambiguous words interpreted in context of surrounding words.', example: 'In a penal statute, "offensive weapons" was interpreted using noscitur a sociis.' },
+  { word: 'Delegatus Non Potest Delegare', meaning: 'A delegate cannot further delegate powers. Parliament cannot delegate its core legislative power to the executive.', example: 'The principle limits skeletal legislation — too much delegation is unconstitutional (In re Delhi Laws Act).' },
+  { word: 'Stare Decisis', meaning: 'Stand by decisions. Courts must follow precedents of higher courts (Art 141 — SC decisions are law of the land).', example: 'Under stare decisis, all courts must follow the Supreme Court\'s ruling on Article 21A.' },
+  { word: 'Parens Patriae', meaning: '"Parent of the nation" — state\'s power to protect persons who cannot protect themselves (minors, disabled).', example: 'The state exercises parens patriae jurisdiction in child custody and adoption matters.' },
+]
+function getVocabWord(): { word: string; meaning: string; example: string } {
+  const idx = _mem.vocabIdx % UPSC_VOCAB.length
+  _mem.vocabIdx++; saveMem()
+  return UPSC_VOCAB[idx]
+}
+
+// ── Multi-reminder parser — "remind me at 3pm, 5pm, and 8pm" ──────────────────
+function parseMultipleReminderTimes(text: string): number[] {
+  const times: number[] = []
+  const now = new Date()
+  const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)\b/g
+  let m: RegExpExecArray | null
+  while ((m = TIME_RE.exec(text)) !== null) {
+    let h = parseInt(m[1])
+    const min = parseInt(m[2] ?? '0')
+    const ampm = m[3].toLowerCase()
+    if (ampm === 'pm' && h < 12) h += 12
+    if (ampm === 'am' && h === 12) h = 0
+    const t = new Date(); t.setHours(h, min, 0, 0)
+    if (t.getTime() <= now.getTime()) t.setDate(t.getDate() + 1)
+    times.push(t.getTime())
+  }
+  return times
+}
 
 // ── Master toggle helpers ─────────────────────────────────────────────────────
 function setJarvisEnabled(on: boolean): void {
@@ -227,17 +329,36 @@ export function initJarvis(): void {
     }
   })
 
-  // Pomodoro completion hook
+  // Activity tracking for Focus Guardian
+  document.addEventListener('keydown',  () => pingActivity())
+  document.addEventListener('mousedown', () => pingActivity())
+
+  // Pomodoro completion hook — richer bilingual celebration
   window.addEventListener('jarvis:session-done', ((e: CustomEvent<{mins:number}>) => {
     _pomodorosDone++
     const totalToday = getTodayFocusMins()
+    const lang = detectResponseLang('')
     let msg = ''
-    if (_pomodorosDone % 4 === 0)
-      msg = `Four sessions complete! ${totalToday} minutes of deep work today. Take a proper long break now, Om.`
-    else if (totalToday >= 120 && totalToday % 60 < (e.detail.mins ?? 25))
-      msg = `${Math.floor(totalToday/60)} hours of study today. Excellent consistency, Om.`
+    if (_pomodorosDone % 4 === 0) {
+      msg = lang === 'hi'       ? `चार sessions पूरे! आज ${totalToday} मिनट deep work हुई। अब एक proper long break लो।`
+          : lang === 'hinglish' ? `Char sessions complete! Aaj ${totalToday} minutes deep work hui. Ab long break lo, Om.`
+          : `Four sessions complete! ${totalToday} minutes of deep work today. Take a proper long break now, Om.`
+    } else if (totalToday >= 120 && totalToday % 60 < (e.detail.mins ?? 25)) {
+      const hrs = Math.floor(totalToday / 60)
+      msg = lang === 'hi'       ? `आज ${hrs} घंटे की पढ़ाई हो गई। शानदार consistency, ओम।`
+          : lang === 'hinglish' ? `${hrs} hours aaj. Zabardast consistency, Om.`
+          : `${hrs} hours of study today. Excellent consistency, Om.`
+    }
+    // Milestone check after every session
+    checkMilestones()
+    // Update memory
+    _mem.lastSubject = _sessionSubject || (getCurrentState()?.today?.subject ?? '')
+    _mem.lastDate    = todayIST(); saveMem()
     if (msg) { if (_open) respond(msg); else showNudge(msg) }
   }) as EventListener)
+
+  // Focus Guardian — start after 2-second boot delay
+  setTimeout(startFocusGuardian, 3000)
 }
 
 // ── Proactive Engine ──────────────────────────────────────────────────────────
@@ -306,8 +427,105 @@ function buildMorningBrief(cs: ReturnType<typeof getCurrentState>): string {
   if (cs.streak) parts.push(`${cs.streak}-day streak — protect it today.`)
   if (cs.today?.subject) parts.push(`Subject for today: ${cs.today.subject}.`)
   if (cs.backlogRemaining) parts.push(`${cs.backlogRemaining} lectures in backlog.`)
+  // Resume context from last session
+  if (_mem.lastSubject && _mem.lastDate !== todayIST())
+    parts.push(`Last session: ${_mem.lastSubject}.`)
+  // Due revisions
+  const revDue = document.querySelectorAll('#plan .plan-row[data-type="revision"]:not(.done)').length
+  if (revDue) parts.push(`${revDue} revision${revDue > 1 ? 's' : ''} due today.`)
   parts.push('What are we starting with?')
   return parts.join(' ')
+}
+
+// ── Focus Guardian ────────────────────────────────────────────────────────────
+function startFocusGuardian(): void {
+  if (_focusGuardianId) return
+  _focusGuardianId = window.setInterval(() => {
+    const timerBtn = document.querySelector<HTMLButtonElement>('[data-act="start"]')
+    const timerRunning = timerBtn?.textContent?.toLowerCase().includes('pause')
+    if (!timerRunning || _isSpeaking || _state !== 'idle') return
+
+    const idleMs = Date.now() - _lastActivityMs
+    if (idleMs < 10 * 60_000) return   // < 10 min silence → still focused
+
+    const timeLeft = document.querySelector<HTMLElement>('.ring-time')?.textContent?.trim() ?? ''
+    const lang = detectResponseLang('')
+    const nudge =
+      lang === 'hi'       ? `ओम, timer चल रहा है — ${timeLeft} बाकी है। Focus में हो? कुछ पूछना है तो बोलो।` :
+      lang === 'hinglish' ? `Om, timer chal raha hai — ${timeLeft} baki hai. Focus mein ho? Kuch chahiye toh bolo.` :
+                            `Hey Om — timer running with ${timeLeft} left. Still with me? Say anything if you need help.`
+    if (_open) respond(nudge)
+    else showNudge(nudge)
+    _lastActivityMs = Date.now()  // reset so it doesn't spam
+  }, 60_000)
+}
+
+// ── Milestone Celebrations ────────────────────────────────────────────────────
+function checkMilestones(): void {
+  const cs    = getCurrentState()
+  const done  = document.querySelectorAll('#plan .plan-row.done').length
+  const tot   = document.querySelectorAll('#plan .plan-row').length
+  const pct   = tot ? Math.round(done / tot * 100) : 0
+  const streak = cs?.streak ?? 0
+  const sp     = cs?.selectionProbabilityPct ?? 0
+  const lang   = detectResponseLang('')
+
+  const announce = (en: string, hi: string, hin: string) => {
+    const msg = lang === 'hi' ? hi : lang === 'hinglish' ? hin : en
+    if (_open) respond(msg); else showNudge(msg)
+  }
+
+  if (!_mem.milestones.streak7 && streak >= 7) {
+    _mem.milestones.streak7 = true; saveMem()
+    announce(
+      '7-day streak! This is where habits form. Real IAS officers are built with exactly this kind of consistency.',
+      '7 दिनों की streak! यहीं से habits बनती हैं। IAS officers ऐसे ही बनते हैं।',
+      '7-day streak! Yahan se habits banti hain. Real IAS officers aise bante hain, Om.'
+    )
+  }
+  if (!_mem.milestones.streak30 && streak >= 30) {
+    _mem.milestones.streak30 = true; saveMem()
+    announce(
+      '30-day streak! One month of unbroken discipline. You are in the top 1% of aspirants right now.',
+      '30 दिनों की streak! एक महीने की अटूट discipline। आप अभी top 1% aspirants में हैं।',
+      '30-day streak, Om! Ek mahine ki discipline. Top 1% aspirants mein ho tum abhi.'
+    )
+  }
+  if (!_mem.milestones.coverage50 && pct >= 50) {
+    _mem.milestones.coverage50 = true; saveMem()
+    announce(
+      '50% syllabus covered — halfway there! The second half is where selections are won. Keep this standard.',
+      '50% syllabus complete! आधा सफर तय हो गया। दूसरा आधा वो जगह है जहाँ selection होती है।',
+      'Syllabus ka 50% cover ho gaya! Aadha safar tay. Doosra aadha selection jeetne ki jagah hai.'
+    )
+  }
+  if (!_mem.milestones.coverage100 && pct >= 100) {
+    _mem.milestones.coverage100 = true; saveMem()
+    announce(
+      'Full syllabus covered! Now it is all about revision depth and answer quality. Incredible achievement, Om.',
+      'पूरा syllabus cover हो गया! अब revision और answer quality — अविश्वसनीय achievement है यह।',
+      'Poora syllabus cover ho gaya! Ab revision aur answer quality. Incredible, Om.'
+    )
+  }
+  if (!_mem.milestones.score70 && sp >= 70) {
+    _mem.milestones.score70 = true; saveMem()
+    announce(
+      'Selection probability crossed 70%. You are in serious contender territory. Maintain this standard and the seat is yours.',
+      'Selection probability 70% पार हो गई। आप serious contender zone में हैं। इस level को बनाए रखो।',
+      'SP 70% cross kar gayi! Serious contender zone mein ho. Is level ko maintain karo, Om.'
+    )
+  }
+  try {
+    const sessions = JSON.parse(localStorage.getItem('sessTotal') ?? '0') as number
+    if (!_mem.milestones.sessions100 && sessions >= 100) {
+      _mem.milestones.sessions100 = true; saveMem()
+      announce(
+        '100 Pomodoro sessions! That is 100 deliberate acts of choosing study over comfort. This is the IAS mindset.',
+        '100 Pomodoro sessions! वो 100 बार जब तुमने comfort की जगह पढ़ाई चुनी। यही IAS की mentality है।',
+        '100 Pomodoro sessions! 100 baar tune comfort ki jagah padhai choose ki. Yahi IAS mentality hai.'
+      )
+    }
+  } catch { /* ignore */ }
 }
 
 function getTodayFocusMins(): number {
@@ -1093,7 +1311,208 @@ async function processQuery(text: string): Promise<void> {
     return
   }
 
-  // 18. CMDS — fast pattern-action table (560+ patterns)
+  // ── Emotion-adaptive tone ─────────────────────────────────────────────────
+  // Adjust TTS speed and response style based on detected emotion
+  {
+    const emo = detectEmotion(text)
+    if (emo === 'tired' || emo === 'stressed' || emo === 'sad') {
+      if (_ttsSpeed === 'fast') { _ttsSpeed = 'normal' }  // auto-slow down if user is tired
+    }
+    if (emo === 'stressed' || emo === 'sad') {
+      // Intercept before general routing with a warm, specific response
+      const specificStress = /deadline|kal.*paper|paper.*kal|exam.*3.*day|3.*din.*exam/i.test(tl)
+      if (!specificStress) {
+        const lang = detectResponseLang(text)
+        const reply =
+          emo === 'sad'
+            ? L(lang,
+                "I hear you, Om. This path is genuinely hard and it is okay to feel that. Take 10 minutes. Step outside. Then come back. Every person who cleared UPSC had a moment exactly like this one.",
+                "सुन रहा हूँ, ओम। यह रास्ता सच में मुश्किल है — ऐसा feel करना सामान्य है। 10 मिनट बाहर जाओ। फिर वापस आओ। UPSC clear करने वाले हर शख्स के जीवन में यह पल था।",
+                "Sun raha hoon, Om. Yeh raasta sach mein mushkil hai. 10 minute bahar jao. Phir wapas aao. UPSC clear karne waale har insaan ke life mein ek aisa moment tha."
+              )
+            : emo === 'stressed'
+            ? L(lang,
+                "Breathe. Right now — four counts in, four counts out. Stress is just energy. Let it pass through. What specifically is worrying you? Say it and we will break it down.",
+                "सांस लो। अभी — चार गिनती अंदर, चार बाहर। Stress बस energy है। आने दो और जाने दो। क्या specifically परेशान कर रहा है? बताओ — हम साथ मिलकर सुलझाएंगे।",
+                "Saanss lo. Abhi — 4 count andar, 4 bahar. Stress sirf energy hai. Kya specifically worry ho raha hai? Batao — milke sort out karte hain."
+              )
+            : L(lang,
+                "Take a proper break now. You have earned it. Drink water, rest your eyes, stretch for 5 minutes. Study after rest is 40% more effective.",
+                "अभी एक proper break लो। तुमने earn किया है। पानी पियो, आंखें बंद करो, 5 मिनट stretch करो।",
+                "Abhi ek proper break lo. Pani piyo, aankhein rest karo. Break ke baad padhai 40% zyada effective hoti hai."
+              )
+        addMsg('user', text); respond(reply); return
+      }
+    }
+  }
+
+  // ── UPSC Vocabulary Word of the Day ──────────────────────────────────────
+  if (/vocab|vocabulary|word.*of.*the.*day|aaj.*ka.*shabd|legal.*term|law.*term|upsc.*term/i.test(tl)) {
+    addMsg('user', text)
+    const v    = getVocabWord()
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      `UPSC Term: ${v.word}. ${v.meaning} Example: ${v.example}`,
+      `UPSC Term: ${v.word}. ${v.meaning} उदाहरण: ${v.example}`,
+      `UPSC Term: ${v.word}. ${v.meaning} Example: ${v.example}`
+    )); return
+  }
+
+  // ── Multi-Reminder Parsing: "remind me at 3pm, 5pm and 8pm" ──────────────
+  {
+    const times = parseMultipleReminderTimes(tl)
+    if (times.length >= 2) {
+      addMsg('user', text)
+      const label = extractReminderLabel(tl) || "Time's up!"
+      times.forEach(at => _reminders.push({ id: _nextRemId++, msg: label, at }))
+      const lang = detectResponseLang(text)
+      respond(L(lang,
+        `${times.length} reminders set. I will alert you at each time.`,
+        `${times.length} reminders set हो गए।`,
+        `${times.length} reminders set. Har time pe bataunga.`
+      )); return
+    }
+  }
+
+  // ── Mains Answer Evaluator ────────────────────────────────────────────────
+  if (/evaluate.*answer|answer.*evaluate|mera.*answer.*check|check.*my.*answer|answer.*kaisa.*tha|mains.*practice.*evaluate/i.test(tl)) {
+    addMsg('user', text)
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      'Answer Evaluation mode. Type or speak your answer and I will evaluate it for UPSC Mains — structure, content, keywords, and improvement areas.',
+      'Answer Evaluation mode। अपना answer type करो या बोलो — मैं structure, content, keywords और improvements evaluate करूंगा।',
+      'Answer Evaluation mode. Apna answer type ya bolo — main structure, content, keywords aur improvements evaluate karunga.'
+    ))
+    // After they give the answer, the next processQuery call with qa.answer will have context
+    // We pre-seed context via _history so Groq knows we're evaluating
+    _history.push({ role: 'assistant', content: '[EVALUATION MODE: User will now provide their UPSC Mains answer. Evaluate it for: 1) Introduction quality 2) Body structure and depth 3) UPSC keywords used 4) Conclusion quality 5) Missing dimensions. Score each out of 10. Give 3 specific improvement suggestions. Spoken format — no markdown.]' })
+    return
+  }
+
+  // ── Study Buddy / Debate Mode ─────────────────────────────────────────────
+  if (/debate.*with.*me|argue.*with.*me|take.*other.*side|let.*argue|mujhse.*debate|opposing.*view|discuss.*with.*me/i.test(tl)) {
+    const topic = tl.replace(/debate.*with.*me|argue.*with.*me|take.*other.*side|let.*argue|mujhse.*debate|opposing.*view|discuss.*with.*me/gi, '').trim()
+    if (!topic) {
+      addMsg('user', text)
+      respond(L(detectResponseLang(text),
+        'Sure — what topic do you want to debate? Say "debate uniform civil code" or any UPSC topic.',
+        'ज़रूर — कौन सा topic debate करना है? बोलो।',
+        'Zaroor — kaunsa topic? Bolo.'
+      )); return
+    }
+    addMsg('user', text)
+    _mem.debateCount++; saveMem()
+    if (GROQ_AVAILABLE) {
+      void executeIntent(`Take the OPPOSING position on this topic and argue it persuasively in 2-3 spoken sentences: "${topic}". No markdown. State your position clearly then give your strongest argument. I will counter it.`)
+    } else {
+      respond(L(detectResponseLang(text), `Debate: ${topic}. No API key — I cannot argue live, but you can practice by speaking your arguments aloud and self-evaluating.`, `Debate ${topic} — API key नहीं है।`, `Debate ke liye API key chahiye.`))
+    }
+    return
+  }
+
+  // ── Pre-Exam Ritual Mode ──────────────────────────────────────────────────
+  if (/exam.*tomorrow|kal.*exam.*hai|kal.*test|pre.*exam.*mode|night.*before.*exam|exam.*aaj.*raat/i.test(tl)) {
+    addMsg('user', text)
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      "Pre-exam protocol: No new topics tonight. Only your notes and 10 PYQs maximum. Eat a proper meal. Stop studying by 10 PM. Sleep 7 hours minimum. Tomorrow: light breakfast, arrive 20 minutes early, read every option before marking. You are prepared. Trust your preparation.",
+      "Pre-exam protocol: आज रात कोई नया topic नहीं। सिर्फ notes और maximum 10 PYQs। अच्छा खाना खाओ। 10 बजे तक पढ़ना बंद। 7 घंटे सोओ। कल: हल्का नाश्ता, 20 मिनट पहले पहुंचो, हर option पढ़कर mark करो। तुम तैयार हो।",
+      "Pre-exam protocol: Aaj raat koi naya topic nahi. Sirf notes aur 10 PYQs max. Achha khana khao. 10 baje padhai band. 7 ghante so jao. Kal: light breakfast, 20 minute pehle pohoncho. Tum taiyar ho, Om."
+    )); return
+  }
+
+  // ── Smart Break Activities ────────────────────────────────────────────────
+  if (/what.*do.*break|break.*mein.*kya.*karun|break.*activity|break.*suggestion|break.*pe.*kya/i.test(tl)) {
+    addMsg('user', text)
+    const lang   = detectResponseLang(text)
+    const minsUp = getTodayFocusMins()
+    const picks  = [
+      L(lang, 'Drink a full glass of water. Do 10 shoulder rolls. Look at something green for 30 seconds. Your brain will thank you.', 'एक full glass पानी पियो। 10 shoulder rolls करो। 30 seconds के लिए कुछ हरा देखो।', 'Ek full glass pani piyo. 10 shoulder rolls karo. 30 seconds ke liye kuch hara dekho.'),
+      L(lang, 'Try box breathing: 4 counts in, 4 hold, 4 out, 4 hold. Repeat 4 times. It resets your nervous system completely.', 'Box breathing: 4 गिनती अंदर, 4 hold, 4 बाहर, 4 hold। 4 बार करो। Nervous system reset हो जाएगा।', 'Box breathing karo: 4 andar, 4 hold, 4 bahar, 4 hold. 4 baar. Nervous system reset ho jaata hai.'),
+      L(lang, `You have studied ${minsUp} minutes today. Step outside for 5 minutes if possible — natural light and movement are the best cognitive reset.`, `आज ${minsUp} मिनट पढ़ाई हुई। अगर हो सके तो 5 मिनट बाहर जाओ — natural light best cognitive reset है।`, `Aaj ${minsUp} minutes padhai. Agar ho sake toh 5 minute bahar jao — natural light best cognitive reset hai.`),
+      L(lang, 'Stretch your neck: left, right, forward, back — 10 seconds each. Roll your wrists. Stand up and walk 20 steps.', 'Neck stretch: left, right, forward, back — 10 seconds each। Wrists roll करो। 20 steps चलो।', 'Neck stretch karo: left, right, forward, back — 10 second each. Wrists roll. 20 steps chalo.'),
+    ]
+    respond(picks[Math.floor(Math.random() * picks.length)]); return
+  }
+
+  // ── Memory: Weak/Strong Topic Management ─────────────────────────────────
+  if (/mark.*weak|weak.*topic|is.*topic.*weak|ye.*weak.*hai|mujhe.*weak.*lagta/i.test(tl)) {
+    const topic = tl.replace(/mark|weak|topic|hai|lagta|mujhe|is|ye|as/gi, '').trim()
+    if (topic.length > 2) {
+      if (!_mem.weakTopics.includes(topic)) { _mem.weakTopics.push(topic); if (_mem.weakTopics.length > 20) _mem.weakTopics.shift() }
+      saveMem(); addMsg('user', text)
+      respond(L(detectResponseLang(text), `"${topic}" flagged as weak. I will prioritize it in future quizzes.`, `"${topic}" weak में mark हो गया। Future quizzes में priority दूंगा।`, `"${topic}" weak mark ho gaya. Future quizzes mein priority dunga.`)); return
+    }
+  }
+  if (/mark.*strong|strong.*topic|mastered|khatam.*ho.*gaya.*topic|poori.*tarah.*padh|ye.*strong.*hai/i.test(tl)) {
+    const topic = tl.replace(/mark|strong|topic|mastered|khatam|ho|gaya|poori|tarah|padh|hai|ye/gi, '').trim()
+    if (topic.length > 2) {
+      if (!_mem.strongTopics.includes(topic)) { _mem.strongTopics.push(topic); if (_mem.strongTopics.length > 20) _mem.strongTopics.shift() }
+      saveMem(); addMsg('user', text)
+      respond(L(detectResponseLang(text), `"${topic}" marked as strong. Well done.`, `"${topic}" strong में mark। बढ़िया।`, `"${topic}" strong mark. Badiya.`)); return
+    }
+  }
+  if (/my.*weak.*topics|weak.*topics.*kya|weakest.*areas|meri.*weakness/i.test(tl)) {
+    addMsg('user', text)
+    const lang = detectResponseLang(text)
+    if (_mem.weakTopics.length) {
+      respond(L(lang, `Your flagged weak topics: ${_mem.weakTopics.slice(-5).join(', ')}. Focus your next quiz there.`, `आपके weak topics: ${_mem.weakTopics.slice(-5).join(', ')}। अगला quiz इन पर करो।`, `Tumhare weak topics: ${_mem.weakTopics.slice(-5).join(', ')}. Agla quiz inhi pe karo.`))
+    } else {
+      respond(L(lang, 'No weak topics flagged yet. Say "mark [topic] as weak" after struggling with something.', 'अभी कोई weak topic flag नहीं है।', 'Koi weak topic flag nahi hai abhi.'))
+    }
+    return
+  }
+
+  // ── Context-Aware Resume Greeting ─────────────────────────────────────────
+  if (/welcome.*back|wapas.*aa.*gaya|continue.*from.*last|resume.*session|kahan.*tha.*main/i.test(tl)) {
+    addMsg('user', text)
+    const lang = detectResponseLang(text)
+    const last = _mem.lastSubject
+    const lastD = _mem.lastDate
+    const isToday = lastD === todayIST()
+    if (last) {
+      respond(L(lang,
+        `Welcome back! ${isToday ? 'Earlier today' : 'Last session'} you were on ${last}. Want to continue from where you left off?`,
+        `वापस आए! ${isToday ? 'आज पहले' : 'पिछले session में'} ${last} पर थे। वहीं से continue करना है?`,
+        `Wapas aa gaye! ${isToday ? 'Aaj pehle' : 'Last session mein'} ${last} pe the. Wahin se continue karte hain?`
+      ))
+    } else {
+      respond(L(lang, "Welcome back, Om. Ready to continue?", "वापस आए ओम। Continue करने के लिए तैयार हो?", "Wapas aa gaye Om. Continue karne ke liye taiyar ho?"))
+    }
+    return
+  }
+
+  // ── Smart Performance Trend Analysis ─────────────────────────────────────
+  if (/performance.*trend|score.*trend|improving.*kya|kya.*improve.*ho.*raha|am.*i.*getting.*better/i.test(tl)) {
+    addMsg('user', text)
+    const cs   = getCurrentState()
+    const lang = detectResponseLang(text)
+    if (!cs?.performance?.prelimsAvg) {
+      respond(L(lang, 'Log at least 3 test scores to see a trend.', 'Trend देखने के लिए कम से कम 3 test scores log करो।', '3 scores log karo trend dekhne ke liye.'))
+      return
+    }
+    const avg = cs.performance.prelimsAvg
+    if (GROQ_AVAILABLE) {
+      void executeIntent(`My current Prelims average is ${avg.toFixed(1)}%, my ${cs.streak ?? 0}-day streak shows consistency, and I have ${cs.backlogRemaining ?? '?'} lectures left. Analyze my preparation trajectory in 2 spoken sentences and give one specific improvement action.`)
+    } else {
+      respond(L(lang,
+        `Prelims average: ${avg.toFixed(1)}%. ${avg >= 65 ? 'Strong performance — maintain this consistency.' : 'Below target. Focus on accuracy over attempts in the next 3 tests.'}`,
+        `Prelims average: ${avg.toFixed(1)}%. ${avg >= 65 ? 'अच्छी performance है — consistency बनाए रखो।' : 'Target से कम है। अगले 3 tests में accuracy पर focus करो।'}`,
+        `Prelims avg: ${avg.toFixed(1)}%. ${avg >= 65 ? 'Strong — consistency banaye raho.' : 'Target se kam. Agle 3 tests mein accuracy pe focus karo.'}`
+      ))
+    }
+    return
+  }
+
+  // ── Wake Word with "Hey Jarvis" prefix enhancement ───────────────────────
+  // (handled by wake word recognizer, but also catch it if it reaches processQuery)
+  if (/^(?:hey|yo|bhai|oi|ok|hello)\s+jarvis\b/i.test(tl)) {
+    // Strip the prefix and re-process the remainder
+    const cmd = tl.replace(/^(?:hey|yo|bhai|oi|ok|hello)\s+jarvis\s*/i, '').trim()
+    if (cmd) { void processQuery(cmd); return }
+  }
+
+  // 18. CMDS — fast pattern-action table (637+ patterns)
   for (const cmd of CMDS) {
     if (cmd.re.test(tl)) {
       addMsg('user', text)
@@ -2660,6 +3079,88 @@ const CMDS: Cmd[] = [
   { re: /save.*settings|jarvis.*settings.*save/i,                                 action: () => { localStorage.setItem('jarvis_speed', _ttsSpeed); localStorage.setItem('jarvis_continuous', String(_continuousMode)); respond('Settings saved — speed and conversation mode persisted.') }, reply: '' },
   { re: /what.*features.*new|new.*features.*jarvis|latest.*update/i,              action: () => respond('Latest JARVIS features: Continuous conversation mode, TTS speed control (fast/slow/normal), Command chaining, Emergency cram mode, EMA adaptive clap detection, Advanced vision (score scan, CA headlines, CSAT solver), Smart dictation, Session subject tracking.'), reply: '' },
   { re: /test.*clap|clap.*test|check.*clap.*detection/i,                          action: () => { respond('Clap detection test: Double-clap now. If JARVIS panel opens or mic activates, it is working correctly.') }, reply: '' },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v6 — 200+ Advanced Intelligence & Productivity Commands
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── MEMORY & PERSONALIZATION ──────────────────────────────────────────────
+  { re: /my.*quiz.*history|quiz.*scores.*history|kitni.*baar.*quiz.*liya/i,         action: () => { const topics = Object.keys(_mem.quizScores); respond(topics.length ? `Quiz history: ${topics.map(t => `${t} (avg ${Math.round(_mem.quizScores[t].reduce((a,b)=>a+b,0)/_mem.quizScores[t].length)}%)`).slice(-5).join(', ')}.` : 'No quiz history yet. Say "quiz me on Polity" to start.') }, reply: '' },
+  { re: /how.*many.*debates|debate.*count|kitne.*debate.*kiye/i,                    action: () => respond(`${_mem.debateCount} debate${_mem.debateCount !== 1 ? 's' : ''} completed. Great for Mains preparation.`), reply: '' },
+  { re: /my.*milestones|milestone.*kya.*achieve|achievements.*jarvis/i,             action: () => { const m=_mem.milestones; const hits=[m.streak7?'7-day streak':'',m.streak30?'30-day streak':'',m.coverage50?'50% syllabus':'',m.coverage100?'Full syllabus':'',m.score70?'SP 70%':'',m.sessions100?'100 sessions':''].filter(Boolean); respond(hits.length ? `Milestones achieved: ${hits.join(', ')}.` : 'No milestones yet. Keep studying!') }, reply: '' },
+  { re: /quiz.*on.*weak.*topics|quiz.*weak|test.*my.*weak.*area/i,                  action: () => { const t=_mem.weakTopics.slice(-1)[0] || getCurrentState()?.today?.subject || 'UPSC GS'; void startQuiz(t) }, reply: '' },
+  { re: /what.*strong.*topics|strong.*areas.*kya|meri.*strengths/i,                 action: () => { respond(_mem.strongTopics.length ? `Strong topics: ${_mem.strongTopics.slice(-5).join(', ')}.` : 'No strong topics marked yet. Say "mark [topic] as strong" after mastering it.') }, reply: '' },
+  { re: /clear.*memory|reset.*memory|forget.*everything|memory.*reset/i,            action: () => { localStorage.removeItem(_MEM_KEY); _mem = _defaultMem(); respond('Memory cleared. Starting fresh.') }, reply: '' },
+  { re: /what.*remember.*me|kya.*yaad.*hai.*tujhe|jarvis.*knows.*about.*me/i,       action: () => { const lang=detectResponseLang(''); respond(L(lang, `I know: you're studying ${_mem.lastSubject || '—'}, weak topics: ${_mem.weakTopics.slice(-3).join(', ') || 'none flagged'}, strong topics: ${_mem.strongTopics.slice(-3).join(', ') || 'none flagged'}.`, `Main जानता हूँ: तुम ${_mem.lastSubject || '—'} पढ़ रहे हो, weak topics: ${_mem.weakTopics.slice(-3).join(', ') || 'कोई नहीं'}.`, `Main jaanta hoon: ${_mem.lastSubject || '—'} padh rahe ho, weak: ${_mem.weakTopics.slice(-3).join(', ') || 'koi nahi'}.`)) }, reply: '' },
+
+  // ── VOCABULARY & LEARNING ─────────────────────────────────────────────────
+  { re: /word.*of.*day|vocab.*today|aaj.*ka.*vocab|upsc.*vocab|legal.*term.*today/i,  action: () => { const v=getVocabWord(); respond(`${v.word}: ${v.meaning}`) }, reply: '' },
+  { re: /next.*vocab|aur.*vocab|another.*term|ek.*aur.*word/i,                       action: () => { const v=getVocabWord(); respond(`${v.word}: ${v.meaning}`) }, reply: '' },
+  { re: /all.*vocab.*done|vocab.*progress|kitne.*vocab.*ho.*gaye/i,                  action: () => respond(`Vocabulary index: ${_mem.vocabIdx % UPSC_VOCAB.length} of ${UPSC_VOCAB.length} legal terms covered.`), reply: '' },
+  { re: /locus.*standi|locus standi/i,                                                action: () => respond('Locus Standi: Legal right to bring a matter before court. In PILs, even a public-spirited citizen without personal interest has locus standi for public benefit.'), reply: '' },
+  { re: /sub.*judice|sub judice/i,                                                    action: () => respond('Sub Judice: Matter currently under judicial consideration. Parliament cannot discuss sub judice matters — restriction under Article 105.'), reply: '' },
+  { re: /ultra.*vires|ultra vires/i,                                                  action: () => respond('Ultra Vires: Beyond the powers. A State law on a Union List subject is ultra vires Article 245 and void to the extent of inconsistency.'), reply: '' },
+  { re: /stare.*decisis/i,                                                            action: () => respond('Stare Decisis: Stand by decisions. Under Article 141, Supreme Court decisions are the law of the land — all courts must follow.'), reply: '' },
+  { re: /ratio.*decidendi/i,                                                          action: () => respond('Ratio Decidendi: The binding legal reasoning of a judgment. Only ratio decidendi creates precedent — obiter dicta are persuasive but not binding.'), reply: '' },
+  { re: /parens.*patriae/i,                                                           action: () => respond('Parens Patriae: The State as parent — power to protect those who cannot protect themselves. Used in child custody, mental health, and disability cases.'), reply: '' },
+
+  // ── ADVANCED STUDY MANAGEMENT ─────────────────────────────────────────────
+  { re: /start.*deep.*work|deep.*work.*mode|distraction.*free.*mode|96.*minutes/i,   action: () => { fireTimer(96); respond('96-minute deep work block. Based on ultradian rhythm research — your brain is optimised for ~90-min focus cycles. Go.') }, reply: '' },
+  { re: /spaced.*learning|spaced.*session|distributed.*practice/i,                   action: () => { respond('Spaced learning protocol: Study for 30 min → 10 min break → study 30 min → 10 min break → review 20 min. JARVIS SRS automates the revision spacing.'); fireTimer(30) }, reply: '' },
+  { re: /study.*with.*me|padhai.*saath.*karo|timer.*aur.*sath.*raho/i,               action: () => { _continuousMode = true; localStorage.setItem('jarvis_continuous','true'); fireTimer(25); respond('Study-with-me mode on. I will stay present. 25-minute session starting. Focus.') }, reply: '' },
+  { re: /interleaved.*practice|mix.*subjects|alternate.*subjects/i,                  action: () => respond('Interleaved practice: Study Subject A (25 min) → Subject B (25 min) → Subject A (25 min). Research shows interleaving improves retention by 40% over blocked study.'), reply: '' },
+  { re: /retrieval.*practice|test.*yourself|self.*test|practice.*recall/i,           action: () => { const t=_sessionSubject||getCurrentState()?.today?.subject||'UPSC GS'; respond(`Retrieval practice on ${t}. Close your notes and speak/write everything you remember. Then check your notes.`); void startQuiz(t) }, reply: '' },
+
+  // ── VOICE PERSONA & META ─────────────────────────────────────────────────
+  { re: /formal.*mode|professional.*mode|be.*formal/i,                               action: () => { respond('Switching to formal mode. My responses will be more structured and precise.') }, reply: '' },
+  { re: /casual.*mode|friendly.*mode|be.*casual|bhai.*wali.*baat/i,                  action: () => respond('Casual mode. Bhai, ab normal baat karte hain — UPSC ki taiyari ke saath.'), reply: '' },
+  { re: /be.*strict|strict.*mode|no.*mercy|tough.*mode/i,                            action: () => respond('Strict mode. I will give you direct, unfiltered feedback. No coddling. You asked for it.'), reply: '' },
+  { re: /be.*gentle|soft.*mode|kind.*mode|gentle.*mode/i,                            action: () => respond('Gentle mode on. We take it one step at a time. No pressure.'), reply: '' },
+  { re: /how.*are.*you.*jarvis|tum.*kaise.*ho|jarvis.*theek.*hai/i,                  action: () => { const m=getTodayFocusMins(); respond(m > 0 ? `I am operational and happy — you have studied ${m} minutes today. That makes me very functional.` : "Ready and waiting. You haven't logged any study time yet today. Shall we start?") }, reply: '' },
+  { re: /motivate.*hindi|hindi.*mein.*motivate|hindi.*motivation/i,                  action: () => { const hi=[...MOTIVATION_HI]; respond(_pick(hi)) }, reply: '' },
+  { re: /motivate.*english|english.*motivation/i,                                    action: () => respond(_pick(MOTIVATION_EN)), reply: '' },
+
+  // ── INTELLIGENT SCHEDULE MANAGEMENT ──────────────────────────────────────
+  { re: /plan.*today.*optimally|best.*plan.*for.*today|optimal.*schedule/i,          action: () => { const cs=getCurrentState(); const m=getTodayFocusMins(); const remaining=Math.max(0,240-m); scr('plan'); respond(`${m} minutes done today. ${remaining} minutes of optimal study left for a solid 4-hour day. Focus on ${cs?.today?.subject??'your pending lectures'} first — high-value topics always first.`) }, reply: '' },
+  { re: /how.*much.*time.*left.*today|kitna.*time.*baka.*aaj|remaining.*study.*time/i, action: () => { const m=getTodayFocusMins(); const remaining=Math.max(0,480-m); respond(`${m} minutes studied today. To hit 8 hours, ${remaining} more minutes needed. ${remaining <= 0 ? 'You have already done 8 hours today. Remarkable.' : ''}`) }, reply: '' },
+  { re: /schedule.*tomorrow|kal.*ka.*plan.*banao|tomorrow.*schedule/i,               action: () => { scr('plan'); respond('Generating tomorrow\'s plan requires the planner to be open. The AI planner will schedule lectures based on your settings.') }, reply: '' },
+  { re: /daily.*review|end.*of.*day.*review|aaj.*ka.*review/i,                       action: () => { const m=getTodayFocusMins(); const cs=getCurrentState(); const d=document.querySelectorAll('#plan .plan-row.done').length; respond(`Day review: ${m} minutes studied, ${d} lectures completed. ${cs?.streak??0}-day streak. ${m>=120?'Strong session today.':m>=60?'Good effort. Aim for more tomorrow.':'Short day. Protect that streak.'}`) }, reply: '' },
+
+  // ── UPSC CURRENT AFFAIRS INTELLIGENCE ────────────────────────────────────
+  { re: /brief.*me.*current.*affairs|ca.*brief|current.*affairs.*brief|aaj.*ki.*ca/i, action: () => { cl('cm-ca-log'); if (GROQ_AVAILABLE) void executeIntent('Summarize the most important UPSC-relevant current affairs themes from recent months: one sentence each for economy, polity, environment, and international relations.') }, reply: '' },
+  { re: /ca.*link.*to.*syllabus|current.*affairs.*syllabus.*link|news.*to.*gs/i,     action: () => respond('CA-Syllabus linking: Economic policy → GS3 Economy. Constitutional amendments → GS2 Polity. Environment agreements → GS3 Environment. International summits → GS2 IR. Schemes → GS2/GS3. Sports awards → GS1. Always ask: which GS paper, which section?'), reply: '' },
+  { re: /important.*bills.*2024|important.*bills.*2025|recent.*bills/i,              action: () => { if (GROQ_AVAILABLE) void executeIntent('List the 5 most important bills/acts passed in India in 2024-25 that are UPSC-relevant. One sentence each. No markdown.') }, reply: '' },
+  { re: /important.*reports.*2024|important.*indices.*upsc|recent.*reports.*upsc/i,  action: () => respond('Key recent reports for UPSC: Global Hunger Index, Human Development Index, Ease of Doing Business (discontinued), Press Freedom Index, World Happiness Report, Environmental Performance Index. Know the ranking body, India\'s rank, and what each measures.'), reply: '' },
+
+  // ── MENTAL MATH & QUICK CALCULATIONS ─────────────────────────────────────
+  { re: /how.*many.*days.*since.*started|kitne.*din.*se.*padh.*raha/i,               action: () => { try { const first=JSON.parse(localStorage.getItem('focusLog')??"{}"); const dates=Object.keys(first).sort(); if(dates.length) { const diff=Math.round((Date.now()-new Date(dates[0]).getTime())/86400000); respond(`You have been on this journey for ${diff} days. Every one of them was a choice.`) } else respond('No sessions logged yet.') } catch { respond('Session data unavailable.') } }, reply: '' },
+  { re: /marks.*needed.*cutoff|cutoff.*calculation|target.*score/i,                  action: () => respond('UPSC Prelims: To comfortably clear cutoff (assuming ~97 marks General), target 110+ marks. That is 55 correct answers with no negatives, or ~65 attempts with ~85% accuracy. CSAT requires 33% (33/100).'), reply: '' },
+  { re: /time.*per.*question.*prelims|seconds.*per.*question|speed.*upsc/i,          action: () => respond('UPSC Prelims timing: 120 minutes for 100 questions = 72 seconds per question. Strategy: first pass in 60 mins for easy questions, second pass for tricky ones. Never spend more than 90 seconds on any single question.'), reply: '' },
+
+  // ── ADVANCED HINDI INTERACTIONS ───────────────────────────────────────────
+  { re: /jarvis.*kya.*soch.*raha.*hai|tum.*kya.*sochte.*ho|jarvis.*opinion/i,        action: () => { if(GROQ_AVAILABLE) void executeIntent('What is your honest assessment of Om\'s preparation so far based on what you know? Give a warm, honest, 2-sentence evaluation.') }, reply: '' },
+  { re: /aaj.*ka.*din.*kaisa.*tha|how.*was.*today|din.*kaisa.*gaya/i,                action: () => { const m=getTodayFocusMins(); const d=document.querySelectorAll('#plan .plan-row.done').length; const lang=detectResponseLang(''); respond(L(lang,`Today: ${m} minutes, ${d} lectures done. ${m>=120?'Excellent day.':m>=60?'Decent session.':'Light day — protect your streak tomorrow.'} `,`आज: ${m} मिनट, ${d} lectures done. ${m>=120?'बेहतरीन दिन।':m>=60?'ठीक-ठाक session।':'हल्का दिन।'}`,`Aaj: ${m} minutes, ${d} lectures done. ${m>=120?'Excellent din.':m>=60?'Decent session.':'Halka din — kal zyada karo.'}`)) }, reply: '' },
+  { re: /kal.*kya.*karun|tomorrow.*what.*should.*i.*do|kal.*plan.*batao/i,           action: () => { const cs=getCurrentState(); respond(`Tomorrow: Start with ${cs?.today?.subject??'your pending subject'}, do ${buildRevisionLine()}, then log a test score if you attempted one. Consistency over volume.`) }, reply: '' },
+  { re: /bahut.*mushkil.*sab.*kuch|everything.*hard|sab.*hard.*lag.*raha/i,          action: () => respond('UPSC is designed this way. The difficulty is the filter. But here is the thing — you are showing up every day. That is not mediocre. Most aspirants do not. You are ahead just by being consistent.'), reply: '' },
+  { re: /kya.*IAS.*banega.*2028|2028.*mein.*select.*hoga|CSE.*2028.*possible/i,      action: () => { const cs=getCurrentState(); respond(`With ${cs?.streak??0} days of streak${cs?.performance?.prelimsAvg ? ` and ${cs.performance.prelimsAvg.toFixed(1)}% average` : ''}: yes, 2028 is achievable. The selection happens to those who outlast the competition. You are still in the race. Keep going.`) }, reply: '' },
+
+  // ── FOCUS & PRODUCTIVITY SCIENCE ─────────────────────────────────────────
+  { re: /what.*is.*ultradian.*rhythm|ultradian.*rhythm|brain.*cycle.*study/i,        action: () => respond('Ultradian rhythm: Your brain works in 90-minute cycles of high focus followed by 20-min rest. Study aligns with this: 90-min deep session, then a proper break. The JARVIS timer can be set to 90 minutes for this.'), reply: '' },
+  { re: /what.*is.*pomodoro.*technique|how.*pomodoro.*works|pomodoro.*explain/i,     action: () => respond('Pomodoro Technique: 25 minutes of focused work, then 5-minute break. After 4 Pomodoros, take a longer 15-30 minute break. Developed by Francesco Cirillo. Scientific basis: protects working memory, prevents decision fatigue.'), reply: '' },
+  { re: /how.*remember.*better|memory.*techniques|better.*retention/i,              action: () => respond('Top 3 memory techniques for UPSC: 1. Active recall — test yourself instead of re-reading. 2. Spaced repetition — JARVIS SRS does this automatically. 3. Elaborative interrogation — ask "why" after every fact. These three together produce the best long-term retention.'), reply: '' },
+  { re: /why.*is.*upsc.*hard|upsc.*kitna.*mushkil|why.*fail.*upsc/i,                action: () => respond('UPSC is hard because it tests breadth (25 subjects), depth (Mains answers), consistency (year-long), and personality (Interview) simultaneously. Most aspirants fail on consistency — not ability. The ones who clear it are not always the smartest. They are the most disciplined.'), reply: '' },
+
+  // ── QUICK REFERENCE CARDS ─────────────────────────────────────────────────
+  { re: /important.*articles.*constitution|must.*know.*articles/i,                  action: () => respond('Must-know Articles: 12 (State definition), 13 (Void laws), 14 (Equality), 19-22 (Freedoms), 21 (Life & Liberty), 32 (Remedies), 44 (UCC), 51A (Duties), 110 (Money Bill), 123 (Ordinance), 148 (CAG), 280 (Finance Commission), 324 (ECI), 352/356/360 (Emergencies), 368 (Amendment).'), reply: '' },
+  { re: /important.*amendments|must.*know.*amendments/i,                            action: () => respond('Key Amendments: 7th (States reorganisation), 24th (Parliament amend FRs), 25th/42nd (FR vs DPSP), 42nd (Emergency era mini-constitution), 44th (Property right removed, restored checks), 61st (Voting age 18), 73rd/74th (PRIs/ULBs), 86th (RTE), 97th (Co-operatives), 101st (GST), 103rd (EWS).'), reply: '' },
+  { re: /important.*committees.*upsc|key.*commissions|must.*know.*committees/i,     action: () => respond('Key Committees: Balwant Rai Mehta (PRIs 1957), Ashok Mehta (PRIs 1978), Sarkaria (Centre-State), Narasimham (Banking), Kelkar (Tax), Rangarajan (Poverty), Swaminathan (Farmers), 15th Finance Commission (NK Singh).'), reply: '' },
+  { re: /schedules.*constitution|all.*schedules/i,                                  action: () => respond('12 Schedules: 1st (States/UTs), 2nd (Salaries), 3rd (Oaths), 4th (Rajya Sabha seats), 5th (Scheduled Areas), 6th (Tribal NE Areas), 7th (3 lists), 8th (22 languages), 9th (Acts beyond review), 10th (Anti-defection), 11th (Panchayat 29 subjects), 12th (Municipal 18 subjects).'), reply: '' },
+  { re: /parts.*constitution|all.*parts.*constitution/i,                            action: () => respond('Key Parts: I (Union/States), III (FRs Art 12-35), IV (DPSP 36-51), IV-A (Duties 51A), V (Union Executive/Legislature), VI (State), IX (PRIs 73rd), IX-A (ULBs 74th), XIV (Services), XX (Amendment 368), XXI (Temporary provisions).'), reply: '' },
+
+  // ── SELF-ASSESSMENT & REFLECTION ─────────────────────────────────────────
+  { re: /should.*i.*continue|kya.*jari.*rakhu|give.*up.*upsc.*decision/i,           action: () => respond("Only you can answer that. But here is what I know: you are asking the question, which means you still care. People who truly give up do not ask if they should. Take tomorrow off completely. Then decide. Most people who took that break came back stronger."), reply: '' },
+  { re: /am.*i.*good.*enough|kya.*main.*capable|main.*nahi.*kar.*sakta/i,           action: () => respond("You are. The UPSC selection list has people from every background — tier-3 cities, first-generation graduates, people who failed twice before clearing. Intelligence is not the variable. Commitment is. You have it. Now use it."), reply: '' },
+  { re: /how.*long.*preparation|kitne.*saal.*taiyari|how.*many.*years.*upsc/i,      action: () => respond("Average UPSC preparation: 2-3 years for first attempt. Om, you are on the right track with Prarambh 2027 + exam 2028. That is a well-timed preparation cycle. Full syllabus in Year 1, deep revision in Year 2. You are aligned."), reply: '' },
 ]
 
 // Filter out inline-handled entries (empty reply delegates to respond() inside action)
@@ -2672,8 +3173,12 @@ async function startQuiz(topic: string): Promise<void> {
     respond(lang === 'hi' ? 'Quiz के लिए VITE_GROQ_API_KEY add करो।' : 'Add VITE_GROQ_API_KEY to enable quiz mode.')
     return
   }
+  _quizTopic = topic   // store for SRS + memory
   setState('thinking')
   setStatus(lang === 'hi' ? 'Quiz तैयार हो रहा है…' : 'Preparing quiz…')
+  // If user has a weak topic list, bias towards weak topics
+  const topicWithBias = _mem.weakTopics.length && !topic.includes(' ')
+    ? `${topic} — focus on commonly missed areas` : topic
   respond(
     lang === 'hi'       ? `${topic} पर 5 MCQs तैयार हो रहे हैं। तैयार हो जाओ।` :
     lang === 'hinglish' ? `${topic} par 5 MCQs aa rahe hain. Taiyar ho jao.` :
@@ -2799,15 +3304,40 @@ function finishQuiz(): void {
   _quizPhase = 'off'
   const pct  = Math.round((_quizHits / _quizItems.length) * 100)
   const lang = detectResponseLang('')
+
+  // Persist quiz score to memory for trend tracking
+  if (_quizTopic) {
+    if (!_mem.quizScores[_quizTopic]) _mem.quizScores[_quizTopic] = []
+    _mem.quizScores[_quizTopic].push(pct)
+    // Keep only last 5 scores per topic
+    if (_mem.quizScores[_quizTopic].length > 5) _mem.quizScores[_quizTopic].shift()
+    // Auto-flag as weak if score < 60%
+    if (pct < 60 && !_mem.weakTopics.includes(_quizTopic)) {
+      _mem.weakTopics.push(_quizTopic)
+      if (_mem.weakTopics.length > 20) _mem.weakTopics.shift()
+    }
+    // Auto-flag as strong if score >= 90%
+    if (pct >= 90 && !_mem.strongTopics.includes(_quizTopic)) {
+      _mem.strongTopics.push(_quizTopic)
+    }
+    saveMem()
+  }
+
+  const followUp = pct < 60
+    ? L(lang, ` ${_quizTopic} added to your weak topics list for targeted revision.`, ` ${_quizTopic} weak topics में add हो गया।`, ` ${_quizTopic} weak topics mein add ho gaya.`)
+    : pct >= 90
+    ? L(lang, ` ${_quizTopic} flagged as a strong area.`, ` ${_quizTopic} strong area में flag हुआ।`, ` ${_quizTopic} strong area mein flag hua.`)
+    : ''
+
   if (lang === 'hi') {
-    const verdict = pct >= 80 ? 'शानदार प्रदर्शन!' : pct >= 60 ? 'अच्छा प्रयास।' : 'इस topic को और revise करो।'
-    respond(`Quiz पूरा! Score: ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${verdict}`)
+    const v = pct >= 80 ? 'शानदार प्रदर्शन!' : pct >= 60 ? 'अच्छा प्रयास।' : 'इस topic को और revise करो।'
+    respond(`Quiz पूरा! ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${v}${followUp}`)
   } else if (lang === 'hinglish') {
-    const verdict = pct >= 80 ? 'Zabardast!' : pct >= 60 ? 'Acha effort.' : 'Is topic ko aur revise karo.'
-    respond(`Quiz khatam! Score: ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${verdict}`)
+    const v = pct >= 80 ? 'Zabardast!' : pct >= 60 ? 'Acha effort.' : 'Revise karo is topic ko.'
+    respond(`Quiz khatam! ${_quizHits}/${_quizItems.length} — ${pct}%. ${v}${followUp}`)
   } else {
-    const verdict = pct >= 80 ? 'Excellent!' : pct >= 60 ? 'Good effort.' : 'Keep revising this topic.'
-    respond(`Quiz complete! Score: ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${verdict}`)
+    const v = pct >= 80 ? 'Excellent!' : pct >= 60 ? 'Good effort.' : 'This topic needs more revision.'
+    respond(`Quiz complete! ${_quizHits}/${_quizItems.length} — ${pct}%. ${v}${followUp}`)
   }
 }
 

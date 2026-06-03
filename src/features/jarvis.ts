@@ -116,7 +116,7 @@ function setJarvisEnabled(on: boolean): void {
   const lbl = tog?.querySelector<HTMLElement>('span:last-child')
 
   if (on) {
-    document.body.classList.remove('va-disabled')
+    document.body.classList.remove('va-off')
     btn?.classList.remove('disabled')
     tog?.classList.add('on')
     if (lbl) lbl.textContent = 'JARVIS'
@@ -126,7 +126,7 @@ function setJarvisEnabled(on: boolean): void {
     if (_open) closePanel()
     _synth.cancel()
     VA.setState('idle')
-    document.body.classList.add('va-disabled')
+    document.body.classList.add('va-off')
     btn?.classList.add('disabled')
     tog?.classList.remove('on')
     if (lbl) lbl.textContent = 'OFF'

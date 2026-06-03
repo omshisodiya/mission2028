@@ -1,0 +1,124 @@
+{
+  "_comment": "Exact logic extracted from Om's UPSC_.xlsx tracker. The app computes everything from the user's manual inputs (day_type, attempted, correct, wrong, study_hours, mains_written) using these rules. All of this is user-editable in settings.",
+  "timezone": "Asia/Kolkata",
+  "anchor_date_for_sectional": "2026-03-02",
+  "day_types": ["College", "Holiday", "Leave", "Test Day"],
+
+  "schedules": {
+    "Holiday": {
+      "start_time": "08:00 AM",
+      "end_time": "11:59 PM",
+      "blocks": [
+        "🌅 7:00–9:30 Maths",
+        "☀ 11:00–12:00 Current Affairs (Newspaper + Notes)",
+        "☀ 12:00–1:00 GS Lecture",
+        "🌇 3:30–6:00 MCQ + DPP",
+        "🌙 9:00–11:00 DMP"
+      ]
+    },
+    "College": {
+      "start_time": "07:30 AM",
+      "end_time": "NEXT DAY 01:00 AM",
+      "blocks": [
+        "🌅 5:00–7:00 Maths",
+        "🌙 9:45–10:30 Current Affairs",
+        "🌙 10:30–11:30 GS + DMP"
+      ]
+    }
+  },
+
+  "subject_rotation": {
+    "rule_order": ["sunday_is_full_test", "biweekly_sectional", "weekday_choose"],
+    "sunday_is_full_test": "PW Full Test",
+    "biweekly_sectional": {
+      "every_n_days": 14,
+      "anchored_to": "2026-03-02",
+      "value": "PW Optional Sectional"
+    },
+    "weekday_choose": {
+      "Mon": "SJS + Mathematics",
+      "Tue": "Geography + Mathematics",
+      "Wed": "Environment + Mathematics",
+      "Thu": "Medieval History + Mathematics",
+      "Fri": "Economy + Mathematics",
+      "Sat": "Mathematics Intensive",
+      "Sun": "PW Full Test"
+    }
+  },
+
+  "topic_counter": {
+    "_comment": "running count of lectures per subject, like the COUNTIF in the sheet",
+    "match_keywords": ["SJS", "Geography", "Environment", "Medieval", "Economy"],
+    "labels": {
+      "SJS": "SJS Lecture {n}",
+      "Geography": "GEO Lecture {n}",
+      "Environment": "ENV Lecture {n}",
+      "Medieval": "Medieval Lecture {n}",
+      "Economy": "Economy Lecture {n}"
+    },
+    "full_test": "Full Length Prelims Test + Analysis",
+    "sectional": "Maths Sectional Test + Error Log",
+    "default": "Mathematics Practice (Current Module)"
+  },
+
+  "component_text": {
+    "full_test": "📝 Full Test (2-3 hrs) | 🔍 Analysis | ❌ Error Log",
+    "sectional": "📘 Maths Sectional | 🔍 Analysis | ❌ Error Log",
+    "holiday": "🌅 Maths | ☀ Current Affairs | 📚 GS Lecture | 🎯 MCQ/DPP | ✍ DMP (2 Ans)",
+    "college": "🌅 Maths | 🌙 Current Affairs | 📚 GS | ✍ DMP (1 Ans)"
+  },
+
+  "target_questions": { "PW Full Test": 100, "PW Optional Sectional": 20, "Holiday": 30, "default": 20 },
+  "mains_written_target": { "Holiday": 2, "default": 1 },
+
+  "scoring": { "marks_per_correct": 2, "negative_per_wrong": 0.66,
+               "_formula": "test_score = correct*2 - wrong*0.66" },
+  "accuracy": "correct / attempted * 100 (0 if attempted=0)",
+
+  "running_averages": {
+    "prelims_avg": "average of accuracy over days where subject does NOT contain 'Mathematics' and accuracy>0",
+    "optional_avg": "average of accuracy over days where subject contains 'Mathematics' and accuracy>0",
+    "mains_avg": "average of mains_written over days where mains_written>0"
+  },
+
+  "consistency_percent": {
+    "Holiday": [
+      { "if": "study_hours>=8 AND mains_written>=2 AND attempted>=30", "value": 100 },
+      { "if": "study_hours>=8", "value": 80 },
+      { "if": "study_hours>=6", "value": 60 },
+      { "else": true, "value": 30 }
+    ],
+    "College": [
+      { "if": "study_hours>=5 AND mains_written>=1 AND attempted>=20", "value": 100 },
+      { "if": "study_hours>=5", "value": 70 },
+      { "if": "study_hours>=3", "value": 50 },
+      { "else": true, "value": 20 }
+    ],
+    "blank_if": "study_hours is empty"
+  },
+
+  "selection_probability": {
+    "min_attempted_to_score": 15,
+    "_formula": "0.2*prelims_avg + 0.3*optional_avg + 0.2*mains_avg + 0.2*consistency + 0.1*avg(test_score where >0)",
+    "weights": { "prelims": 0.2, "optional": 0.3, "mains": 0.2, "consistency": 0.2, "test_score": 0.1 }
+  },
+
+  "rank_projection_bands": [
+    { "max": 0,  "label": "Data Insufficient" },
+    { "max": 60, "label": "Below Interview Zone" },
+    { "max": 70, "label": "Borderline" },
+    { "max": 80, "label": "Selection Zone" },
+    { "max": 88, "label": "Rank 100–300" },
+    { "max": 999, "label": "Rank <100 Zone" }
+  ],
+  "approx_rank_bands": [
+    { "max": 0,  "label": "--" },
+    { "max": 65, "label": ">500" },
+    { "max": 75, "label": "300-500" },
+    { "max": 85, "label": "100-300" },
+    { "max": 92, "label": "50-100" },
+    { "max": 999, "label": "<50 Potential" }
+  ],
+
+  "disclaimer": "Selection Probability, Rank Projection and Approx Rank are the user's own motivational self-benchmark heuristic — display them with a clear caption that they are a personal estimate, not an official prediction."
+}

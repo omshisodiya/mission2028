@@ -1,0 +1,7664 @@
+{
+ "total": 1857,
+ "intents": 46,
+ "registry": {
+  "nav.goto": {
+   "action": "navigate(section)",
+   "commands": [
+    {
+     "text": "open the plan section",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis open the plan section",
+     "lang": "en"
+    },
+    {
+     "text": "open the plan section jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "open the intelligence section",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis open the intelligence section",
+     "lang": "en"
+    },
+    {
+     "text": "open the intelligence section jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "go to plan",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis go to plan",
+     "lang": "en"
+    },
+    {
+     "text": "go to plan jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "go to intelligence",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis go to intelligence",
+     "lang": "en"
+    },
+    {
+     "text": "go to intelligence jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "show me plan",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis show me plan",
+     "lang": "en"
+    },
+    {
+     "text": "show me plan jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "show me intelligence",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis show me intelligence",
+     "lang": "en"
+    },
+    {
+     "text": "show me intelligence jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "take me to plan",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis take me to plan",
+     "lang": "en"
+    },
+    {
+     "text": "take me to plan jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "take me to intelligence",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis take me to intelligence",
+     "lang": "en"
+    },
+    {
+     "text": "take me to intelligence jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "plan खोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis plan खोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "plan खोलो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence खोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis intelligence खोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence खोलो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "plan पर जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis plan पर जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "plan पर जाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence पर जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis intelligence पर जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence पर जाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "plan दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis plan दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "plan दिखाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis intelligence दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence दिखाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "plan सेक्शन पर ले चलो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis plan सेक्शन पर ले चलो",
+     "lang": "hi"
+    },
+    {
+     "text": "plan सेक्शन पर ले चलो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence सेक्शन पर ले चलो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis intelligence सेक्शन पर ले चलो",
+     "lang": "hi"
+    },
+    {
+     "text": "intelligence सेक्शन पर ले चलो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "plan section kholo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis plan section kholo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "plan section kholo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence section kholo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis intelligence section kholo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence section kholo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "plan pe le chalo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis plan pe le chalo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "plan pe le chalo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence pe le chalo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis intelligence pe le chalo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence pe le chalo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "plan dikhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis plan dikhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "plan dikhao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence dikhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis intelligence dikhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence dikhao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "plan wala part khol do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis plan wala part khol do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "plan wala part khol do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence wala part khol do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis intelligence wala part khol do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "intelligence wala part khol do jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "timer.start": {
+   "action": "focusTimer.start(min)",
+   "commands": [
+    {
+     "text": "start a 25 minute focus session",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis start a 25 minute focus session",
+     "lang": "en"
+    },
+    {
+     "text": "start a 25 minute focus session jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "start a 30 minute focus session",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis start a 30 minute focus session",
+     "lang": "en"
+    },
+    {
+     "text": "start a 30 minute focus session jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "begin focus for 25 minutes",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis begin focus for 25 minutes",
+     "lang": "en"
+    },
+    {
+     "text": "begin focus for 25 minutes jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "begin focus for 30 minutes",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis begin focus for 30 minutes",
+     "lang": "en"
+    },
+    {
+     "text": "begin focus for 30 minutes jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "start studying",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis start studying",
+     "lang": "en"
+    },
+    {
+     "text": "start studying jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "focus mode on",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis focus mode on",
+     "lang": "en"
+    },
+    {
+     "text": "focus mode on jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "25 मिनट की पढ़ाई शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 25 मिनट की पढ़ाई शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "25 मिनट की पढ़ाई शुरू करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "30 मिनट की पढ़ाई शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 30 मिनट की पढ़ाई शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "30 मिनट की पढ़ाई शुरू करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "फोकस शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis फोकस शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "फोकस शुरू करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "पढ़ाई चालू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis पढ़ाई चालू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "पढ़ाई चालू करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "टाइमर शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टाइमर शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "टाइमर शुरू करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "25 minute ka focus start karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 25 minute ka focus start karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "25 minute ka focus start karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 minute ka focus start karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 30 minute ka focus start karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 minute ka focus start karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "padhai shuru karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis padhai shuru karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "padhai shuru karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "focus chalu kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis focus chalu kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "focus chalu kar do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "timer start kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis timer start kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "timer start kar do jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "timer.stop": {
+   "action": "focusTimer.stop()",
+   "commands": [
+    {
+     "text": "stop the timer",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis stop the timer",
+     "lang": "en"
+    },
+    {
+     "text": "stop the timer jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "end the session",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis end the session",
+     "lang": "en"
+    },
+    {
+     "text": "end the session jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "stop focus",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis stop focus",
+     "lang": "en"
+    },
+    {
+     "text": "stop focus jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "pause studying",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis pause studying",
+     "lang": "en"
+    },
+    {
+     "text": "pause studying jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "टाइमर बंद करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टाइमर बंद करो",
+     "lang": "hi"
+    },
+    {
+     "text": "टाइमर बंद करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "सेशन खत्म करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis सेशन खत्म करो",
+     "lang": "hi"
+    },
+    {
+     "text": "सेशन खत्म करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "फोकस रोको",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis फोकस रोको",
+     "lang": "hi"
+    },
+    {
+     "text": "फोकस रोको jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "पढ़ाई रोको",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis पढ़ाई रोको",
+     "lang": "hi"
+    },
+    {
+     "text": "पढ़ाई रोको jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "timer band karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis timer band karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "timer band karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "session khatam",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis session khatam",
+     "lang": "hinglish"
+    },
+    {
+     "text": "session khatam jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "focus rok do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis focus rok do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "focus rok do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "padhai pause karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis padhai pause karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "padhai pause karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "timer.extend": {
+   "action": "focusTimer.extend(min)",
+   "commands": [
+    {
+     "text": "add 25 more minutes",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add 25 more minutes",
+     "lang": "en"
+    },
+    {
+     "text": "add 25 more minutes jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add 30 more minutes",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add 30 more minutes",
+     "lang": "en"
+    },
+    {
+     "text": "add 30 more minutes jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "extend the timer by 25",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis extend the timer by 25",
+     "lang": "en"
+    },
+    {
+     "text": "extend the timer by 25 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "extend the timer by 30",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis extend the timer by 30",
+     "lang": "en"
+    },
+    {
+     "text": "extend the timer by 30 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "give me 25 extra minutes",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis give me 25 extra minutes",
+     "lang": "en"
+    },
+    {
+     "text": "give me 25 extra minutes jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "give me 30 extra minutes",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis give me 30 extra minutes",
+     "lang": "en"
+    },
+    {
+     "text": "give me 30 extra minutes jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "25 मिनट और बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 25 मिनट और बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "25 मिनट और बढ़ाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "30 मिनट और बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 30 मिनट और बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "30 मिनट और बढ़ाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "टाइमर 25 मिनट बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टाइमर 25 मिनट बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "टाइमर 25 मिनट बढ़ाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "टाइमर 30 मिनट बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टाइमर 30 मिनट बढ़ाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "टाइमर 30 मिनट बढ़ाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "और 25 मिनट दो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis और 25 मिनट दो",
+     "lang": "hi"
+    },
+    {
+     "text": "और 25 मिनट दो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "और 30 मिनट दो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis और 30 मिनट दो",
+     "lang": "hi"
+    },
+    {
+     "text": "और 30 मिनट दो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "25 minute aur badha do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 25 minute aur badha do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "25 minute aur badha do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 minute aur badha do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 30 minute aur badha do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 minute aur badha do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "timer 25 se extend karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis timer 25 se extend karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "timer 25 se extend karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "timer 30 se extend karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis timer 30 se extend karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "timer 30 se extend karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aur 25 min do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aur 25 min do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aur 25 min do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aur 30 min do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aur 30 min do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aur 30 min do jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "timer.break": {
+   "action": "focusTimer.break()",
+   "commands": [
+    {
+     "text": "take a break",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis take a break",
+     "lang": "en"
+    },
+    {
+     "text": "take a break jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "start my break",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis start my break",
+     "lang": "en"
+    },
+    {
+     "text": "start my break jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i need a break",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i need a break",
+     "lang": "en"
+    },
+    {
+     "text": "i need a break jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "ब्रेक लो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis ब्रेक लो",
+     "lang": "hi"
+    },
+    {
+     "text": "ब्रेक लो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "ब्रेक शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis ब्रेक शुरू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "ब्रेक शुरू करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आराम चाहिए",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आराम चाहिए",
+     "lang": "hi"
+    },
+    {
+     "text": "आराम चाहिए jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "break le lo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis break le lo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "break le lo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "break start karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis break start karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "break start karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "thoda rest chahiye",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis thoda rest chahiye",
+     "lang": "hinglish"
+    },
+    {
+     "text": "thoda rest chahiye jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "score.add": {
+   "action": "core.addScore(score,max,cat,sub)",
+   "commands": [
+    {
+     "text": "add score 80 out of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add score 80 out of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "add score 80 out of 100 prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add score 80 out of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add score 80 out of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "add score 80 out of 100 optional jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add score 75 out of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add score 75 out of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "add score 75 out of 100 prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add score 75 out of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add score 75 out of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "add score 75 out of 100 optional jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "log 80 by 100 in prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log 80 by 100 in prelims",
+     "lang": "en"
+    },
+    {
+     "text": "log 80 by 100 in prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "log 80 by 100 in optional",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log 80 by 100 in optional",
+     "lang": "en"
+    },
+    {
+     "text": "log 80 by 100 in optional jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "log 75 by 100 in prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log 75 by 100 in prelims",
+     "lang": "en"
+    },
+    {
+     "text": "log 75 by 100 in prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "log 75 by 100 in optional",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log 75 by 100 in optional",
+     "lang": "en"
+    },
+    {
+     "text": "log 75 by 100 in optional jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 80 of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i scored 80 of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 80 of 100 prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 80 of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i scored 80 of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 80 of 100 optional jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 75 of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i scored 75 of 100 prelims",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 75 of 100 prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 75 of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i scored 75 of 100 optional",
+     "lang": "en"
+    },
+    {
+     "text": "i scored 75 of 100 optional jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "prelims में 100 में से 80 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis prelims में 100 में से 80 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims में 100 में से 80 जोड़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "optional में 100 में से 80 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis optional में 100 में से 80 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "optional में 100 में से 80 जोड़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims में 100 में से 75 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis prelims में 100 में से 75 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims में 100 में से 75 जोड़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "optional में 100 में से 75 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis optional में 100 में से 75 जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "optional में 100 में से 75 जोड़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims का स्कोर 80/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis prelims का स्कोर 80/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims का स्कोर 80/100 दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "optional का स्कोर 80/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis optional का स्कोर 80/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "optional का स्कोर 80/100 दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims का स्कोर 75/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis prelims का स्कोर 75/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims का स्कोर 75/100 दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "optional का स्कोर 75/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis optional का स्कोर 75/100 दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "optional का स्कोर 75/100 दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "80 में से 100 मिला prelims",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 80 में से 100 मिला prelims",
+     "lang": "hi"
+    },
+    {
+     "text": "80 में से 100 मिला prelims jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "80 में से 100 मिला optional",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 80 में से 100 मिला optional",
+     "lang": "hi"
+    },
+    {
+     "text": "80 में से 100 मिला optional jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "75 में से 100 मिला prelims",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 75 में से 100 मिला prelims",
+     "lang": "hi"
+    },
+    {
+     "text": "75 में से 100 मिला prelims jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "75 में से 100 मिला optional",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 75 में से 100 मिला optional",
+     "lang": "hi"
+    },
+    {
+     "text": "75 में से 100 मिला optional jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims mein 80 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims mein 80 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein 80 out of 100 add karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional mein 80 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis optional mein 80 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional mein 80 out of 100 add karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein 75 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims mein 75 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein 75 out of 100 add karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional mein 75 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis optional mein 75 out of 100 add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional mein 75 out of 100 add karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims ka score 80/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims ka score 80/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims ka score 80/100 log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional ka score 80/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis optional ka score 80/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional ka score 80/100 log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims ka score 75/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims ka score 75/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims ka score 75/100 log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional ka score 75/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis optional ka score 75/100 log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional ka score 75/100 log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "80 by 100 aaya prelims",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 80 by 100 aaya prelims",
+     "lang": "hinglish"
+    },
+    {
+     "text": "80 by 100 aaya prelims jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "80 by 100 aaya optional",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 80 by 100 aaya optional",
+     "lang": "hinglish"
+    },
+    {
+     "text": "80 by 100 aaya optional jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "75 by 100 aaya prelims",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 75 by 100 aaya prelims",
+     "lang": "hinglish"
+    },
+    {
+     "text": "75 by 100 aaya prelims jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "75 by 100 aaya optional",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 75 by 100 aaya optional",
+     "lang": "hinglish"
+    },
+    {
+     "text": "75 by 100 aaya optional jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "query.average": {
+   "action": "core.queryAverage(stream)",
+   "commands": [
+    {
+     "text": "what's my prelims average",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my prelims average",
+     "lang": "en"
+    },
+    {
+     "text": "what's my prelims average jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what's my optional average",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my optional average",
+     "lang": "en"
+    },
+    {
+     "text": "what's my optional average jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "tell me my prelims accuracy",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis tell me my prelims accuracy",
+     "lang": "en"
+    },
+    {
+     "text": "tell me my prelims accuracy jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "tell me my optional accuracy",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis tell me my optional accuracy",
+     "lang": "en"
+    },
+    {
+     "text": "tell me my optional accuracy jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "how am i doing in prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how am i doing in prelims",
+     "lang": "en"
+    },
+    {
+     "text": "how am i doing in prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "how am i doing in optional",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how am i doing in optional",
+     "lang": "en"
+    },
+    {
+     "text": "how am i doing in optional jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मेरा prelims औसत क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरा prelims औसत क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरा prelims औसत क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरा optional औसत क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरा optional औसत क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरा optional औसत क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims की एक्यूरेसी बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis prelims की एक्यूरेसी बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims की एक्यूरेसी बताओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "optional की एक्यूरेसी बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis optional की एक्यूरेसी बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "optional की एक्यूरेसी बताओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims में कैसा चल रहा है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis prelims में कैसा चल रहा है",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims में कैसा चल रहा है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "optional में कैसा चल रहा है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis optional में कैसा चल रहा है",
+     "lang": "hi"
+    },
+    {
+     "text": "optional में कैसा चल रहा है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "mera prelims average kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis mera prelims average kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mera prelims average kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mera optional average kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis mera optional average kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mera optional average kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims accuracy batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims accuracy batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims accuracy batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional accuracy batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis optional accuracy batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional accuracy batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein kaisa chal raha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims mein kaisa chal raha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein kaisa chal raha jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional mein kaisa chal raha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis optional mein kaisa chal raha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "optional mein kaisa chal raha jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "query.rank": {
+   "action": "core.queryRank()",
+   "commands": [
+    {
+     "text": "what's my rank projection",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my rank projection",
+     "lang": "en"
+    },
+    {
+     "text": "what's my rank projection jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "tell me my projected rank",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis tell me my projected rank",
+     "lang": "en"
+    },
+    {
+     "text": "tell me my projected rank jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "where do i stand",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis where do i stand",
+     "lang": "en"
+    },
+    {
+     "text": "where do i stand jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मेरी रैंक प्रोजेक्शन बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरी रैंक प्रोजेक्शन बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरी रैंक प्रोजेक्शन बताओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुमानित रैंक क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अनुमानित रैंक क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुमानित रैंक क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मैं कहाँ खड़ा हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मैं कहाँ खड़ा हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "मैं कहाँ खड़ा हूँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "meri rank projection batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis meri rank projection batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "meri rank projection batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "projected rank kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis projected rank kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "projected rank kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "main kahan hoon abhi",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis main kahan hoon abhi",
+     "lang": "hinglish"
+    },
+    {
+     "text": "main kahan hoon abhi jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "query.selprob": {
+   "action": "core.querySelectionProbability()",
+   "commands": [
+    {
+     "text": "what's my selection probability",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my selection probability",
+     "lang": "en"
+    },
+    {
+     "text": "what's my selection probability jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what are my chances",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what are my chances",
+     "lang": "en"
+    },
+    {
+     "text": "what are my chances jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "selection chance batao",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis selection chance batao",
+     "lang": "en"
+    },
+    {
+     "text": "selection chance batao jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मेरा सिलेक्शन चांस कितना है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरा सिलेक्शन चांस कितना है",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरा सिलेक्शन चांस कितना है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "चयन की संभावना क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis चयन की संभावना क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "चयन की संभावना क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मौका कितना है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मौका कितना है",
+     "lang": "hi"
+    },
+    {
+     "text": "मौका कितना है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "mera selection probability kitna hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis mera selection probability kitna hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mera selection probability kitna hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "chances kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis chances kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "chances kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "selize chance batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis selize chance batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "selize chance batao jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "query.hours": {
+   "action": "core.queryHours(p)",
+   "commands": [
+    {
+     "text": "how many hours did i study today",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how many hours did i study today",
+     "lang": "en"
+    },
+    {
+     "text": "how many hours did i study today jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "how many hours did i study this week",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how many hours did i study this week",
+     "lang": "en"
+    },
+    {
+     "text": "how many hours did i study this week jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "my study hours today",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis my study hours today",
+     "lang": "en"
+    },
+    {
+     "text": "my study hours today jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "my study hours this week",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis my study hours this week",
+     "lang": "en"
+    },
+    {
+     "text": "my study hours this week jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "total hours today",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis total hours today",
+     "lang": "en"
+    },
+    {
+     "text": "total hours today jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "total hours this week",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis total hours this week",
+     "lang": "en"
+    },
+    {
+     "text": "total hours this week jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "today कितने घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis today कितने घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "today कितने घंटे पढ़ा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "this week कितने घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis this week कितने घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "this week कितने घंटे पढ़ा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "today की पढ़ाई के घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis today की पढ़ाई के घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "today की पढ़ाई के घंटे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "this week की पढ़ाई के घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis this week की पढ़ाई के घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "this week की पढ़ाई के घंटे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "today कुल घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis today कुल घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "today कुल घंटे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "this week कुल घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis this week कुल घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "this week कुल घंटे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "today kitne ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis today kitne ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today kitne ghante padha jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "this week kitne ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis this week kitne ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "this week kitne ghante padha jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today study hours batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis today study hours batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today study hours batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "this week study hours batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis this week study hours batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "this week study hours batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today total hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis today total hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today total hours jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "this week total hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis this week total hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "this week total hours jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "query.backlog": {
+   "action": "core.queryBacklog()",
+   "commands": [
+    {
+     "text": "how many lectures are left",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how many lectures are left",
+     "lang": "en"
+    },
+    {
+     "text": "how many lectures are left jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what's my backlog",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my backlog",
+     "lang": "en"
+    },
+    {
+     "text": "what's my backlog jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "pending lectures count",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis pending lectures count",
+     "lang": "en"
+    },
+    {
+     "text": "pending lectures count jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "कितने लेक्चर बचे हैं",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कितने लेक्चर बचे हैं",
+     "lang": "hi"
+    },
+    {
+     "text": "कितने लेक्चर बचे हैं jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "बैकलॉग कितना है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis बैकलॉग कितना है",
+     "lang": "hi"
+    },
+    {
+     "text": "बैकलॉग कितना है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "कितने पेंडिंग हैं",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कितने पेंडिंग हैं",
+     "lang": "hi"
+    },
+    {
+     "text": "कितने पेंडिंग हैं jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "kitne lecture bache hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kitne lecture bache hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitne lecture bache hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "backlog kitna hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis backlog kitna hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "backlog kitna hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "pending kitne hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis pending kitne hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "pending kitne hai jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "query.streak": {
+   "action": "core.queryStreak()",
+   "commands": [
+    {
+     "text": "what's my streak",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my streak",
+     "lang": "en"
+    },
+    {
+     "text": "what's my streak jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "how many days streak",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how many days streak",
+     "lang": "en"
+    },
+    {
+     "text": "how many days streak jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "streak batao",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis streak batao",
+     "lang": "en"
+    },
+    {
+     "text": "streak batao jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मेरी स्ट्रीक क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरी स्ट्रीक क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरी स्ट्रीक क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "कितने दिन की स्ट्रीक",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कितने दिन की स्ट्रीक",
+     "lang": "hi"
+    },
+    {
+     "text": "कितने दिन की स्ट्रीक jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "लगातार कितने दिन",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis लगातार कितने दिन",
+     "lang": "hi"
+    },
+    {
+     "text": "लगातार कितने दिन jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "meri streak kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis meri streak kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "meri streak kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitne din ki streak",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kitne din ki streak",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitne din ki streak jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "query.consistency": {
+   "action": "core.queryConsistency()",
+   "commands": [
+    {
+     "text": "what's my consistency",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my consistency",
+     "lang": "en"
+    },
+    {
+     "text": "what's my consistency jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "consistency score",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis consistency score",
+     "lang": "en"
+    },
+    {
+     "text": "consistency score jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "how consistent am i",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how consistent am i",
+     "lang": "en"
+    },
+    {
+     "text": "how consistent am i jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मेरी कंसिस्टेंसी क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरी कंसिस्टेंसी क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरी कंसिस्टेंसी क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "कंसिस्टेंसी स्कोर",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कंसिस्टेंसी स्कोर",
+     "lang": "hi"
+    },
+    {
+     "text": "कंसिस्टेंसी स्कोर jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "कितना नियमित हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कितना नियमित हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "कितना नियमित हूँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "meri consistency kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis meri consistency kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "meri consistency kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "consistency score batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis consistency score batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "consistency score batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitna regular hoon",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kitna regular hoon",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitna regular hoon jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "routine.setType": {
+   "action": "routine.setDayType(t)",
+   "commands": [
+    {
+     "text": "mark today as College",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis mark today as College",
+     "lang": "en"
+    },
+    {
+     "text": "mark today as College jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "mark today as Holiday",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis mark today as Holiday",
+     "lang": "en"
+    },
+    {
+     "text": "mark today as Holiday jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "today is College",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis today is College",
+     "lang": "en"
+    },
+    {
+     "text": "today is College jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "today is Holiday",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis today is Holiday",
+     "lang": "en"
+    },
+    {
+     "text": "today is Holiday jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "set day type College",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis set day type College",
+     "lang": "en"
+    },
+    {
+     "text": "set day type College jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "set day type Holiday",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis set day type Holiday",
+     "lang": "en"
+    },
+    {
+     "text": "set day type Holiday jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "आज College है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज College है",
+     "lang": "hi"
+    },
+    {
+     "text": "आज College है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आज Holiday है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज Holiday है",
+     "lang": "hi"
+    },
+    {
+     "text": "आज Holiday है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आज को College मार्क करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज को College मार्क करो",
+     "lang": "hi"
+    },
+    {
+     "text": "आज को College मार्क करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आज को Holiday मार्क करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज को Holiday मार्क करो",
+     "lang": "hi"
+    },
+    {
+     "text": "आज को Holiday मार्क करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "दिन College सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis दिन College सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "दिन College सेट करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "दिन Holiday सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis दिन Holiday सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "दिन Holiday सेट करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "aaj College hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aaj College hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj College hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj Holiday hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aaj Holiday hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj Holiday hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today College mark karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis today College mark karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today College mark karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today Holiday mark karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis today Holiday mark karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today Holiday mark karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "din College set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis din College set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "din College set karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "din Holiday set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis din Holiday set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "din Holiday set karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "routine.logHours": {
+   "action": "routine.setHours(n)",
+   "commands": [
+    {
+     "text": "log 25 hours of study",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log 25 hours of study",
+     "lang": "en"
+    },
+    {
+     "text": "log 25 hours of study jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "log 30 hours of study",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log 30 hours of study",
+     "lang": "en"
+    },
+    {
+     "text": "log 30 hours of study jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i studied 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i studied 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "i studied 25 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i studied 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i studied 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "i studied 30 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "record 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis record 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "record 25 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "record 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis record 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "record 30 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "25 घंटे पढ़ाई दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 25 घंटे पढ़ाई दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "25 घंटे पढ़ाई दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "30 घंटे पढ़ाई दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 30 घंटे पढ़ाई दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "30 घंटे पढ़ाई दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 25 घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मैंने 25 घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 25 घंटे पढ़ा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 30 घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मैंने 30 घंटे पढ़ा",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 30 घंटे पढ़ा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "25 घंटे रिकॉर्ड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 25 घंटे रिकॉर्ड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "25 घंटे रिकॉर्ड करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "30 घंटे रिकॉर्ड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis 30 घंटे रिकॉर्ड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "30 घंटे रिकॉर्ड करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "25 ghante padhai log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 25 ghante padhai log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "25 ghante padhai log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 ghante padhai log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 30 ghante padhai log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 ghante padhai log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 25 ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis maine 25 ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 25 ghante padha jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 30 ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis maine 30 ghante padha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 30 ghante padha jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "25 hours record karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 25 hours record karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "25 hours record karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 hours record karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis 30 hours record karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "30 hours record karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "lecture.markDone": {
+   "action": "lectures.markDone(sub,num)",
+   "commands": [
+    {
+     "text": "mark Polity lecture 12 done",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis mark Polity lecture 12 done",
+     "lang": "en"
+    },
+    {
+     "text": "mark Polity lecture 12 done jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "mark Polity lecture 5 done",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis mark Polity lecture 5 done",
+     "lang": "en"
+    },
+    {
+     "text": "mark Polity lecture 5 done jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "mark Economy lecture 12 done",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis mark Economy lecture 12 done",
+     "lang": "en"
+    },
+    {
+     "text": "mark Economy lecture 12 done jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "mark Economy lecture 5 done",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis mark Economy lecture 5 done",
+     "lang": "en"
+    },
+    {
+     "text": "mark Economy lecture 5 done jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "Polity lecture 12 complete",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis Polity lecture 12 complete",
+     "lang": "en"
+    },
+    {
+     "text": "Polity lecture 12 complete jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "Polity lecture 5 complete",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis Polity lecture 5 complete",
+     "lang": "en"
+    },
+    {
+     "text": "Polity lecture 5 complete jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "Economy lecture 12 complete",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis Economy lecture 12 complete",
+     "lang": "en"
+    },
+    {
+     "text": "Economy lecture 12 complete jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "Economy lecture 5 complete",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis Economy lecture 5 complete",
+     "lang": "en"
+    },
+    {
+     "text": "Economy lecture 5 complete jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "finished Polity 12",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis finished Polity 12",
+     "lang": "en"
+    },
+    {
+     "text": "finished Polity 12 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "finished Polity 5",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis finished Polity 5",
+     "lang": "en"
+    },
+    {
+     "text": "finished Polity 5 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "finished Economy 12",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis finished Economy 12",
+     "lang": "en"
+    },
+    {
+     "text": "finished Economy 12 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "finished Economy 5",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis finished Economy 5",
+     "lang": "en"
+    },
+    {
+     "text": "finished Economy 5 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "Polity लेक्चर 12 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity लेक्चर 12 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity लेक्चर 12 पूरा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity लेक्चर 5 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity लेक्चर 5 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity लेक्चर 5 पूरा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 12 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy लेक्चर 12 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 12 पूरा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 5 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy लेक्चर 5 पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 5 पूरा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity लेक्चर 12 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity लेक्चर 12 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity लेक्चर 12 हो गया jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity लेक्चर 5 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity लेक्चर 5 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity लेक्चर 5 हो गया jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 12 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy लेक्चर 12 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 12 हो गया jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 5 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy लेक्चर 5 हो गया",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy लेक्चर 5 हो गया jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity 12 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity 12 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity 12 खत्म jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity 5 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity 5 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity 5 खत्म jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy 12 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy 12 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy 12 खत्म jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy 5 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy 5 खत्म",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy 5 खत्म jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity lecture 12 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity lecture 12 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity lecture 12 done jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity lecture 5 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity lecture 5 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity lecture 5 done jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 12 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy lecture 12 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 12 done jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 5 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy lecture 5 done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 5 done jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity lecture 12 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity lecture 12 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity lecture 12 ho gaya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity lecture 5 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity lecture 5 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity lecture 5 ho gaya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 12 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy lecture 12 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 12 ho gaya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 5 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy lecture 5 ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy lecture 5 ho gaya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity 12 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity 12 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity 12 complete jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity 5 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity 5 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity 5 complete jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy 12 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy 12 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy 12 complete jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy 5 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy 5 complete",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy 5 complete jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "lecture.next": {
+   "action": "lectures.next(sub)",
+   "commands": [
+    {
+     "text": "what's my next Polity lecture",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my next Polity lecture",
+     "lang": "en"
+    },
+    {
+     "text": "what's my next Polity lecture jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what's my next Economy lecture",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my next Economy lecture",
+     "lang": "en"
+    },
+    {
+     "text": "what's my next Economy lecture jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "next lecture in Polity",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis next lecture in Polity",
+     "lang": "en"
+    },
+    {
+     "text": "next lecture in Polity jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "next lecture in Economy",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis next lecture in Economy",
+     "lang": "en"
+    },
+    {
+     "text": "next lecture in Economy jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what comes next in Polity",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what comes next in Polity",
+     "lang": "en"
+    },
+    {
+     "text": "what comes next in Polity jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what comes next in Economy",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what comes next in Economy",
+     "lang": "en"
+    },
+    {
+     "text": "what comes next in Economy jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "Polity का अगला लेक्चर",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity का अगला लेक्चर",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity का अगला लेक्चर jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy का अगला लेक्चर",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy का अगला लेक्चर",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy का अगला लेक्चर jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity में आगे क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Polity में आगे क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity में आगे क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy में आगे क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis Economy में आगे क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "Economy में आगे क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "अगला Polity लेक्चर कौनसा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अगला Polity लेक्चर कौनसा",
+     "lang": "hi"
+    },
+    {
+     "text": "अगला Polity लेक्चर कौनसा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "अगला Economy लेक्चर कौनसा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अगला Economy लेक्चर कौनसा",
+     "lang": "hi"
+    },
+    {
+     "text": "अगला Economy लेक्चर कौनसा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "Polity ka next lecture",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity ka next lecture",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity ka next lecture jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy ka next lecture",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy ka next lecture",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy ka next lecture jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity mein aage kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Polity mein aage kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Polity mein aage kya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy mein aage kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis Economy mein aage kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "Economy mein aage kya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "agla Polity lecture konsa",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis agla Polity lecture konsa",
+     "lang": "hinglish"
+    },
+    {
+     "text": "agla Polity lecture konsa jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "agla Economy lecture konsa",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis agla Economy lecture konsa",
+     "lang": "hinglish"
+    },
+    {
+     "text": "agla Economy lecture konsa jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "plan.generate": {
+   "action": "planner.generate()",
+   "commands": [
+    {
+     "text": "generate my study plan",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis generate my study plan",
+     "lang": "en"
+    },
+    {
+     "text": "generate my study plan jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "make my plan",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis make my plan",
+     "lang": "en"
+    },
+    {
+     "text": "make my plan jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "build my schedule",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis build my schedule",
+     "lang": "en"
+    },
+    {
+     "text": "build my schedule jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "plan my days",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis plan my days",
+     "lang": "en"
+    },
+    {
+     "text": "plan my days jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मेरा प्लान बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरा प्लान बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरा प्लान बनाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "शेड्यूल बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis शेड्यूल बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "शेड्यूल बनाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरे दिन प्लान करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मेरे दिन प्लान करो",
+     "lang": "hi"
+    },
+    {
+     "text": "मेरे दिन प्लान करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "mera plan banao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis mera plan banao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mera plan banao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "schedule bana do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis schedule bana do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "schedule bana do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mere din plan karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis mere din plan karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mere din plan karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "plan.today": {
+   "action": "planner.today()",
+   "commands": [
+    {
+     "text": "what should i study today",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what should i study today",
+     "lang": "en"
+    },
+    {
+     "text": "what should i study today jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "today's plan",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis today's plan",
+     "lang": "en"
+    },
+    {
+     "text": "today's plan jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what's on today",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's on today",
+     "lang": "en"
+    },
+    {
+     "text": "what's on today jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "आज क्या पढ़ूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज क्या पढ़ूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "आज क्या पढ़ूँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आज का प्लान",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज का प्लान",
+     "lang": "hi"
+    },
+    {
+     "text": "आज का प्लान jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आज क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "आज क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "aaj kya padhna hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aaj kya padhna hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj kya padhna hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj ka plan batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aaj ka plan batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj ka plan batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today kya karna",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis today kya karna",
+     "lang": "hinglish"
+    },
+    {
+     "text": "today kya karna jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "plan.behind": {
+   "action": "planner.behind()",
+   "commands": [
+    {
+     "text": "how behind am i",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how behind am i",
+     "lang": "en"
+    },
+    {
+     "text": "how behind am i jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "am i on track",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis am i on track",
+     "lang": "en"
+    },
+    {
+     "text": "am i on track jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "how much am i lagging",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how much am i lagging",
+     "lang": "en"
+    },
+    {
+     "text": "how much am i lagging jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मैं कितना पीछे हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मैं कितना पीछे हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "मैं कितना पीछे हूँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "ट्रैक पर हूँ क्या",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis ट्रैक पर हूँ क्या",
+     "lang": "hi"
+    },
+    {
+     "text": "ट्रैक पर हूँ क्या jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "कितना पिछड़ा हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कितना पिछड़ा हूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "कितना पिछड़ा हूँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "main kitna peeche hoon",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis main kitna peeche hoon",
+     "lang": "hinglish"
+    },
+    {
+     "text": "main kitna peeche hoon jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "track pe hoon kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis track pe hoon kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "track pe hoon kya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitna lag ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kitna lag ho gaya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitna lag ho gaya jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "revision.due": {
+   "action": "srs.due()",
+   "commands": [
+    {
+     "text": "what's due for revision",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's due for revision",
+     "lang": "en"
+    },
+    {
+     "text": "what's due for revision jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "revision today",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis revision today",
+     "lang": "en"
+    },
+    {
+     "text": "revision today jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what should i revise",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what should i revise",
+     "lang": "en"
+    },
+    {
+     "text": "what should i revise jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "आज रिवीजन में क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज रिवीजन में क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "आज रिवीजन में क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "रिवीजन ड्यू",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis रिवीजन ड्यू",
+     "lang": "hi"
+    },
+    {
+     "text": "रिवीजन ड्यू jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "क्या रिवाइज करूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis क्या रिवाइज करूँ",
+     "lang": "hi"
+    },
+    {
+     "text": "क्या रिवाइज करूँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "aaj revision mein kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aaj revision mein kya",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj revision mein kya jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "revision due batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis revision due batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "revision due batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kya revise karu",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kya revise karu",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kya revise karu jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "revision.flag": {
+   "action": "srs.flag(item)",
+   "commands": [
+    {
+     "text": "revise this later",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis revise this later",
+     "lang": "en"
+    },
+    {
+     "text": "revise this later jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add this to revision",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add this to revision",
+     "lang": "en"
+    },
+    {
+     "text": "add this to revision jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "flag this for revision",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis flag this for revision",
+     "lang": "en"
+    },
+    {
+     "text": "flag this for revision jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "इसे रिवीजन में डालो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis इसे रिवीजन में डालो",
+     "lang": "hi"
+    },
+    {
+     "text": "इसे रिवीजन में डालो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "बाद में रिवाइज करना",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis बाद में रिवाइज करना",
+     "lang": "hi"
+    },
+    {
+     "text": "बाद में रिवाइज करना jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "रिवीजन के लिए फ्लैग",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis रिवीजन के लिए फ्लैग",
+     "lang": "hi"
+    },
+    {
+     "text": "रिवीजन के लिए फ्लैग jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "isko revision mein daalo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis isko revision mein daalo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "isko revision mein daalo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "ye baad mein revise",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis ye baad mein revise",
+     "lang": "hinglish"
+    },
+    {
+     "text": "ye baad mein revise jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "revision flag karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis revision flag karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "revision flag karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "mistake.add": {
+   "action": "mistakes.add(t)",
+   "commands": [
+    {
+     "text": "log a mistake",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log a mistake",
+     "lang": "en"
+    },
+    {
+     "text": "log a mistake jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add this mistake",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add this mistake",
+     "lang": "en"
+    },
+    {
+     "text": "add this mistake jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "note my error",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis note my error",
+     "lang": "en"
+    },
+    {
+     "text": "note my error jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "गलती दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis गलती दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "गलती दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "ये गलती जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis ये गलती जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "ये गलती जोड़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "एरर नोट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis एरर नोट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "एरर नोट करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "mistake note karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis mistake note karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mistake note karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "ye galti add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis ye galti add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "ye galti add karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "error log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis error log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "error log karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "ca.add": {
+   "action": "currentAffairs.add(t)",
+   "commands": [
+    {
+     "text": "log current affairs",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log current affairs",
+     "lang": "en"
+    },
+    {
+     "text": "log current affairs jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add a current affair",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add a current affair",
+     "lang": "en"
+    },
+    {
+     "text": "add a current affair jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "note this news",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis note this news",
+     "lang": "en"
+    },
+    {
+     "text": "note this news jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "करंट अफेयर जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis करंट अफेयर जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "करंट अफेयर जोड़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "ये खबर नोट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis ये खबर नोट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "ये खबर नोट करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "समसामयिकी दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis समसामयिकी दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "समसामयिकी दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "current affair add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis current affair add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "current affair add karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "ye news note karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis ye news note karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "ye news note karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "CA log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis CA log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "CA log karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "const.article": {
+   "action": "constitution.show(a)",
+   "commands": [
+    {
+     "text": "show me article 80",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis show me article 80",
+     "lang": "en"
+    },
+    {
+     "text": "show me article 80 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "show me article 75",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis show me article 75",
+     "lang": "en"
+    },
+    {
+     "text": "show me article 75 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what is article 80",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what is article 80",
+     "lang": "en"
+    },
+    {
+     "text": "what is article 80 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what is article 75",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what is article 75",
+     "lang": "en"
+    },
+    {
+     "text": "what is article 75 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "read article 80",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis read article 80",
+     "lang": "en"
+    },
+    {
+     "text": "read article 80 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "read article 75",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis read article 75",
+     "lang": "en"
+    },
+    {
+     "text": "read article 75 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "अनुच्छेद 80 दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अनुच्छेद 80 दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुच्छेद 80 दिखाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुच्छेद 75 दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अनुच्छेद 75 दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुच्छेद 75 दिखाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आर्टिकल 80 क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आर्टिकल 80 क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "आर्टिकल 80 क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आर्टिकल 75 क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आर्टिकल 75 क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "आर्टिकल 75 क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुच्छेद 80 पढ़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अनुच्छेद 80 पढ़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुच्छेद 80 पढ़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुच्छेद 75 पढ़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अनुच्छेद 75 पढ़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "अनुच्छेद 75 पढ़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "article 80 batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis article 80 batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 80 batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 75 batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis article 75 batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 75 batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 80 kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis article 80 kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 80 kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 75 kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis article 75 kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 75 kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 80 padho",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis article 80 padho",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 80 padho jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 75 padho",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis article 75 padho",
+     "lang": "hinglish"
+    },
+    {
+     "text": "article 75 padho jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "const.search": {
+   "action": "constitution.search(q)",
+   "commands": [
+    {
+     "text": "find articles about fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis find articles about fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "find articles about fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "find articles about fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis find articles about fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "find articles about fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "search constitution for fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis search constitution for fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "search constitution for fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "search constitution for fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis search constitution for fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "search constitution for fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "which article covers fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis which article covers fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "which article covers fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "which article covers fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis which article covers fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "which article covers fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "fundamental rights से जुड़े अनुच्छेद",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights से जुड़े अनुच्छेद",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights से जुड़े अनुच्छेद jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit से जुड़े अनुच्छेद",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit से जुड़े अनुच्छेद",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit से जुड़े अनुच्छेद jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "संविधान में fundamental rights खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis संविधान में fundamental rights खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "संविधान में fundamental rights खोजो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "संविधान में fiscal deficit खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis संविधान में fiscal deficit खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "संविधान में fiscal deficit खोजो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights कौनसे आर्टिकल में",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights कौनसे आर्टिकल में",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights कौनसे आर्टिकल में jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit कौनसे आर्टिकल में",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit कौनसे आर्टिकल में",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit कौनसे आर्टिकल में jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights ke articles dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights ke articles dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights ke articles dhundo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ke articles dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit ke articles dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ke articles dhundo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "constitution mein fundamental rights search",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis constitution mein fundamental rights search",
+     "lang": "hinglish"
+    },
+    {
+     "text": "constitution mein fundamental rights search jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "constitution mein fiscal deficit search",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis constitution mein fiscal deficit search",
+     "lang": "hinglish"
+    },
+    {
+     "text": "constitution mein fiscal deficit search jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights konse article mein",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights konse article mein",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights konse article mein jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit konse article mein",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit konse article mein",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit konse article mein jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "syl.coverage": {
+   "action": "syllabus.coverage()",
+   "commands": [
+    {
+     "text": "how much syllabus is covered",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how much syllabus is covered",
+     "lang": "en"
+    },
+    {
+     "text": "how much syllabus is covered jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "my syllabus coverage",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis my syllabus coverage",
+     "lang": "en"
+    },
+    {
+     "text": "my syllabus coverage jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "percent syllabus done",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis percent syllabus done",
+     "lang": "en"
+    },
+    {
+     "text": "percent syllabus done jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "कितना सिलेबस हुआ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कितना सिलेबस हुआ",
+     "lang": "hi"
+    },
+    {
+     "text": "कितना सिलेबस हुआ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "सिलेबस कवरेज",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis सिलेबस कवरेज",
+     "lang": "hi"
+    },
+    {
+     "text": "सिलेबस कवरेज jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "कितना प्रतिशत पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कितना प्रतिशत पूरा",
+     "lang": "hi"
+    },
+    {
+     "text": "कितना प्रतिशत पूरा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "kitna syllabus cover hua",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kitna syllabus cover hua",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitna syllabus cover hua jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "syllabus coverage batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis syllabus coverage batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "syllabus coverage batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitna percent done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kitna percent done",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kitna percent done jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "test.log": {
+   "action": "tests.log(...)",
+   "commands": [
+    {
+     "text": "log my mock test",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log my mock test",
+     "lang": "en"
+    },
+    {
+     "text": "log my mock test jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "record a test",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis record a test",
+     "lang": "en"
+    },
+    {
+     "text": "record a test jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "add test result",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis add test result",
+     "lang": "en"
+    },
+    {
+     "text": "add test result jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मॉक टेस्ट दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मॉक टेस्ट दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "मॉक टेस्ट दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "टेस्ट रिकॉर्ड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टेस्ट रिकॉर्ड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "टेस्ट रिकॉर्ड करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "टेस्ट रिजल्ट जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टेस्ट रिजल्ट जोड़ो",
+     "lang": "hi"
+    },
+    {
+     "text": "टेस्ट रिजल्ट जोड़ो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "mock test log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis mock test log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "mock test log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "test record karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis test record karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "test record karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "test result add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis test result add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "test result add karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "test.next": {
+   "action": "tests.next()",
+   "commands": [
+    {
+     "text": "when's my next test",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis when's my next test",
+     "lang": "en"
+    },
+    {
+     "text": "when's my next test jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "next test date",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis next test date",
+     "lang": "en"
+    },
+    {
+     "text": "next test date jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "upcoming test",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis upcoming test",
+     "lang": "en"
+    },
+    {
+     "text": "upcoming test jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "अगला टेस्ट कब है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अगला टेस्ट कब है",
+     "lang": "hi"
+    },
+    {
+     "text": "अगला टेस्ट कब है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "अगली टेस्ट डेट",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis अगली टेस्ट डेट",
+     "lang": "hi"
+    },
+    {
+     "text": "अगली टेस्ट डेट jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आने वाला टेस्ट",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आने वाला टेस्ट",
+     "lang": "hi"
+    },
+    {
+     "text": "आने वाला टेस्ट jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "next test kab hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis next test kab hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "next test kab hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "agli test date",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis agli test date",
+     "lang": "hinglish"
+    },
+    {
+     "text": "agli test date jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aane wala test",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aane wala test",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aane wala test jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "ans.log": {
+   "action": "answers.log(...)",
+   "commands": [
+    {
+     "text": "log an answer written",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis log an answer written",
+     "lang": "en"
+    },
+    {
+     "text": "log an answer written jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i wrote 25 answers",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i wrote 25 answers",
+     "lang": "en"
+    },
+    {
+     "text": "i wrote 25 answers jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i wrote 30 answers",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i wrote 30 answers",
+     "lang": "en"
+    },
+    {
+     "text": "i wrote 30 answers jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "record answer writing",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis record answer writing",
+     "lang": "en"
+    },
+    {
+     "text": "record answer writing jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "आंसर लिखना दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आंसर लिखना दर्ज करो",
+     "lang": "hi"
+    },
+    {
+     "text": "आंसर लिखना दर्ज करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 25 आंसर लिखे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मैंने 25 आंसर लिखे",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 25 आंसर लिखे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 30 आंसर लिखे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मैंने 30 आंसर लिखे",
+     "lang": "hi"
+    },
+    {
+     "text": "मैंने 30 आंसर लिखे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आंसर राइटिंग रिकॉर्ड",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आंसर राइटिंग रिकॉर्ड",
+     "lang": "hi"
+    },
+    {
+     "text": "आंसर राइटिंग रिकॉर्ड jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "answer likha log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis answer likha log karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "answer likha log karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 25 answer likhe",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis maine 25 answer likhe",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 25 answer likhe jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 30 answer likhe",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis maine 30 answer likhe",
+     "lang": "hinglish"
+    },
+    {
+     "text": "maine 30 answer likhe jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "answer writing record",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis answer writing record",
+     "lang": "hinglish"
+    },
+    {
+     "text": "answer writing record jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "goal.set": {
+   "action": "goals.set(...)",
+   "commands": [
+    {
+     "text": "set my daily goal to 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis set my daily goal to 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "set my daily goal to 25 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "set my daily goal to 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis set my daily goal to 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "set my daily goal to 30 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "make my target 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis make my target 25 hours",
+     "lang": "en"
+    },
+    {
+     "text": "make my target 25 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "make my target 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis make my target 30 hours",
+     "lang": "en"
+    },
+    {
+     "text": "make my target 30 hours jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "daily goal 25",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis daily goal 25",
+     "lang": "en"
+    },
+    {
+     "text": "daily goal 25 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "daily goal 30",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis daily goal 30",
+     "lang": "en"
+    },
+    {
+     "text": "daily goal 30 jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "रोज का लक्ष्य 25 घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis रोज का लक्ष्य 25 घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "रोज का लक्ष्य 25 घंटे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "रोज का लक्ष्य 30 घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis रोज का लक्ष्य 30 घंटे",
+     "lang": "hi"
+    },
+    {
+     "text": "रोज का लक्ष्य 30 घंटे jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "टारगेट 25 घंटे करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टारगेट 25 घंटे करो",
+     "lang": "hi"
+    },
+    {
+     "text": "टारगेट 25 घंटे करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "टारगेट 30 घंटे करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis टारगेट 30 घंटे करो",
+     "lang": "hi"
+    },
+    {
+     "text": "टारगेट 30 घंटे करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "डेली गोल 25",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis डेली गोल 25",
+     "lang": "hi"
+    },
+    {
+     "text": "डेली गोल 25 jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "डेली गोल 30",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis डेली गोल 30",
+     "lang": "hi"
+    },
+    {
+     "text": "डेली गोल 30 jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "daily goal 25 ghante set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis daily goal 25 ghante set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "daily goal 25 ghante set karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "daily goal 30 ghante set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis daily goal 30 ghante set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "daily goal 30 ghante set karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "target 25 hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis target 25 hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "target 25 hours jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "target 30 hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis target 30 hours",
+     "lang": "hinglish"
+    },
+    {
+     "text": "target 30 hours jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "roz ka goal 25",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis roz ka goal 25",
+     "lang": "hinglish"
+    },
+    {
+     "text": "roz ka goal 25 jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "roz ka goal 30",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis roz ka goal 30",
+     "lang": "hinglish"
+    },
+    {
+     "text": "roz ka goal 30 jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "cal.week": {
+   "action": "calendar.week()",
+   "commands": [
+    {
+     "text": "what's my week look like",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my week look like",
+     "lang": "en"
+    },
+    {
+     "text": "what's my week look like jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "show this week",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis show this week",
+     "lang": "en"
+    },
+    {
+     "text": "show this week jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "week ka schedule",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis week ka schedule",
+     "lang": "en"
+    },
+    {
+     "text": "week ka schedule jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "इस हफ्ते क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis इस हफ्ते क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "इस हफ्ते क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "हफ्ते का शेड्यूल",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis हफ्ते का शेड्यूल",
+     "lang": "hi"
+    },
+    {
+     "text": "हफ्ते का शेड्यूल jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "वीक दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis वीक दिखाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "वीक दिखाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "is hafte kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis is hafte kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "is hafte kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "week ka schedule dikhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis week ka schedule dikhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "week ka schedule dikhao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "poora week batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis poora week batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "poora week batao jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "cd.prelims": {
+   "action": "countdown.show('prelims')",
+   "commands": [
+    {
+     "text": "how many days to prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis how many days to prelims",
+     "lang": "en"
+    },
+    {
+     "text": "how many days to prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "prelims countdown",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis prelims countdown",
+     "lang": "en"
+    },
+    {
+     "text": "prelims countdown jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "days left for prelims",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis days left for prelims",
+     "lang": "en"
+    },
+    {
+     "text": "days left for prelims jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "प्रीलिम्स में कितने दिन",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis प्रीलिम्स में कितने दिन",
+     "lang": "hi"
+    },
+    {
+     "text": "प्रीलिम्स में कितने दिन jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "प्रीलिम्स काउंटडाउन",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis प्रीलिम्स काउंटडाउन",
+     "lang": "hi"
+    },
+    {
+     "text": "प्रीलिम्स काउंटडाउन jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "प्रीलिम्स में कितना बचा",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis प्रीलिम्स में कितना बचा",
+     "lang": "hi"
+    },
+    {
+     "text": "प्रीलिम्स में कितना बचा jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "prelims mein kitne din",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims mein kitne din",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein kitne din jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims countdown batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims countdown batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims countdown batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein kitna bacha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis prelims mein kitna bacha",
+     "lang": "hinglish"
+    },
+    {
+     "text": "prelims mein kitna bacha jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "brief.today": {
+   "action": "core.briefing()",
+   "commands": [
+    {
+     "text": "give me today's briefing",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis give me today's briefing",
+     "lang": "en"
+    },
+    {
+     "text": "give me today's briefing jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "brief me",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis brief me",
+     "lang": "en"
+    },
+    {
+     "text": "brief me jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what's my status today",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what's my status today",
+     "lang": "en"
+    },
+    {
+     "text": "what's my status today jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "आज का ब्रीफिंग दो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज का ब्रीफिंग दो",
+     "lang": "hi"
+    },
+    {
+     "text": "आज का ब्रीफिंग दो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "ब्रीफ करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis ब्रीफ करो",
+     "lang": "hi"
+    },
+    {
+     "text": "ब्रीफ करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "आज की स्थिति",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis आज की स्थिति",
+     "lang": "hi"
+    },
+    {
+     "text": "आज की स्थिति jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "aaj ka briefing sunao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aaj ka briefing sunao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj ka briefing sunao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "brief karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis brief karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "brief karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj ka status batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis aaj ka status batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "aaj ka status batao jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "mot.motivate": {
+   "action": "motivation.show()",
+   "commands": [
+    {
+     "text": "motivate me",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis motivate me",
+     "lang": "en"
+    },
+    {
+     "text": "motivate me jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "give me motivation",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis give me motivation",
+     "lang": "en"
+    },
+    {
+     "text": "give me motivation jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "i need a push",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis i need a push",
+     "lang": "en"
+    },
+    {
+     "text": "i need a push jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "मुझे प्रेरित करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मुझे प्रेरित करो",
+     "lang": "hi"
+    },
+    {
+     "text": "मुझे प्रेरित करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मोटिवेशन दो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मोटिवेशन दो",
+     "lang": "hi"
+    },
+    {
+     "text": "मोटिवेशन दो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "हिम्मत दो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis हिम्मत दो",
+     "lang": "hi"
+    },
+    {
+     "text": "हिम्मत दो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "motivate karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis motivate karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "motivate karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "motivation do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis motivation do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "motivation do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "thoda push do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis thoda push do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "thoda push do jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "env.focusMode": {
+   "action": "ui.focusMode(on)",
+   "commands": [
+    {
+     "text": "turn on focus mode",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis turn on focus mode",
+     "lang": "en"
+    },
+    {
+     "text": "turn on focus mode jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "switch to focus mode",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis switch to focus mode",
+     "lang": "en"
+    },
+    {
+     "text": "switch to focus mode jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "calm the screen",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis calm the screen",
+     "lang": "en"
+    },
+    {
+     "text": "calm the screen jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "फोकस मोड चालू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis फोकस मोड चालू करो",
+     "lang": "hi"
+    },
+    {
+     "text": "फोकस मोड चालू करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "फोकस मोड में जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis फोकस मोड में जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "फोकस मोड में जाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "स्क्रीन शांत करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis स्क्रीन शांत करो",
+     "lang": "hi"
+    },
+    {
+     "text": "स्क्रीन शांत करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "focus mode on karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis focus mode on karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "focus mode on karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "focus mode mein jao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis focus mode mein jao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "focus mode mein jao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "screen calm karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis screen calm karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "screen calm karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "env.theme": {
+   "action": "ui.setAccent(c)",
+   "commands": [
+    {
+     "text": "change theme to blue",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis change theme to blue",
+     "lang": "en"
+    },
+    {
+     "text": "change theme to blue jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "change theme to teal",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis change theme to teal",
+     "lang": "en"
+    },
+    {
+     "text": "change theme to teal jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "set accent blue",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis set accent blue",
+     "lang": "en"
+    },
+    {
+     "text": "set accent blue jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "set accent teal",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis set accent teal",
+     "lang": "en"
+    },
+    {
+     "text": "set accent teal jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "make it blue",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis make it blue",
+     "lang": "en"
+    },
+    {
+     "text": "make it blue jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "make it teal",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis make it teal",
+     "lang": "en"
+    },
+    {
+     "text": "make it teal jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "थीम blue करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis थीम blue करो",
+     "lang": "hi"
+    },
+    {
+     "text": "थीम blue करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "थीम teal करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis थीम teal करो",
+     "lang": "hi"
+    },
+    {
+     "text": "थीम teal करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "एक्सेंट blue सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis एक्सेंट blue सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "एक्सेंट blue सेट करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "एक्सेंट teal सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis एक्सेंट teal सेट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "एक्सेंट teal सेट करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "इसे blue बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis इसे blue बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "इसे blue बनाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "इसे teal बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis इसे teal बनाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "इसे teal बनाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "theme blue kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis theme blue kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "theme blue kar do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "theme teal kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis theme teal kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "theme teal kar do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "accent blue set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis accent blue set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "accent blue set karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "accent teal set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis accent teal set karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "accent teal set karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "isko blue banao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis isko blue banao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "isko blue banao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "isko teal banao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis isko teal banao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "isko teal banao jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "cap.note": {
+   "action": "inbox.add(t)",
+   "commands": [
+    {
+     "text": "note this down",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis note this down",
+     "lang": "en"
+    },
+    {
+     "text": "note this down jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "capture this",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis capture this",
+     "lang": "en"
+    },
+    {
+     "text": "capture this jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "quick note",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis quick note",
+     "lang": "en"
+    },
+    {
+     "text": "quick note jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "ये नोट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis ये नोट करो",
+     "lang": "hi"
+    },
+    {
+     "text": "ये नोट करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "लिख लो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis लिख लो",
+     "lang": "hi"
+    },
+    {
+     "text": "लिख लो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "क्विक नोट",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis क्विक नोट",
+     "lang": "hi"
+    },
+    {
+     "text": "क्विक नोट jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "ye note kar lo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis ye note kar lo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "ye note kar lo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "likh lo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis likh lo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "likh lo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "quick note add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis quick note add karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "quick note add karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "search.lecture": {
+   "action": "search.lecture(q)",
+   "commands": [
+    {
+     "text": "find the lecture on fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis find the lecture on fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "find the lecture on fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "find the lecture on fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis find the lecture on fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "find the lecture on fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "search lectures for fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis search lectures for fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "search lectures for fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "search lectures for fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis search lectures for fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "search lectures for fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "where is fundamental rights lecture",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis where is fundamental rights lecture",
+     "lang": "en"
+    },
+    {
+     "text": "where is fundamental rights lecture jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "where is fiscal deficit lecture",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis where is fiscal deficit lecture",
+     "lang": "en"
+    },
+    {
+     "text": "where is fiscal deficit lecture jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "fundamental rights वाला लेक्चर ढूंढो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights वाला लेक्चर ढूंढो",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights वाला लेक्चर ढूंढो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit वाला लेक्चर ढूंढो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit वाला लेक्चर ढूंढो",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit वाला लेक्चर ढूंढो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights लेक्चर खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights लेक्चर खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights लेक्चर खोजो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit लेक्चर खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit लेक्चर खोजो",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit लेक्चर खोजो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights का लेक्चर कहाँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights का लेक्चर कहाँ",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights का लेक्चर कहाँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit का लेक्चर कहाँ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit का लेक्चर कहाँ",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit का लेक्चर कहाँ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights wala lecture dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights wala lecture dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights wala lecture dhundo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit wala lecture dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit wala lecture dhundo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit wala lecture dhundo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights lecture search karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights lecture search karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights lecture search karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit lecture search karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit lecture search karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit lecture search karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights ka lecture kahan",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights ka lecture kahan",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights ka lecture kahan jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ka lecture kahan",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit ka lecture kahan",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ka lecture kahan jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "exp.excel": {
+   "action": "export.excel()",
+   "commands": [
+    {
+     "text": "export to excel",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis export to excel",
+     "lang": "en"
+    },
+    {
+     "text": "export to excel jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "download my data as excel",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis download my data as excel",
+     "lang": "en"
+    },
+    {
+     "text": "download my data as excel jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "give me the excel",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis give me the excel",
+     "lang": "en"
+    },
+    {
+     "text": "give me the excel jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "एक्सेल में निर्यात करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis एक्सेल में निर्यात करो",
+     "lang": "hi"
+    },
+    {
+     "text": "एक्सेल में निर्यात करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "डेटा एक्सेल में दो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis डेटा एक्सेल में दो",
+     "lang": "hi"
+    },
+    {
+     "text": "डेटा एक्सेल में दो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "एक्सेल डाउनलोड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis एक्सेल डाउनलोड करो",
+     "lang": "hi"
+    },
+    {
+     "text": "एक्सेल डाउनलोड करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "excel mein export karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis excel mein export karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "excel mein export karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "data excel mein do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis data excel mein do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "data excel mein do jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "excel download karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis excel download karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "excel download karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "exp.backup": {
+   "action": "export.backup()",
+   "commands": [
+    {
+     "text": "backup my data",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis backup my data",
+     "lang": "en"
+    },
+    {
+     "text": "backup my data jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "save a backup",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis save a backup",
+     "lang": "en"
+    },
+    {
+     "text": "save a backup jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "backup everything",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis backup everything",
+     "lang": "en"
+    },
+    {
+     "text": "backup everything jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "डेटा बैकअप करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis डेटा बैकअप करो",
+     "lang": "hi"
+    },
+    {
+     "text": "डेटा बैकअप करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "बैकअप सेव करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis बैकअप सेव करो",
+     "lang": "hi"
+    },
+    {
+     "text": "बैकअप सेव करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "सब बैकअप करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis सब बैकअप करो",
+     "lang": "hi"
+    },
+    {
+     "text": "सब बैकअप करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "data backup karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis data backup karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "data backup karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "backup save karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis backup save karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "backup save karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "sab backup kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis sab backup kar do",
+     "lang": "hinglish"
+    },
+    {
+     "text": "sab backup kar do jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "sys.lang": {
+   "action": "voice.setLanguage(l)",
+   "commands": [
+    {
+     "text": "switch to english",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis switch to english",
+     "lang": "en"
+    },
+    {
+     "text": "switch to english jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "switch to hindi",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis switch to hindi",
+     "lang": "en"
+    },
+    {
+     "text": "switch to hindi jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "speak in english",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis speak in english",
+     "lang": "en"
+    },
+    {
+     "text": "speak in english jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "speak in hindi",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis speak in hindi",
+     "lang": "en"
+    },
+    {
+     "text": "speak in hindi jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "talk to me in english",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis talk to me in english",
+     "lang": "en"
+    },
+    {
+     "text": "talk to me in english jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "talk to me in hindi",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis talk to me in hindi",
+     "lang": "en"
+    },
+    {
+     "text": "talk to me in hindi jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "english में बोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis english में बोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "english में बोलो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "hindi में बोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis hindi में बोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "hindi में बोलो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "english में बात करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis english में बात करो",
+     "lang": "hi"
+    },
+    {
+     "text": "english में बात करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "hindi में बात करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis hindi में बात करो",
+     "lang": "hi"
+    },
+    {
+     "text": "hindi में बात करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "भाषा english करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis भाषा english करो",
+     "lang": "hi"
+    },
+    {
+     "text": "भाषा english करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "भाषा hindi करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis भाषा hindi करो",
+     "lang": "hi"
+    },
+    {
+     "text": "भाषा hindi करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "english mein switch karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis english mein switch karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "english mein switch karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "hindi mein switch karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis hindi mein switch karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "hindi mein switch karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "english mein bolo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis english mein bolo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "english mein bolo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "hindi mein bolo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis hindi mein bolo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "hindi mein bolo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "language english karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis language english karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "language english karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "language hindi karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis language hindi karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "language hindi karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "sys.repeat": {
+   "action": "voice.repeatLast()",
+   "commands": [
+    {
+     "text": "say that again",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis say that again",
+     "lang": "en"
+    },
+    {
+     "text": "say that again jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "repeat",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis repeat",
+     "lang": "en"
+    },
+    {
+     "text": "repeat jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what did you say",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what did you say",
+     "lang": "en"
+    },
+    {
+     "text": "what did you say jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "फिर से बोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis फिर से बोलो",
+     "lang": "hi"
+    },
+    {
+     "text": "फिर से बोलो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "दोहराओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis दोहराओ",
+     "lang": "hi"
+    },
+    {
+     "text": "दोहराओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "क्या कहा तुमने",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis क्या कहा तुमने",
+     "lang": "hi"
+    },
+    {
+     "text": "क्या कहा तुमने jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "dobara bolo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis dobara bolo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "dobara bolo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "repeat karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis repeat karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "repeat karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kya bola tune",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis kya bola tune",
+     "lang": "hinglish"
+    },
+    {
+     "text": "kya bola tune jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "sys.sleep": {
+   "action": "voice.stopListening()",
+   "commands": [
+    {
+     "text": "stop listening",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis stop listening",
+     "lang": "en"
+    },
+    {
+     "text": "stop listening jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "go to sleep",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis go to sleep",
+     "lang": "en"
+    },
+    {
+     "text": "go to sleep jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "that's all",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis that's all",
+     "lang": "en"
+    },
+    {
+     "text": "that's all jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "सुनना बंद करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis सुनना बंद करो",
+     "lang": "hi"
+    },
+    {
+     "text": "सुनना बंद करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "सो जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis सो जाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "सो जाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "बस इतना",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis बस इतना",
+     "lang": "hi"
+    },
+    {
+     "text": "बस इतना jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "sun-na band karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis sun-na band karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "sun-na band karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "so jao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis so jao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "so jao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "bas itna",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis bas itna",
+     "lang": "hinglish"
+    },
+    {
+     "text": "bas itna jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "sys.help": {
+   "action": "voice.help()",
+   "commands": [
+    {
+     "text": "what can you do",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what can you do",
+     "lang": "en"
+    },
+    {
+     "text": "what can you do jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "help",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis help",
+     "lang": "en"
+    },
+    {
+     "text": "help jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "list your commands",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis list your commands",
+     "lang": "en"
+    },
+    {
+     "text": "list your commands jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "तुम क्या कर सकते हो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis तुम क्या कर सकते हो",
+     "lang": "hi"
+    },
+    {
+     "text": "तुम क्या कर सकते हो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "मदद",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis मदद",
+     "lang": "hi"
+    },
+    {
+     "text": "मदद jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "कमांड बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis कमांड बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "कमांड बताओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "tum kya kar sakte ho",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis tum kya kar sakte ho",
+     "lang": "hinglish"
+    },
+    {
+     "text": "tum kya kar sakte ho jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "help karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis help karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "help karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "commands batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis commands batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "commands batao jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  },
+  "qa.answer": {
+   "action": "groq.answer(q)  // UPSC tutor",
+   "commands": [
+    {
+     "text": "explain fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis explain fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "explain fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "explain fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis explain fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "explain fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what is fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what is fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "what is fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "what is fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis what is fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "what is fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "tell me about fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis tell me about fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "tell me about fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "tell me about fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis tell me about fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "tell me about fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "clear my doubt on fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis clear my doubt on fundamental rights",
+     "lang": "en"
+    },
+    {
+     "text": "clear my doubt on fundamental rights jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "clear my doubt on fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "jarvis clear my doubt on fiscal deficit",
+     "lang": "en"
+    },
+    {
+     "text": "clear my doubt on fiscal deficit jarvis",
+     "lang": "en"
+    },
+    {
+     "text": "fundamental rights समझाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights समझाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights समझाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit समझाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit समझाओ",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit समझाओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit क्या है",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit क्या है jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights के बारे में बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights के बारे में बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights के बारे में बताओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit के बारे में बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit के बारे में बताओ",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit के बारे में बताओ jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights पर संदेह दूर करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fundamental rights पर संदेह दूर करो",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights पर संदेह दूर करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit पर संदेह दूर करो",
+     "lang": "hi"
+    },
+    {
+     "text": "jarvis fiscal deficit पर संदेह दूर करो",
+     "lang": "hi"
+    },
+    {
+     "text": "fiscal deficit पर संदेह दूर करो jarvis",
+     "lang": "hi"
+    },
+    {
+     "text": "fundamental rights samjhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights samjhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights samjhao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit samjhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit samjhao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit samjhao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit kya hai",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit kya hai jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights ke bare mein batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights ke bare mein batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights ke bare mein batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ke bare mein batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit ke bare mein batao",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ke bare mein batao jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights ka doubt clear karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fundamental rights ka doubt clear karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fundamental rights ka doubt clear karo jarvis",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ka doubt clear karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "jarvis fiscal deficit ka doubt clear karo",
+     "lang": "hinglish"
+    },
+    {
+     "text": "fiscal deficit ka doubt clear karo jarvis",
+     "lang": "hinglish"
+    }
+   ]
+  }
+ }
+}

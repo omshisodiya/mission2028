@@ -17,8 +17,192 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+Devanagari:wght@500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/src/engine/styles.css" />
+
+<!-- ══════════════════════════════════════════════════════════════
+     JARVIS VOICE OVERLAY — Siri-style aurora + waveform
+     Inline so it works regardless of module bundling / auth state
+     ══════════════════════════════════════════════════════════════ -->
+<style>
+:root{--va-amp:0;}
+/* ── Aurora curtains ── */
+.va-aurora{position:fixed;inset:-10%;z-index:400;pointer-events:none;overflow:hidden;
+  filter:blur(56px) saturate(1.4);
+  -webkit-mask-image:radial-gradient(130% 120% at 50% 50%,#000 30%,transparent 92%);
+  mask-image:radial-gradient(130% 120% at 50% 50%,#000 30%,transparent 92%);
+  opacity:.10;transition:opacity .8s ease;}
+.va-aurora span{position:absolute;mix-blend-mode:screen;border-radius:48% 52% 60% 40%/55% 48% 52% 45%;filter:blur(8px);will-change:transform;}
+.va-aurora .r1{width:62vw;height:120vh;left:-6vw;top:-30vh;background:radial-gradient(circle,#ff9933,transparent 62%);animation:vaDrift1 13s ease-in-out infinite;}
+.va-aurora .r2{width:54vw;height:120vh;left:24vw;top:-26vh;background:radial-gradient(circle,#b06cff,transparent 62%);animation:vaDrift2 17s ease-in-out infinite;}
+.va-aurora .r3{width:58vw;height:120vh;right:-4vw;top:-32vh;background:radial-gradient(circle,#4aa0ff,transparent 62%);animation:vaDrift1 15s ease-in-out infinite reverse;}
+.va-aurora .r4{width:50vw;height:120vh;left:36vw;top:-20vh;background:radial-gradient(circle,#43e6d0,transparent 62%);animation:vaDrift2 19s ease-in-out infinite reverse;}
+.va-aurora .r5{width:46vw;height:120vh;left:8vw;top:-24vh;background:radial-gradient(circle,#f0b54a,transparent 62%);animation:vaDrift1 21s ease-in-out infinite;}
+@keyframes vaDrift1{0%,100%{transform:translateX(0) translateY(0) scaleY(1) skewX(-6deg)}50%{transform:translateX(8vw) translateY(4vh) scaleY(1.12) skewX(8deg)}}
+@keyframes vaDrift2{0%,100%{transform:translateX(0) translateY(2vh) scaleY(1.08) skewX(5deg)}50%{transform:translateX(-7vw) translateY(-3vh) scaleY(.94) skewX(-7deg)}}
+/* Active states */
+body[data-va=listening] .va-aurora{opacity:calc(.70 + var(--va-amp)*.30);}
+body[data-va=thinking]  .va-aurora{opacity:.58;}
+body[data-va=speaking]  .va-aurora{opacity:calc(.65 + var(--va-amp)*.35);}
+/* ── Rotating conic edge glow ── */
+#va-glow{position:fixed;inset:-12%;z-index:400;pointer-events:none;
+  background:conic-gradient(from var(--va-rot,0deg),#f0b54a,#ff9933,#b06cff,#4aa0ff,#43e6d0,#1fbf6b,#ffe39a,#f0b54a);
+  filter:blur(68px) saturate(1.25);
+  -webkit-mask-image:radial-gradient(120% 116% at 50% 50%,transparent 52%,#000 74%);
+  mask-image:radial-gradient(120% 116% at 50% 50%,transparent 52%,#000 74%);
+  opacity:.12;transition:opacity .6s ease,transform .6s ease;}
+body[data-va=listening] #va-glow,body[data-va=speaking]  #va-glow{opacity:.58;transform:scale(calc(1 + var(--va-amp)*.03));}
+body[data-va=thinking]  #va-glow{opacity:.78;}
+/* ── Inner rim ── */
+#va-rim{position:fixed;inset:10px;border-radius:30px;pointer-events:none;z-index:401;
+  box-shadow:inset 0 0 0 1px rgba(240,181,74,.16),inset 0 0 60px -20px rgba(255,227,154,.22);transition:box-shadow .6s;}
+body[data-va=listening] #va-rim,body[data-va=thinking] #va-rim,body[data-va=speaking] #va-rim{
+  box-shadow:inset 0 0 0 1px rgba(240,181,74,.44),inset 0 0 60px -20px rgba(255,227,154,.58);}
+/* ── Page dim ── */
+#va-dim{position:fixed;inset:0;z-index:399;pointer-events:none;
+  background:rgba(3,5,12,0);backdrop-filter:blur(0px);transition:background .6s,backdrop-filter .6s;}
+body[data-va=listening] #va-dim,body[data-va=thinking] #va-dim,body[data-va=speaking] #va-dim{
+  background:rgba(3,5,12,.42);backdrop-filter:blur(3px);}
+/* ── Circular waveform ── */
+#va-ring{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);z-index:402;width:340px;height:340px;pointer-events:none;opacity:0;transition:opacity .5s;}
+body[data-va=listening] #va-ring,body[data-va=thinking] #va-ring,body[data-va=speaking] #va-ring{opacity:1;}
+#va-ring canvas{position:absolute;inset:0;width:100%;height:100%;}
+/* ── Bottom dock ── */
+#va-dock{position:fixed;left:0;right:0;bottom:0;z-index:403;padding:40px 24px 52px;
+  display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;pointer-events:none;
+  -webkit-mask-image:linear-gradient(0deg,#000 60%,transparent);mask-image:linear-gradient(0deg,#000 60%,transparent);
+  opacity:0;transform:translateY(16px);transition:opacity .5s,transform .5s;}
+body[data-va=listening] #va-dock,body[data-va=thinking] #va-dock,body[data-va=speaking] #va-dock{opacity:1;transform:none;}
+.va-label{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#f3dba6;display:inline-flex;align-items:center;gap:10px;}
+.va-dot{width:7px;height:7px;border-radius:50%;background:#f0b54a;box-shadow:0 0 10px #f0b54a;transition:background .3s,box-shadow .3s;}
+body[data-va=listening] .va-dot{background:#45e0a8;box-shadow:0 0 10px #45e0a8;}
+body[data-va=speaking]  .va-dot{background:#ffe39a;box-shadow:0 0 10px #ffe39a;}
+.va-tx{font-family:'Sora',system-ui,sans-serif;font-weight:500;font-size:clamp(20px,3.2vw,32px);line-height:1.28;color:#eaf0ff;max-width:760px;text-shadow:0 2px 30px rgba(0,0,0,.65);}
+.va-caret{display:inline-block;width:3px;height:1em;background:#f0b54a;margin-left:3px;vertical-align:-2px;border-radius:2px;animation:vaBlink 1s steps(1) infinite;}
+@keyframes vaBlink{50%{opacity:0}}
+/* ── Master toggle ── */
+#va-toggle{position:fixed;top:18px;right:120px;z-index:850;height:36px;display:flex;align-items:center;gap:8px;
+  padding:0 16px 0 12px;background:rgba(5,7,15,.92);border:1.5px solid rgba(240,181,74,.25);border-radius:20px;
+  cursor:pointer;color:#6f7d9e;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  transition:border-color .25s,color .25s,box-shadow .25s;backdrop-filter:blur(12px);user-select:none;white-space:nowrap;}
+#va-toggle:hover{border-color:rgba(240,181,74,.5);color:#b9c6e6;}
+#va-toggle.on{border-color:rgba(240,181,74,.6);color:#f0b54a;box-shadow:0 0 18px rgba(240,181,74,.18);}
+#va-toggle .vd{width:7px;height:7px;border-radius:50%;background:#6f7d9e;flex-shrink:0;transition:background .25s,box-shadow .25s;}
+#va-toggle.on .vd{background:#f0b54a;box-shadow:0 0 8px #f0b54a;}
+/* ── Hide all when disabled ── */
+body.va-off .va-aurora{opacity:0!important;}body.va-off #va-glow{opacity:0!important;}
+body.va-off #va-rim{box-shadow:none!important;}body.va-off #va-dim,body.va-off #va-ring,body.va-off #va-dock{display:none;}
+/* ── Reduced motion ── */
+@media(prefers-reduced-motion:reduce){.va-aurora span{animation:none!important;}.va-caret{animation:none;opacity:1;}}
+</style>
 </head>
 <body data-hero="orbital">
+
+<!-- ══ JARVIS OVERLAY — always in DOM, visible immediately ══ -->
+<div id="va-dim"></div>
+<div class="va-aurora"><span class="r1"></span><span class="r2"></span><span class="r3"></span><span class="r4"></span><span class="r5"></span></div>
+<div id="va-glow"></div>
+<div id="va-rim"></div>
+<div id="va-ring"><canvas id="va-cv"></canvas></div>
+<div id="va-dock">
+  <span class="va-label"><span class="va-dot"></span><span id="va-st">Listening…</span></span>
+  <div class="va-tx" id="va-tx"></div>
+</div>
+<button id="va-toggle" title="Toggle JARVIS on / off">
+  <span class="vd"></span><span id="va-tl">JARVIS</span>
+</button>
+
+<script>
+/* ── JARVIS VA API + rAF animation — inline, no module needed ── */
+(function(){
+  var body=document.body,glow=document.getElementById('va-glow');
+  var cv=document.getElementById('va-cv'),ctx=cv&&cv.getContext('2d');
+  var dpr=Math.min(2,devicePixelRatio||1);
+  function resz(){dpr=Math.min(2,devicePixelRatio||1);if(cv){cv.width=340*dpr;cv.height=340*dpr;}}
+  resz();addEventListener('resize',resz);
+  var BARS=88,ph=Array.from({length:BARS},function(_,i){return i*0.4;});
+  var ripples=[],lastPk=0,amp=0,ampT=0,rot=0,T=0;
+  var LABELS={idle:'',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking'};
+
+  function frame(){
+    requestAnimationFrame(frame);T+=0.016;
+    amp+=(ampT-amp)*0.12;
+    document.documentElement.style.setProperty('--va-amp',amp.toFixed(3));
+    var st=body.dataset.va||'idle';
+    var spd=st==='thinking'?1.4:st==='speaking'?0.9:st==='listening'?0.55:0.22;
+    rot=(rot+spd)%360;
+    if(glow)glow.style.setProperty('--va-rot',rot+'deg');
+    drawRing(st);
+  }
+  function drawRing(st){
+    if(!cv||!ctx)return;
+    var W=cv.width,H=cv.height,cx=W/2,cy=H/2;
+    ctx.clearRect(0,0,W,H);
+    if(st==='idle')return;
+    var baseR=92*dpr,maxL=(st==='thinking'?16:64)*dpr;
+    if((st==='listening'||st==='speaking')&&amp>0.50&&(T-lastPk)>0.28){ripples.push({r:baseR,a:0.55});lastPk=T;}
+    ripples.forEach(function(r){r.r+=2.4*dpr;r.a-=0.011;});
+    ripples=ripples.filter(function(r){return r.a>0;});
+    ripples.forEach(function(rp){
+      ctx.beginPath();ctx.arc(cx,cy,rp.r,0,Math.PI*2);
+      ctx.strokeStyle='#ffe39a';ctx.globalAlpha=Math.max(0,rp.a);ctx.lineWidth=1.4*dpr;ctx.stroke();
+    });
+    ctx.globalAlpha=1;
+    for(var i=0;i<BARS;i++){
+      var ang=(i/BARS)*Math.PI*2;
+      var wob=Math.sin(T*4.4+ph[i])*0.5+0.5;
+      var react=st==='thinking'?(0.22+0.28*wob):amp*(0.42+0.58*wob);
+      var len=maxL*react+3*dpr;
+      var x1=cx+Math.cos(ang)*baseR,y1=cy+Math.sin(ang)*baseR;
+      var x2=cx+Math.cos(ang)*(baseR+len),y2=cy+Math.sin(ang)*(baseR+len);
+      var g=ctx.createLinearGradient(x1,y1,x2,y2);
+      g.addColorStop(0,'#f0b54a');g.addColorStop(1,'#ffe39a');
+      ctx.strokeStyle=g;ctx.lineWidth=3*dpr;ctx.lineCap='round';ctx.globalAlpha=0.92;
+      ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    }
+    ctx.globalAlpha=0.5;ctx.strokeStyle='#f0b54a';ctx.lineWidth=1*dpr;
+    ctx.beginPath();ctx.arc(cx,cy,baseR-4*dpr,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+  }
+  if(!matchMedia('(prefers-reduced-motion:reduce)').matches)frame();
+
+  /* ── Public API ── */
+  var stEl=document.getElementById('va-st'),txEl=document.getElementById('va-tx');
+  window.VA={
+    setState:function(s){
+      body.dataset.va=s;
+      if(stEl)stEl.textContent=LABELS[s]||'';
+      if(s==='idle'){ampT=0;if(txEl)txEl.innerHTML='';}
+    },
+    setAmplitude:function(v){ampT=Math.max(0,Math.min(1,v));},
+    setTranscript:function(t,fin){
+      if(txEl)txEl.innerHTML=t?(t+(fin?'':'<span class="va-caret"></span>')):'';
+    },
+    get state(){return body.dataset.va||'idle';}
+  };
+
+  /* ── Master toggle ── */
+  var tog=document.getElementById('va-toggle');
+  var tlbl=document.getElementById('va-tl');
+  var enabled=localStorage.getItem('jarvis_enabled')!=='false';
+  function applyEnabled(on){
+    enabled=on;localStorage.setItem('jarvis_enabled',String(on));
+    body.classList.toggle('va-off',!on);
+    if(tog)tog.classList.toggle('on',on);
+    if(tlbl)tlbl.textContent=on?'JARVIS':'OFF';
+    if(!on)window.VA.setState('idle');
+    var fn=window.__jarvisToggle;
+    if(fn&&typeof fn==='function')fn._enabled=on;
+  }
+  applyEnabled(enabled);
+  if(tog)tog.addEventListener('click',function(){applyEnabled(!enabled);});
+
+  /* ── 2-second intro splash so design is visible immediately ── */
+  setTimeout(function(){
+    if((body.dataset.va||'idle')==='idle'&&enabled){
+      window.VA.setState('thinking');
+      setTimeout(function(){if((body.dataset.va||'idle')==='thinking')window.VA.setState('idle');},2000);
+    }
+  },600);
+})();
+</script>
 
 <canvas id="starfield"></canvas>
 <div id="cursor-aura"></div>

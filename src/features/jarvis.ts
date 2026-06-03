@@ -8,7 +8,15 @@ import { getCurrentState } from './core-engine'
 import { todayIST } from '../services/core'
 import { isVisionTrigger, openVisionCapture } from './jarvis-vision'
 import { route, llmRoute, detectLang, type RouterResult } from './jarvis-router'
-import { initVAOverlay, VA } from './va-overlay'
+// VA overlay lives in index.html as inline script — access via window.VA
+type _VAGlobal = { setState(s:string):void; setAmplitude(v:number):void; setTranscript(t:string,f:boolean):void; readonly state:string }
+const _w = window as Window & { VA?: _VAGlobal }
+const VA = {
+  setState:      (s: string)           => { _w.VA?.setState(s) },
+  setAmplitude:  (v: number)           => { _w.VA?.setAmplitude(v) },
+  setTranscript: (t: string, f: boolean) => { _w.VA?.setTranscript(t, f) },
+  get state(): string { return _w.VA?.state ?? 'idle' },
+}
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions'
@@ -126,8 +134,6 @@ function setJarvisEnabled(on: boolean): void {
 }
 
 function toggleJarvis(): void { setJarvisEnabled(!_jarvisEnabled) }
-// Expose to the early toggle button mounted before auth
-;(window as Window & { __jarvisToggle?: () => void }).__jarvisToggle = toggleJarvis
 
 // ── Voice — permanently male ──────────────────────────────────────────────────
 function loadVoices(): void { _voices = _synth.getVoices(); pickMaleVoice() }
@@ -163,9 +169,10 @@ export function initJarvis(): void {
   btn.addEventListener('click', togglePanel)
   document.body.appendChild(btn)
 
-  initVAOverlay()   // Siri-style aurora overlay — ambient at idle, full on voice
-  // Apply disabled class NOW if JARVIS starts as off
-  if (!_jarvisEnabled) document.body.classList.add('va-disabled')
+  // VA overlay already in DOM (index.html inline script) — just sync enabled state
+  if (!_jarvisEnabled) document.body.classList.add('va-off')
+  // Wire the full toggle handler so the early index.html button delegates here
+  ;(window as Window & { __jarvisToggle?: () => void }).__jarvisToggle = toggleJarvis
   startAura()
 
   // Toggle button already mounted early in main.ts — just wire the click handler

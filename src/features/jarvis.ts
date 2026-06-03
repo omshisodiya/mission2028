@@ -51,6 +51,58 @@ export function initJarvis(): void {
       togglePanel()
     }
   })
+
+  // Wake word: continuously listen for "Jarvis" even when panel is closed
+  startWakeWordListener()
+}
+
+// ── Wake word: "Jarvis" ───────────────────────────────────────────────────────
+
+let _wakeRecognition: any = null
+let _wakeActive = false
+
+function startWakeWordListener(): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  if (!SR) return
+
+  function startWake(): void {
+    if (_wakeActive || _open) return
+    _wakeActive = true
+    _wakeRecognition = new SR()
+    _wakeRecognition.continuous = true
+    _wakeRecognition.lang = 'en-IN'
+    _wakeRecognition.interimResults = true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _wakeRecognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript)
+        .join(' ')
+        .toLowerCase()
+
+      if (transcript.includes('jarvis') || transcript.includes('jarvis')) {
+        _wakeRecognition?.stop()
+        _wakeActive = false
+        // Brief audio cue — pulse the button
+        const btn = document.getElementById('jarvis-btn')
+        btn?.classList.add('listening')
+        setTimeout(() => btn?.classList.remove('listening'), 400)
+        // Open panel and start listening for the command
+        if (!_open) openPanel()
+        setTimeout(() => startListening(), 600)
+      }
+    }
+    _wakeRecognition.onerror = () => { _wakeActive = false }
+    _wakeRecognition.onend   = () => {
+      _wakeActive = false
+      // Restart after short delay so it's always listening
+      if (!_open) setTimeout(startWake, 1500)
+    }
+    try { _wakeRecognition.start() } catch { _wakeActive = false }
+  }
+
+  // Start after a short delay (let the page settle)
+  setTimeout(startWake, 2000)
 }
 
 // ── Panel ─────────────────────────────────────────────────────────────────────

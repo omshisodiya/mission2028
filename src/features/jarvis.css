@@ -268,3 +268,72 @@
 }
 /* Panel must sit above the aurora overlay */
 #jarvis-panel { z-index: 850 !important; }
+
+/* ── jv-flash: visual feedback when JARVIS clicks a button ──────────────── */
+@keyframes jv-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(240,181,74,0); filter: brightness(1); }
+  30%  { box-shadow: 0 0 0 6px rgba(240,181,74,.55); filter: brightness(1.6); transform: scale(1.06); }
+  100% { box-shadow: 0 0 0 0 rgba(240,181,74,0); filter: brightness(1); transform: scale(1); }
+}
+.jv-flash {
+  animation: jv-flash .5s cubic-bezier(.22,1,.36,1) forwards !important;
+  outline: 1.5px solid rgba(240,181,74,.7) !important;
+}
+
+/* ── JARVIS status bar (sync indicator) ─────────────────────────────────── */
+#jv-sync-dot {
+  position: fixed;
+  bottom: 104px;
+  right: 34px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #45e0a8;
+  box-shadow: 0 0 6px #45e0a8;
+  z-index: 801;
+  transition: background .4s, box-shadow .4s;
+  pointer-events: none;
+}
+#jv-sync-dot.offline {
+  background: #e05555;
+  box-shadow: 0 0 6px #e05555;
+}
+#jv-sync-dot.syncing {
+  animation: jv-sync-pulse .8s ease-in-out infinite;
+}
+@keyframes jv-sync-pulse {
+  0%,100% { opacity:1; transform: scale(1); }
+  50%     { opacity:.4; transform: scale(1.5); }
+}
+
+/* ── Interview Practice mode indicator ──────────────────────────────────── */
+#jarvis-btn.interview-active {
+  box-shadow:
+    0 0 0 2.5px rgba(110,160,255,.60),
+    0 0 30px rgba(110,160,255,.45),
+    0 0 70px rgba(110,160,255,.18) !important;
+}
+
+/* ── Ambient mode indicator ─────────────────────────────────────────────── */
+#jarvis-btn.ambient-on {
+  opacity: .55;
+  box-shadow: 0 0 0 1.5px rgba(240,181,74,.15), 0 0 12px rgba(240,181,74,.10) !important;
+}
+
+/* ── Better mobile JARVIS panel ─────────────────────────────────────────── */
+@media (max-width: 480px) {
+  #jarvis-panel {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 96px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 70vh !important;
+  }
+  #jarvis-btn {
+    width: 60px !important;
+    height: 60px !important;
+    bottom: 20px !important;
+    right: 20px !important;
+  }
+  #jv-sync-dot { right: 28px; bottom: 88px; }
+}

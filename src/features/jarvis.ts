@@ -298,6 +298,16 @@ export function initJarvis(): void {
 
   // VA overlay already in DOM (index.html inline script) — just sync enabled state
   if (!_jarvisEnabled) document.body.classList.add('va-off')
+
+  // Sync status dot — small indicator above JARVIS button
+  if (!document.getElementById('jv-sync-dot')) {
+    const dot = document.createElement('div')
+    dot.id = 'jv-sync-dot'
+    dot.title = 'JARVIS sync status'
+    document.body.appendChild(dot)
+    window.addEventListener('online',  () => { dot.classList.remove('offline','syncing'); dot.classList.add('syncing'); setTimeout(()=>dot.classList.remove('syncing'),3000) })
+    window.addEventListener('offline', () => { dot.classList.remove('syncing'); dot.classList.add('offline') })
+  }
   // Wire the full toggle handler so the early index.html button delegates here
   ;(window as Window & { __jarvisToggle?: () => void }).__jarvisToggle = toggleJarvis
   startAura()
@@ -317,6 +327,8 @@ export function initJarvis(): void {
       startClapWatch()
     }
     startProactiveEngine()
+    startAppSync()
+    void requestNotifPermission()  // ask once for browser notifications
     // Heartbeat: restart wake word if it silently dies every 15 seconds
     setInterval(() => {
       if (_jarvisEnabled && !_wakeRunning && !_isSpeaking && !_sleeping) startWakeWord()
@@ -371,8 +383,11 @@ function startProactiveEngine(): void {
     for (let i = _reminders.length - 1; i >= 0; i--) {
       if (now >= _reminders[i].at) {
         const r = _reminders.splice(i, 1)[0]
-        if (_open) respond(`Reminder: ${r.msg}`)
-        else showNudge(`Reminder: ${r.msg}`)
+        const msg = `Reminder: ${r.msg}`
+        // Browser notification (even if tab is in background)
+        browserNotify('⏰ JARVIS Reminder', r.msg, `reminder-${r.id}`)
+        if (_open) respond(msg)
+        else showNudge(msg)
       }
     }
   }, 10_000)
@@ -435,6 +450,92 @@ function buildMorningBrief(cs: ReturnType<typeof getCurrentState>): string {
   if (revDue) parts.push(`${revDue} revision${revDue > 1 ? 's' : ''} due today.`)
   parts.push('What are we starting with?')
   return parts.join(' ')
+}
+
+// ── App ↔ JARVIS Bidirectional Sync ──────────────────────────────────────────
+function startAppSync(): void {
+  // Online / offline — announce and update sync status
+  window.addEventListener('online', () => {
+    const lang = detectResponseLang('')
+    const msg  = L(lang,
+      'Back online. All your changes are syncing to the cloud.',
+      'वापस online हो गए। सारे changes cloud में sync हो रहे हैं।',
+      'Wapas online. Saare changes cloud mein sync ho rahe hain.'
+    )
+    browserNotify('✅ JARVIS', 'Back online — syncing data.', 'sync')
+    if (_open) respond(msg); else showNudge(msg)
+  })
+  window.addEventListener('offline', () => {
+    const lang = detectResponseLang('')
+    const msg  = L(lang,
+      'Gone offline. All changes are saved locally and will sync automatically when you reconnect.',
+      'Offline हो गए। Changes local में safe हैं — reconnect होते ही sync हो जाएंगे।',
+      'Offline ho gaye. Changes local mein save hain — reconnect hone pe sync ho jaayenge.'
+    )
+    browserNotify('📴 JARVIS', 'Offline — working locally.', 'sync')
+    if (_open) respond(msg); else showNudge(msg)
+  })
+
+  // DOM mutation observer: react when score dialog closes (score was saved)
+  const domObs = new MutationObserver(mutations => {
+    for (const m of mutations) {
+      for (const node of m.removedNodes) {
+        if (node instanceof Element) {
+          const id = (node as HTMLElement).id ?? ''
+          if (/score|add-score/i.test(id)) {
+            // Score modal closed → likely a score was saved → recheck milestones
+            setTimeout(() => checkMilestones(), 800)
+          }
+        }
+      }
+    }
+  })
+  domObs.observe(document.body, { childList: true })
+
+  // Listen to timer state changes for smart awareness
+  window.addEventListener('jarvis:timer-started', ((e: CustomEvent<{mins:number}>) => {
+    pingActivity()
+    // Ambient mode: announce quietly
+    if (_ambientMode === 'whisper' && !_isSpeaking) {
+      const lang = detectResponseLang('')
+      setTimeout(() => speak(L(lang, 'Session started.', 'Session शुरू।', 'Session shuru.')), 200)
+    }
+  }) as EventListener)
+}
+
+// ── Screen Reader — viewport-aware section narration ─────────────────────────
+function isInViewport(el: Element): boolean {
+  const r = el.getBoundingClientRect()
+  return r.top < window.innerHeight * 0.75 && r.bottom > window.innerHeight * 0.25
+}
+function readScreenContent(): string {
+  // Timer / engine section
+  const timerEl = document.querySelector('.ring-time, .timer-display, #focus-timer')
+  if (timerEl && isInViewport(timerEl)) {
+    const timerBtn = document.querySelector<HTMLButtonElement>('[data-act="start"]')
+    const running  = timerBtn?.textContent?.toLowerCase().includes('pause')
+    const time     = timerEl.textContent?.trim() ?? '—'
+    return running ? `Timer running: ${time} remaining.` : `Timer is at ${time}, not running.`
+  }
+  // Analytics / intelligence section
+  const intelEl = document.querySelector('#intel, [data-section="intel"]')
+  if (intelEl && isInViewport(intelEl)) return buildStatusReport()
+  // Plan section
+  const planEl = document.querySelector('#plan, [data-section="plan"]')
+  if (planEl && isInViewport(planEl)) return buildTodayReport()
+  // Routine section
+  const routineEl = document.querySelector('#routine-section, [data-section="routine"]')
+  if (routineEl && isInViewport(routineEl)) {
+    const cs = getCurrentState()
+    return cs?.today
+      ? `Routine: Today's subject is ${cs.today.subject}. Target: ${cs.today.targetQuestions ?? '?'} questions.`
+      : 'Open the Routine section for today\'s schedule.'
+  }
+  // Constitution section
+  const constEl = document.querySelector('#constitution-section, [data-section="constitution"]')
+  if (constEl && isInViewport(constEl)) return 'Constitution section is open. Search by article number or keyword.'
+  // Default: full status
+  return buildStatusReport()
 }
 
 // ── Focus Guardian ────────────────────────────────────────────────────────────
@@ -1504,15 +1605,276 @@ async function processQuery(text: string): Promise<void> {
     return
   }
 
+  // ── Screen Reading ─────────────────────────────────────────────────────────
+  if (/what.*on.*screen|read.*screen|what.*see|kya.*screen.*pe|screen.*kya.*hai|read.*this.*section|describe.*screen/i.test(tl)) {
+    addMsg('user', text); respond(readScreenContent()); return
+  }
+  if (/read.*analytics|read.*me.*scores|read.*performance|analytics.*sun|score.*sunao/i.test(tl)) {
+    addMsg('user', text); scr('intel'); respond(buildStatusReport()); return
+  }
+  if (/read.*plan|read.*me.*plan|aaj.*ka.*plan.*suno|plan.*sunao/i.test(tl)) {
+    addMsg('user', text); scr('plan'); respond(buildTodayReport()); return
+  }
+
+  // ── Ambient Mode ──────────────────────────────────────────────────────────
+  if (/ambient.*mode.*on|silent.*mode.*on|background.*mode|whisper.*mode|shant.*mode/i.test(tl)) {
+    _ambientMode = 'whisper'
+    if (_ambientIntervalId) clearInterval(_ambientIntervalId)
+    addMsg('user', text)
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      "Ambient mode on. I will stay silent and whisper every 25 minutes to keep you on track. Focus, Om.",
+      "Ambient mode चालू। शांत रहूंगा — हर 25 मिनट में धीरे से बोलूंगा। Focus करो।",
+      "Ambient mode on. Chup rahunga — har 25 minute mein whisper karunga. Focus karo, Om."
+    ))
+    if (_open) closePanel()
+    const WHISPERS_EN = ["Still here. Keep going.", "One lecture at a time.", "You are building something great.", "Consistency wins."]
+    const WHISPERS_HI = ["यहाँ हूँ। चलते रहो।", "एक lecture एक बार में।", "कुछ महान बना रहे हो।", "Consistency ही जीतती है।"]
+    const WHISPERS_HIN = ["Yahan hoon. Keep going.", "Ek lecture ek baar mein.", "Kuch zabardast bana rahe ho.", "Consistency hi jeet ti hai."]
+    _ambientIntervalId = window.setInterval(() => {
+      if (_isSpeaking || _ambientMode === 'off') return
+      const ws = lang === 'hi' ? WHISPERS_HI : lang === 'hinglish' ? WHISPERS_HIN : WHISPERS_EN
+      speak(_pick(ws))
+    }, 25 * 60_000)
+    return
+  }
+  if (/ambient.*mode.*off|silent.*mode.*off|normal.*mode.*back|wapas.*normal/i.test(tl)) {
+    _ambientMode = 'off'
+    clearInterval(_ambientIntervalId)
+    addMsg('user', text)
+    respond(L(detectResponseLang(text), 'Ambient mode off. I am fully active again.', 'Ambient mode बंद। वापस active हूँ।', 'Ambient mode off. Wapas active hoon.')); return
+  }
+
+  // ── Interview Practice Mode ───────────────────────────────────────────────
+  if (/interview.*practice|personality.*test.*practice|upsc.*interview.*mode|mock.*interview.*start|interview.*shuru/i.test(tl)) {
+    addMsg('user', text)
+    _ivPhase = 'active'; _ivQIdx = 0
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      `UPSC Interview Practice. ${IV_QS_EN.length} board-style questions. Give complete spoken answers. Say "next question" to continue, "skip" to move on, "end interview" to stop. Let's begin.`,
+      `UPSC Interview Practice। ${IV_QS_HI.length} board-style सवाल। पूरे जवाब दें। "अगला सवाल" बोलो आगे जाने के लिए। शुरू करते हैं।`,
+      `UPSC Interview Practice. ${IV_QS_EN.length} questions. Puri answer do. "Next question" bolo aage jaane ke liye. Shuru karte hain.`
+    ))
+    setTimeout(() => {
+      const lang2 = detectResponseLang('')
+      const qs = lang2 === 'hi' ? IV_QS_HI : IV_QS_EN
+      respond(`Question 1 of ${qs.length}: ${qs[0]}`)
+      _ivQIdx = 1
+    }, 2500)
+    return
+  }
+  if (_ivPhase === 'active') {
+    const isNext   = /next.*question|agle.*sawaal|skip|next/i.test(tl)
+    const isEnd    = /end.*interview|interview.*end|interview.*khatam|stop.*interview/i.test(tl)
+    const lang2    = detectResponseLang(text)
+    const qs       = lang2 === 'hi' ? IV_QS_HI : IV_QS_EN
+    if (isEnd) {
+      _ivPhase = 'off'
+      addMsg('user', text)
+      respond(L(lang2,
+        `Interview practice complete. You attempted ${_ivQIdx} of ${qs.length} questions. Review your answers for structure and UPSC keywords. Well done, Om.`,
+        `Interview practice पूरा। ${_ivQIdx} of ${qs.length} सवाल किए। अपने जवाब structure और keywords के लिए review करो।`,
+        `Interview practice khatam. ${_ivQIdx}/${qs.length} questions kiye. Apne answers review karo.`
+      )); return
+    }
+    if (isNext || _ivQIdx > 0) {
+      addMsg('user', text)
+      if (!isNext && _ivQIdx > 0) {
+        // User gave an answer — evaluate it via Groq if available
+        if (GROQ_AVAILABLE) {
+          void executeIntent(`The UPSC interview question was: "${qs[_ivQIdx-1]}". The candidate answered: "${text}". In 2 spoken sentences: one strength in their answer and one specific improvement. No markdown.`)
+          setTimeout(() => {
+            if (_ivQIdx < qs.length) {
+              respond(`Question ${_ivQIdx + 1}: ${qs[_ivQIdx]}`)
+              _ivQIdx++
+            } else {
+              _ivPhase = 'off'
+              respond(L(lang2, 'All questions done. Excellent practice session!', 'सभी सवाल पूरे। शानदार practice!', 'Saare questions done. Zabardast practice!'))
+            }
+          }, 4000)
+          return
+        }
+      }
+      // Just move to next
+      if (_ivQIdx < qs.length) {
+        respond(`Question ${_ivQIdx + 1}: ${qs[_ivQIdx]}`)
+        _ivQIdx++
+      } else {
+        _ivPhase = 'off'
+        respond(L(lang2, 'All interview questions done. Great practice!', 'सभी सवाल पूरे।', 'Saare questions done.'))
+      }
+      return
+    }
+  }
+
+  // ── Essay Outline Generator ───────────────────────────────────────────────
+  if (/essay.*outline|essay.*plan|outline.*essay|essay.*structure|nibandh.*outline|upsc.*essay.*on/i.test(tl)) {
+    const topic = tl.replace(/essay.*outline|essay.*plan|outline.*essay|essay.*structure|nibandh.*outline|upsc.*essay.*on|essay.*on/gi, '').trim()
+    if (!topic) {
+      addMsg('user', text); respond(L(detectResponseLang(text), 'What topic? Say "essay outline on sustainable development".', 'कौन सा topic? बोलो।', 'Kaunsa topic? Bolo.')); return
+    }
+    addMsg('user', text)
+    if (GROQ_AVAILABLE) {
+      void executeIntent(`Generate a spoken essay outline for UPSC Mains Paper I on: "${topic}". Structure: 1) Introduction approach (one sentence), 2) Five body paragraphs each with a different dimension (social, economic, political, ethical, global/historical), 3) Conclusion approach. Speak it as a study guide, not written text. No markdown.`)
+    } else {
+      respond(L(detectResponseLang(text),
+        `Essay structure for "${topic}": Introduction (define + state relevance), Body (social angle, economic angle, political/governance angle, ethical angle, way forward), Conclusion (balanced, forward-looking). Add 2-3 examples per dimension.`,
+        `"${topic}" के essay का structure: Introduction, फिर social, economic, political, ethical dimensions, फिर conclusion।`,
+        `"${topic}" essay: Intro, phir social, economic, political, ethical dimensions, phir conclusion with way forward.`
+      ))
+    }
+    return
+  }
+
+  // ── Voice Journal ─────────────────────────────────────────────────────────
+  if (/daily.*reflection|voice.*journal|journal.*entry|aaj.*ka.*reflection|din.*ka.*review.*journal/i.test(tl)) {
+    addMsg('user', text)
+    _journalStep = 'mood'
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      "Daily reflection. First: rate today from 1 to 5 — 1 being very hard, 5 being excellent.",
+      "Daily reflection। पहले: आज का दिन 1 से 5 में rate करो — 1 मतलब बहुत मुश्किल, 5 मतलब शानदार।",
+      "Daily reflection. Pehle: aaj ka din 1 se 5 mein rate karo — 1 matlab bahut mushkil, 5 matlab shandar."
+    )); return
+  }
+  if (_journalStep !== 'off') {
+    addMsg('user', text)
+    const num = parseInt(text.replace(/[^0-9]/g, ''))
+    const lang = detectResponseLang(text)
+    if (_journalStep === 'mood' && num >= 1 && num <= 5) {
+      _journalBuf.mood = num; _journalStep = 'learned'
+      respond(L(lang,
+        `Day rated ${num}/5. Now: what is the most important thing you learned today?`,
+        `आज का दिन ${num}/5 दिया। अब: आज जो सबसे important बात सीखी वो क्या थी?`,
+        `${num}/5 diya. Ab: aaj sabse important kya seekha?`
+      )); return
+    }
+    if (_journalStep === 'learned') {
+      _journalBuf.learned = text; _journalStep = 'improve'
+      respond(L(lang,
+        "Noted. And what is one thing you want to do better tomorrow?",
+        "Note हो गया। और एक चीज़ जो कल और बेहतर करना चाहते हो?",
+        "Note ho gaya. Aur ek cheez jo kal better karna chahte ho?"
+      )); return
+    }
+    if (_journalStep === 'improve') {
+      _journalBuf.improve = text; _journalStep = 'done'
+      const entry: JournalEntry = { date: todayIST(), mood: _journalBuf.mood ?? 3, learned: _journalBuf.learned ?? '', improve: _journalBuf.improve ?? '' }
+      try {
+        const stored = JSON.parse(localStorage.getItem(JOURNAL_KEY) ?? '[]') as JournalEntry[]
+        stored.push(entry); localStorage.setItem(JOURNAL_KEY, JSON.stringify(stored.slice(-90)))
+      } catch { /* ignore */ }
+      _journalStep = 'off'
+      const mood = entry.mood
+      respond(L(lang,
+        `Reflection saved. Day ${mood >= 4 ? 'was strong' : mood >= 3 ? 'was decent' : 'was tough — and that makes tomorrow better'}. Learned: "${entry.learned.slice(0,60)}". Rest well tonight.`,
+        `Reflection save हो गई। ${mood >= 4 ? 'अच्छा दिन था' : mood >= 3 ? 'ठीक-ठाक दिन' : 'मुश्किल दिन था — इससे कल बेहतर होगा'}। आज सीखा: "${entry.learned.slice(0,60)}"। अच्छे से आराम करो।`,
+        `Reflection save ho gayi. ${mood >= 4 ? 'Acha din tha' : mood >= 3 ? 'Theek-thaak din' : 'Tough din — isse kal better hoga'}. Seekha: "${entry.learned.slice(0,60)}". Achi neend lo.`
+      )); return
+    }
+  }
+
+  // ── Confidence Tracker ────────────────────────────────────────────────────
+  if (_awaitingConfidence) {
+    const n = parseInt(text.replace(/[^0-9]/g,''))
+    if (n >= 1 && n <= 5) {
+      _awaitingConfidence = false
+      if (_confidenceTopic) {
+        if (!(_mem as any).confidence) (_mem as any).confidence = {}
+        ;(_mem as any).confidence[_confidenceTopic] = n; saveMem()
+      }
+      addMsg('user', text)
+      const lang = detectResponseLang(text)
+      respond(L(lang,
+        `Confidence ${n}/5 on ${_confidenceTopic || 'this topic'}. ${n <= 2 ? 'Flagged for extra revision.' : n >= 4 ? 'Strong area.' : 'Good. Keep building.'}`,
+        `${_confidenceTopic || 'इस topic'} पर confidence ${n}/5। ${n <= 2 ? 'Extra revision के लिए flag किया।' : n >= 4 ? 'Strong area।' : 'अच्छा है।'}`,
+        `${_confidenceTopic || 'is topic'} pe confidence ${n}/5. ${n <= 2 ? 'Extra revision ke liye flag.' : n >= 4 ? 'Strong area.' : 'Acha hai.'}`
+      ))
+      if (n <= 2 && _confidenceTopic && !_mem.weakTopics.includes(_confidenceTopic)) {
+        _mem.weakTopics.push(_confidenceTopic); saveMem()
+      }
+      return
+    }
+  }
+  if (/rate.*confidence|confidence.*rating|how.*confident|kitna.*confident|confidence.*check/i.test(tl)) {
+    _confidenceTopic = tl.replace(/rate.*confidence|confidence.*rating|how.*confident|kitna.*confident|confidence.*check|on|about|in|for/gi, '').trim() || _sessionSubject
+    _awaitingConfidence = true
+    addMsg('user', text)
+    respond(L(detectResponseLang(text),
+      `Rate your confidence on "${_confidenceTopic || 'this topic'}" from 1 to 5. 1 = shaky, 5 = rock solid.`,
+      `"${_confidenceTopic || 'इस topic'}" पर confidence 1 से 5 में rate करो। 1 = कमज़ोर, 5 = बिल्कुल solid।`,
+      `"${_confidenceTopic || 'is topic'}" pe confidence 1 se 5 mein rate karo. 1 = shakka, 5 = solid.`
+    )); return
+  }
+
+  // ── Lecture Time-Binding Timer ────────────────────────────────────────────
+  if (/studying.*lecture|starting.*lecture|lecture.*shuru.*kar.*raha|lecture.*start.*kar.*raha|padhna.*start.*kar.*raha/i.test(tl)) {
+    const lecName = tl.replace(/studying|lecture|shuru|kar|raha|padhna|start|starting/gi, '').trim()
+    if (lecName.length > 2) {
+      _activeLectureName = lecName; _lectureStartMs = Date.now()
+      clickStart(); scr('plan')
+      addMsg('user', text)
+      respond(L(detectResponseLang(text),
+        `Tracking your session on "${lecName}". Timer started. When you're done, say "lecture done" and I'll mark it complete.`,
+        `"${lecName}" session track हो रही है। Timer शुरू। जब खत्म हो, "lecture done" बोलो।`,
+        `"${lecName}" session track ho rahi hai. Timer start. Jab khatam ho, "lecture done" bolo.`
+      )); return
+    }
+  }
+  if (_activeLectureName && /lecture.*done|lecture.*khatam|padh.*liya|topic.*over.*active/i.test(tl)) {
+    const mins = _lectureStartMs ? Math.round((Date.now() - _lectureStartMs) / 60000) : 0
+    const name = _activeLectureName; _activeLectureName = ''; _lectureStartMs = 0
+    addMsg('user', text)
+    const found = checkNamedTopic(name) || checkCurrentTopic()
+    respond(L(detectResponseLang(text),
+      `"${name}" done! ${mins > 0 ? `${mins} minutes spent. ` : ''}${celebrationLine()}`,
+      `"${name}" कhatam! ${mins > 0 ? `${mins} मिनट लगे। ` : ''}${celebrationLine()}`,
+      `"${name}" done! ${mins > 0 ? `${mins} minutes lage. ` : ''}${celebrationLine()}`
+    )); void found; return
+  }
+
+  // ── Performance Weekly Debrief ────────────────────────────────────────────
+  if (/weekly.*debrief|week.*debrief|this.*week.*analysis|week.*ka.*analysis|sunday.*review|weekly.*review.*full/i.test(tl)) {
+    addMsg('user', text)
+    const lang = detectResponseLang(text)
+    const weekly = buildWeekSummary()
+    const cs     = getCurrentState()
+    const done   = document.querySelectorAll('#plan .plan-row.done').length
+    const tot    = document.querySelectorAll('#plan .plan-row').length
+    const pct    = tot ? Math.round(done / tot * 100) : 0
+    const weak   = _mem.weakTopics.slice(-3).join(', ') || 'none flagged'
+    const strong = _mem.strongTopics.slice(-3).join(', ') || 'none flagged'
+    if (GROQ_AVAILABLE) {
+      void executeIntent(`Weekly UPSC preparation debrief for Om. Data: ${weekly}. Coverage: ${pct}%. Prelims avg: ${cs?.performance?.prelimsAvg?.toFixed(1) ?? '?'}%. Weak topics: ${weak}. Strong topics: ${strong}. Streak: ${cs?.streak ?? 0} days. Give a 3-sentence coaching assessment: what's working, what needs work, and one specific action for next week. Spoken format, warm but direct.`)
+    } else {
+      respond(`${weekly} Coverage: ${pct}%. Weak areas: ${weak}. Strong: ${strong}. Focus next week on weak topics and add 2 tests.`)
+    }
+    return
+  }
+
+  // ── Dynamic Quiz with Difficulty ──────────────────────────────────────────
+  if (/advanced.*quiz|hard.*quiz|easy.*quiz|basic.*quiz|difficulty.*quiz|quiz.*difficulty/i.test(tl)) {
+    const topic     = tl.replace(/advanced|hard|easy|basic|difficulty|quiz/gi, '').trim() || _sessionSubject || 'UPSC GS'
+    const scores    = _mem.quizScores[topic] ?? []
+    const avg       = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : 50
+    const diff      = avg < 50 ? 'basic (factual recall)' : avg > 80 ? 'advanced (analysis and application)' : 'standard (mixed)'
+    addMsg('user', text)
+    respond(L(detectResponseLang(text),
+      `Starting ${diff} quiz on ${topic} based on your history.`,
+      `${topic} पर ${diff} quiz शुरू हो रही है — आपकी history के आधार पर।`,
+      `${topic} pe ${diff} quiz shuru ho rahi hai — history ke base pe.`
+    ))
+    void startQuiz(`${topic} — difficulty: ${diff}`)
+    return
+  }
+
   // ── Wake Word with "Hey Jarvis" prefix enhancement ───────────────────────
-  // (handled by wake word recognizer, but also catch it if it reaches processQuery)
   if (/^(?:hey|yo|bhai|oi|ok|hello)\s+jarvis\b/i.test(tl)) {
-    // Strip the prefix and re-process the remainder
     const cmd = tl.replace(/^(?:hey|yo|bhai|oi|ok|hello)\s+jarvis\s*/i, '').trim()
     if (cmd) { void processQuery(cmd); return }
   }
 
-  // 18. CMDS — fast pattern-action table (637+ patterns)
+  // 18. CMDS — fast pattern-action table (693+ patterns)
   for (const cmd of CMDS) {
     if (cmd.re.test(tl)) {
       addMsg('user', text)
@@ -2172,14 +2534,96 @@ function quickMath(t: string): string | null {
   return null
 }
 
-// ── App action helpers ────────────────────────────────────────────────────────
-const cl       = (id: string) => document.getElementById(id)?.click()
-const q        = (sel: string) => document.querySelector<HTMLElement>(sel)?.click()
-const scr      = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior:'smooth', block:'start' })
-const clickStart = () => {
-  const btn = document.querySelector<HTMLButtonElement>('[data-act="start"]')
-  if (btn && /start|resume/i.test(btn.textContent??'')) btn.click()
+// ── App action helpers — with visual feedback pulse ───────────────────────────
+const cl = (id: string): void => {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.click()
+  // Visual pulse so Om sees what JARVIS touched
+  el.classList.add('jv-flash')
+  setTimeout(() => el.classList.remove('jv-flash'), 500)
 }
+const q   = (sel: string): void => {
+  const el = document.querySelector<HTMLElement>(sel)
+  if (!el) return
+  el.click()
+  el.classList.add('jv-flash')
+  setTimeout(() => el.classList.remove('jv-flash'), 500)
+}
+const scr = (id: string): void => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+const clickStart = (): void => {
+  const btn = document.querySelector<HTMLButtonElement>('[data-act="start"]')
+  if (btn && /start|resume/i.test(btn.textContent ?? '')) btn.click()
+}
+
+// ── Browser Notification system ───────────────────────────────────────────────
+let _notifGranted = Notification?.permission === 'granted'
+async function requestNotifPermission(): Promise<void> {
+  if (!('Notification' in window) || Notification.permission !== 'default') return
+  const r = await Notification.requestPermission()
+  _notifGranted = r === 'granted'
+}
+function browserNotify(title: string, body: string, tag = 'jarvis'): void {
+  if (!_notifGranted || !('Notification' in window)) return
+  try {
+    new Notification(title, {
+      body,
+      icon:  '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag,
+      silent: false,
+    })
+  } catch { /* ignore */ }
+}
+
+// ── Ambient Mode ──────────────────────────────────────────────────────────────
+type AmbientMode = 'off' | 'whisper'
+let _ambientMode: AmbientMode = 'off'
+let _ambientIntervalId = 0
+
+// ── Interview Practice Mode ───────────────────────────────────────────────────
+type InterviewPhase = 'off' | 'active' | 'feedback'
+let _ivPhase: InterviewPhase = 'off'
+let _ivQIdx  = 0
+const IV_QS_EN = [
+  "Tell me about yourself — your background and what inspired you to pursue the civil services.",
+  "What do you consider the most pressing challenge facing India today, and what would be your approach as an IAS officer?",
+  "If you are posted as a District Magistrate in a flood-affected area, walk me through your first 48 hours of action.",
+  "There is a conflict between a large infrastructure project and the rights of tribal communities. How do you balance development and rights as an administrator?",
+  "What is your opinion on the role of technology in last-mile governance? Give a specific example.",
+  "How would you handle a situation where a senior officer asks you to take an action you believe is incorrect?",
+  "India is ranked low on press freedom indices. What are your views on this, and how should the government respond?",
+  "Describe a moment in your life where you showed moral courage. What did you learn from it?",
+  "What is the difference between a leader and an administrator? Which do you aspire to be, and why?",
+  "If you were given one policy initiative to implement as a Secretary to the Government, what would it be and why?",
+]
+const IV_QS_HI = [
+  "अपने बारे में बताइए — आपकी पृष्ठभूमि और civil services की ओर आपको क्या प्रेरित किया?",
+  "आज भारत की सबसे बड़ी चुनौती क्या है, और एक IAS officer के रूप में आप उसे कैसे address करेंगे?",
+  "यदि आप बाढ़ प्रभावित जिले में DM के रूप में posted हैं, तो पहले 48 घंटों में आपकी कार्य योजना क्या होगी?",
+  "एक बड़े infrastructure project और tribal communities के अधिकारों में conflict है। एक administrator के रूप में आप संतुलन कैसे बनाएंगे?",
+  "Last-mile governance में technology की क्या भूमिका होनी चाहिए? एक specific example दीजिए।",
+  "यदि एक वरिष्ठ अधिकारी आपसे कोई ऐसा कार्य करने कहें जो आपको गलत लगे, तो आप क्या करेंगे?",
+  "नैतिक साहस की एक घटना बताइए जो आपके जीवन में हुई हो। उससे आपने क्या सीखा?",
+  "एक leader और एक administrator में क्या अंतर है? आप क्या बनना चाहते हैं और क्यों?",
+  "यदि आप Government के Secretary हों और आपको एक नीतिगत पहल करनी हो, तो वह क्या होगी?",
+  "आज के समय में civil servant का सबसे महत्वपूर्ण गुण क्या होना चाहिए?",
+]
+
+// ── Voice Journal ─────────────────────────────────────────────────────────────
+type JournalStep = 'off' | 'mood' | 'learned' | 'improve' | 'done'
+let _journalStep: JournalStep = 'off'
+interface JournalEntry { date: string; mood: number; learned: string; improve: string }
+const JOURNAL_KEY = 'jarvis_journal_v1'
+const _journalBuf: Partial<JournalEntry> = {}
+
+// ── Confidence Tracker ────────────────────────────────────────────────────────
+let _awaitingConfidence = false
+let _confidenceTopic    = ''
+
+// ── Lecture Time Tracker ──────────────────────────────────────────────────────
+let _activeLectureName = ''
+let _lectureStartMs    = 0
 
 /** Check off first undone lecture in the planner. Returns its title or null. */
 function checkCurrentTopic(): string | null {
@@ -3161,6 +3605,86 @@ const CMDS: Cmd[] = [
   { re: /should.*i.*continue|kya.*jari.*rakhu|give.*up.*upsc.*decision/i,           action: () => respond("Only you can answer that. But here is what I know: you are asking the question, which means you still care. People who truly give up do not ask if they should. Take tomorrow off completely. Then decide. Most people who took that break came back stronger."), reply: '' },
   { re: /am.*i.*good.*enough|kya.*main.*capable|main.*nahi.*kar.*sakta/i,           action: () => respond("You are. The UPSC selection list has people from every background — tier-3 cities, first-generation graduates, people who failed twice before clearing. Intelligence is not the variable. Commitment is. You have it. Now use it."), reply: '' },
   { re: /how.*long.*preparation|kitne.*saal.*taiyari|how.*many.*years.*upsc/i,      action: () => respond("Average UPSC preparation: 2-3 years for first attempt. Om, you are on the right track with Prarambh 2027 + exam 2028. That is a well-timed preparation cycle. Full syllabus in Year 1, deep revision in Year 2. You are aligned."), reply: '' },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v7 — 200+ Integration, Sync & Advanced Commands
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── NOTIFICATIONS & SYNC ─────────────────────────────────────────────────
+  { re: /enable.*notifications|allow.*notifications|notification.*on|notif.*allow/i,  action: () => { void requestNotifPermission(); respond('Notification permission requested. Allow it in your browser to get reminders even when the tab is in the background.') }, reply: '' },
+  { re: /notification.*status|notif.*kaam.*kar.*raha|are.*notifications.*on/i,        action: () => respond(`Browser notifications: ${_notifGranted ? 'Enabled — reminders will appear even in background.' : 'Not enabled. Say "enable notifications" to turn on.'}`), reply: '' },
+  { re: /am.*i.*online|connection.*status|internet.*check|sync.*check/i,              action: () => respond(navigator.onLine ? 'Online. All data is syncing to the cloud in real time.' : 'Offline. Working locally — all changes will sync when you reconnect.'), reply: '' },
+  { re: /test.*notification|send.*test.*notif|notif.*test/i,                          action: () => { browserNotify('⬡ JARVIS Test', 'Notifications are working! Reminders will appear here.'); respond('Test notification sent. Check your notification area.') }, reply: '' },
+
+  // ── SCREEN READING SHORTCUTS ──────────────────────────────────────────────
+  { re: /what.*happening|what.*going.*on|app.*status|quick.*status/i,                 action: () => respond(readScreenContent()), reply: '' },
+  { re: /describe.*view|what.*open|current.*section/i,                                action: () => respond(readScreenContent()), reply: '' },
+  { re: /tell.*me.*everything|full.*report|complete.*briefing|sab.*batao/i,           action: () => { const s=buildStatusReport(); const t=buildTodayReport(); respond(`${s} ${t}`) }, reply: '' },
+
+  // ── INTERVIEW PRACTICE ────────────────────────────────────────────────────
+  { re: /start.*interview|interview.*start|mock.*interview.*begin|personality.*test.*begin/i, action: () => { _ivPhase='active'; _ivQIdx=0; respond('Interview practice starting. Question 1 loading.'); setTimeout(()=>{ respond(`Q1: ${IV_QS_EN[0]}`); _ivQIdx=1 },1500) }, reply: '' },
+  { re: /next.*question|agle.*sawaal|skip.*question/i,                                action: () => { if(_ivPhase==='active'){ respond(_ivQIdx < IV_QS_EN.length ? `Q${_ivQIdx+1}: ${IV_QS_EN[_ivQIdx]}` : 'All questions done.'); _ivQIdx++ } else respond('Start interview practice first. Say "start interview practice".') }, reply: '' },
+  { re: /end.*interview|interview.*khatam|stop.*interview/i,                          action: () => { _ivPhase='off'; respond(`Interview practice ended. ${_ivQIdx} questions attempted. Review your answers for structure and keywords.`) }, reply: '' },
+  { re: /interview.*tips|upsc.*interview.*tips|personality.*test.*tips/i,             action: () => respond('UPSC Interview tips: 1. Answer truthfully — board can verify. 2. Structured answers: position → reasoning → example. 3. Say "I would need more information" for unclear hypotheticals. 4. Show awareness of India\'s challenges. 5. Your body language matters as much as content.'), reply: '' },
+  { re: /common.*interview.*question|typical.*upsc.*interview.*question/i,            action: () => respond('Common UPSC Interview questions: Tell me about yourself. Why civil services. Your home district problems. Current affair opinion. A leadership experience. Ethical dilemma. Policy critique. Weak point + how you overcame it.'), reply: '' },
+
+  // ── ESSAY PRACTICE ────────────────────────────────────────────────────────
+  { re: /essay.*sustainable.*development/i,                                           action: () => { if(GROQ_AVAILABLE) void executeIntent('Essay outline for UPSC Mains on: Sustainable Development. Spoken format. Include: definition + relevance, 5 body dimensions, conclusion approach. No markdown.') }, reply: '' },
+  { re: /essay.*technology.*india/i,                                                  action: () => { if(GROQ_AVAILABLE) void executeIntent('Essay outline for UPSC Mains on: Technology and India. 5 dimensions: economic, social, governance, security, global competitiveness. Spoken. No markdown.') }, reply: '' },
+  { re: /essay.*education.*india/i,                                                   action: () => { if(GROQ_AVAILABLE) void executeIntent('Essay outline for UPSC Mains on: Education in India. Dimensions: access, quality, NEP 2020, higher education, skill gap. Spoken. No markdown.') }, reply: '' },
+  { re: /essay.*women.*empowerment/i,                                                 action: () => { if(GROQ_AVAILABLE) void executeIntent('Essay outline for UPSC Mains on: Women Empowerment in India. Dimensions: legal, economic, social, political, health. Include schemes. Spoken. No markdown.') }, reply: '' },
+  { re: /essay.*environment.*development/i,                                           action: () => { if(GROQ_AVAILABLE) void executeIntent('Essay outline for UPSC on: Environment vs Development dilemma. Dimensions: constitutional, economic, international, ethical, way forward. Spoken. No markdown.') }, reply: '' },
+  { re: /essay.*democracy/i,                                                          action: () => { if(GROQ_AVAILABLE) void executeIntent('Essay outline for UPSC on: Democracy in India. Dimensions: electoral, deliberative, social, economic, federalism. Spoken. No markdown.') }, reply: '' },
+
+  // ── JOURNAL & REFLECTION ─────────────────────────────────────────────────
+  { re: /show.*journal|journal.*history|past.*reflection|meri.*journal/i,             action: () => { try { const j=JSON.parse(localStorage.getItem(JOURNAL_KEY)??"[]") as Array<{date:string;mood:number;learned:string}>; respond(j.length ? `${j.length} journal entries. Last entry (${j[j.length-1].date}): mood ${j[j.length-1].mood}/5, learned "${j[j.length-1].learned.slice(0,60)}".` : 'No journal entries yet.') } catch { respond('No journal data.') } }, reply: '' },
+  { re: /gratitude.*today|aaj.*ke.*liye.*shukriya|thankful.*today/i,                  action: () => { respond(L(detectResponseLang(''),'Name three things you are grateful for today. Say them aloud — this practice reduces cortisol by 23%.','आज के लिए तीन चीज़ें बताओ जिनके लिए आभारी हो। इससे stress 23% कम होती है।','Aaj ke liye teen cheezein batao jinke liye grateful ho. Stress 23% kam hoti hai.')) }, reply: '' },
+  { re: /mood.*check|how.*feeling|feeling.*kaisa|mera.*mood.*kaisa/i,                 action: () => { _journalStep='mood'; respond(L(detectResponseLang(''),'Rate your current mood: 1 = very low, 5 = excellent.','अभी का mood 1 से 5 में rate करो।','Abhi ka mood 1 se 5 mein rate karo.')) }, reply: '' },
+  { re: /confidence.*report|confidence.*kya.*hai|meri.*confidence.*kahan|all.*confidence/i, action: () => { const c=(_mem as any).confidence as Record<string,number>|undefined; respond(c && Object.keys(c).length ? `Confidence scores: ${Object.entries(c).map(([k,v])=>`${k}: ${v}/5`).join(', ')}.` : 'No confidence scores recorded yet. Say "rate confidence on Polity" to start.') }, reply: '' },
+
+  // ── AMBIENT MODE ─────────────────────────────────────────────────────────
+  { re: /ambient.*status|is.*ambient.*on|ambient.*kya.*hai/i,                         action: () => respond(`Ambient mode is ${_ambientMode === 'off' ? 'OFF — I am fully active.' : 'ON (whisper mode) — I whisper every 25 minutes.'}`), reply: '' },
+  { re: /silent.*jarvis|mute.*jarvis|band.*ho.*jarvis|chup.*ho.*ja/i,                 action: () => { _ambientMode='whisper'; clearInterval(_ambientIntervalId); respond('Going silent. Focus mode on.'); setTimeout(()=>closePanel(),1500) }, reply: '' },
+
+  // ── LECTURE TRACKER ───────────────────────────────────────────────────────
+  { re: /how.*long.*studying.*lecture|kitna.*time.*hua.*lecture|lecture.*time.*track/i, action: () => { if(_activeLectureName && _lectureStartMs) { const m=Math.round((Date.now()-_lectureStartMs)/60000); respond(`"${_activeLectureName}": ${m} minutes so far.`) } else respond('No active lecture being tracked. Say "studying lecture [name]" to start tracking.') }, reply: '' },
+  { re: /stop.*tracking|lecture.*track.*stop|tracking.*band/i,                        action: () => { _activeLectureName=''; _lectureStartMs=0; respond('Lecture tracking stopped.') }, reply: '' },
+
+  // ── DYNAMIC QUIZ ─────────────────────────────────────────────────────────
+  { re: /quiz.*based.*on.*history|smart.*quiz|adaptive.*quiz/i,                       action: () => { const weak=_mem.weakTopics.slice(-1)[0]||getCurrentState()?.today?.subject||'UPSC GS'; const scores=_mem.quizScores[weak]??[]; const avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:50; const diff=avg<50?'basic':avg>80?'advanced':'standard'; respond(`Adaptive quiz on ${weak}. Going ${diff} based on your history.`); void startQuiz(`${weak} — difficulty: ${diff}`) }, reply: '' },
+  { re: /quiz.*score.*history|past.*quiz.*scores|meri.*quiz.*performance/i,           action: () => { const entries=Object.entries(_mem.quizScores); respond(entries.length ? entries.map(([t,sc])=>`${t}: ${(sc.reduce((a,b)=>a+b)/sc.length).toFixed(0)}% avg`).join(', ') : 'No quiz history yet. Take a quiz to start tracking.') }, reply: '' },
+
+  // ── STUDY SCIENCE & META-LEARNING ────────────────────────────────────────
+  { re: /what.*is.*metacognition|metacognition.*upsc|thinking.*about.*thinking/i,     action: () => respond('Metacognition: awareness of your own learning. For UPSC: after each study session, ask "what did I actually understand?" vs "what did I just read?". Active recall tests metacognition — it exposes gaps passive re-reading hides.'), reply: '' },
+  { re: /what.*is.*interleaving|interleaving.*study|mix.*subjects.*why/i,             action: () => respond('Interleaving: mixing subjects during study rather than blocking. Research shows 40% better retention. For UPSC: alternate Polity → History → Economy in one session rather than doing 3 hours of one subject.'), reply: '' },
+  { re: /what.*is.*retrieval.*practice|why.*test.*yourself|active.*recall.*explained/i, action: () => respond('Retrieval practice: the act of recalling information strengthens memory more than re-reading. Every quiz, flashcard, and self-test is retrieval practice. JARVIS quiz mode is built on this principle.'), reply: '' },
+  { re: /sleep.*learning|memory.*consolidation.*sleep|nind.*aur.*padhai/i,            action: () => respond('Sleep and learning: during sleep, the brain consolidates the day\'s learning into long-term memory. Studying before sleep and reviewing after waking (sleep sandwich) has the best retention. 7-8 hours protects what you studied.'), reply: '' },
+  { re: /how.*brain.*learns|neuroscience.*study|brain.*memory|synaptic.*plasticity/i, action: () => respond('The brain learns through: 1. Repetition (spaced repetition strengthens synaptic connections), 2. Emotion (stressed or excited states encode stronger memories), 3. Association (linking new info to what you know). UPSC preparation uses all three.'), reply: '' },
+
+  // ── IAS OFFICER WISDOM ────────────────────────────────────────────────────
+  { re: /ias.*officer.*life|day.*in.*life.*ias|what.*ias.*officers.*do/i,             action: () => respond('IAS officers: District Magistrate controls law and order, land administration, disaster response. Secretary formulates policy. Commissioner implements. Work is 10-14 hours/day, high-pressure, but deeply meaningful — you serve 1-2 million people as DM.'), reply: '' },
+  { re: /ips.*vs.*ias|difference.*ias.*ips|ias.*ips.*comparison/i,                   action: () => respond('IAS vs IPS: IAS is generalist administration — DM, Secretary, Cabinet Secretary. IPS is police service — SP, DGP, IB, CBI. IAS has more policy influence; IPS has law enforcement focus. Both are Group A All India Services.'), reply: '' },
+  { re: /ifs.*career|indian.*foreign.*service|diplomat.*career/i,                    action: () => respond('IFS: India\'s diplomatic service. Postings: Embassies, High Commissions, MEA headquarters. Work: bilateral relations, consular services, multilateral negotiations. Selected via same UPSC exam. Requires 2+ foreign language learning.'), reply: '' },
+  { re: /irs.*career|indian.*revenue.*service|income.*tax.*career/i,                  action: () => respond('IRS (IT and CE): Indian Revenue Service. Income Tax and Customs/Excise streams. Implements tax laws. Works under Finance Ministry. Selected via UPSC. Career in taxation, investigation, policy.'), reply: '' },
+
+  // ── COMPREHENSIVE GS TRIVIA ───────────────────────────────────────────────
+  { re: /who.*wrote.*arthashastra|arthashastra.*author/i,                             action: () => respond('Arthashastra was written by Kautilya (also known as Chanakya or Vishnugupta). It is a treatise on statecraft, economic policy, and military strategy written around 4th century BCE.'), reply: '' },
+  { re: /who.*wrote.*ain.*akbari|abul.*fazl|akbarnama/i,                              action: () => respond("Ain-i-Akbari and Akbarnama were written by Abul Fazl, the court historian of Emperor Akbar. Ain-i-Akbari is an administrative manual and statistical account of Akbar's empire."), reply: '' },
+  { re: /drain.*theory.*india|dadabhai.*naoroji|economic.*drain/i,                   action: () => respond("Drain Theory was articulated by Dadabhai Naoroji in his book 'Poverty and Un-British Rule in India' (1901). He argued British colonialism was draining India's wealth through excess exports, home charges, and profit remittances."), reply: '' },
+  { re: /tryst.*with.*destiny|jawaharlal.*nehru.*speech|midnight.*speech/i,           action: () => respond("'Tryst with Destiny' was Jawaharlal Nehru's speech delivered at midnight on August 15, 1947. Opening: 'Long years ago we made a tryst with destiny...' It marked India's independence from British rule."), reply: '' },
+  { re: /preamble.*words|we.*the.*people|sovereign.*socialist.*secular/i,            action: () => respond("The Preamble: 'We, the People of India, having solemnly resolved to constitute India into a Sovereign, Socialist, Secular, Democratic Republic and to secure to all its citizens Justice, Liberty, Equality, and to promote among them Fraternity...' Adopted November 26, 1949."), reply: '' },
+
+  // ── HINDI CULTURE & UPSC ─────────────────────────────────────────────────
+  { re: /satyameva.*jayate.*meaning|rashtriya.*motto|national.*motto.*meaning/i,      action: () => respond("Satyameva Jayate means 'Truth alone triumphs'. It is taken from the Mundaka Upanishad. It is inscribed below the National Emblem (Sarnath Lion Capital of Ashoka)."), reply: '' },
+  { re: /vande.*mataram.*meaning|vande.*mataram.*history/i,                           action: () => respond("Vande Mataram means 'I bow to thee, Mother'. Composed by Bankim Chandra Chattopadhyay in Sanskrit in his novel Anandamath (1882). First two stanzas have the same status as Jana Gana Mana."), reply: '' },
+  { re: /bharat.*mata.*ki.*jai|jai.*hind.*meaning/i,                                  action: () => respond("'Jai Hind' was popularised by Netaji Subhas Chandra Bose as the battle cry of the Indian National Army. It means 'Long live India'. 'Bharat Mata ki Jai' means 'Victory to Mother India'."), reply: '' },
+  { re: /hindi.*diwas|hindi.*day.*september|14.*september.*hindi/i,                   action: () => respond("Hindi Diwas is celebrated on September 14 each year. On this day in 1949, the Constituent Assembly of India adopted Hindi written in Devanagari script as the official language of the Republic."), reply: '' },
+
+  // ── JARVIS ADVANCED META ─────────────────────────────────────────────────
+  { re: /jarvis.*capabilities.*full|full.*capability.*list|what.*all.*jarvis.*do/i,   action: () => respond('JARVIS v5 capabilities: 693 voice commands, continuous conversation, interview practice, essay outlines, voice journal, screen reading, ambient mode, push notifications, confidence tracking, lecture time tracking, quiz with SRS, answer evaluation, debate mode, cross-session memory, emotion detection, multilingual (EN/HI/Hinglish), vision (6 modes), EMA clap detection.'), reply: '' },
+  { re: /jarvis.*offline.*work|works.*without.*internet|offline.*jarvis/i,            action: () => respond('JARVIS offline: all 693 CMDS work offline (zero network). Quiz requires Groq API. All data writes are cached locally and sync on reconnect. The full app is PWA-installable and works offline.'), reply: '' },
+  { re: /how.*save.*data|data.*kahan.*save|app.*data.*secure/i,                       action: () => respond('Your data: stored in Supabase cloud (encrypted) + localStorage (offline backup). No data is sent to third parties. Groq only receives your question text for AI processing — no personal data. All study data stays in your account.'), reply: '' },
+  { re: /what.*groq.*model|which.*ai.*model|groq.*llama|ai.*engine/i,                 action: () => respond('JARVIS uses Groq: Llama-3.3-70B-Versatile for deep UPSC answers and coaching (best quality), Llama-3.1-8B-Instant for fast intent classification, Llama-4-Scout for vision analysis. All run at ultra-low latency via Groq infrastructure.'), reply: '' },
 ]
 
 // Filter out inline-handled entries (empty reply delegates to respond() inside action)
@@ -3176,9 +3700,9 @@ async function startQuiz(topic: string): Promise<void> {
   _quizTopic = topic   // store for SRS + memory
   setState('thinking')
   setStatus(lang === 'hi' ? 'Quiz तैयार हो रहा है…' : 'Preparing quiz…')
-  // If user has a weak topic list, bias towards weak topics
-  const topicWithBias = _mem.weakTopics.length && !topic.includes(' ')
-    ? `${topic} — focus on commonly missed areas` : topic
+  // If user has a weak topic list, bias the prompt towards commonly missed areas
+  const _hasWeakBias = _mem.weakTopics.length > 0 && !topic.includes(' ')
+  const topicWithBias = _hasWeakBias ? `${topic} — focus on commonly missed areas` : topic
   respond(
     lang === 'hi'       ? `${topic} पर 5 MCQs तैयार हो रहे हैं। तैयार हो जाओ।` :
     lang === 'hinglish' ? `${topic} par 5 MCQs aa rahe hain. Taiyar ho jao.` :
@@ -3323,11 +3847,7 @@ function finishQuiz(): void {
     saveMem()
   }
 
-  const followUp = pct < 60
-    ? L(lang, ` ${_quizTopic} added to your weak topics list for targeted revision.`, ` ${_quizTopic} weak topics में add हो गया।`, ` ${_quizTopic} weak topics mein add ho gaya.`)
-    : pct >= 90
-    ? L(lang, ` ${_quizTopic} flagged as a strong area.`, ` ${_quizTopic} strong area में flag हुआ।`, ` ${_quizTopic} strong area mein flag hua.`)
-    : ''
+  const followUp = pct < 60 ? L(lang, ` ${_quizTopic} added to your weak topics list for targeted revision.`, ` ${_quizTopic} weak topics में add हो गया।`, ` ${_quizTopic} weak topics mein add ho gaya.`) : pct >= 90 ? L(lang, ` ${_quizTopic} flagged as a strong area.`, ` ${_quizTopic} strong area में flag हुआ।`, ` ${_quizTopic} strong area mein flag hua.`) : ''
 
   if (lang === 'hi') {
     const v = pct >= 80 ? 'शानदार प्रदर्शन!' : pct >= 60 ? 'अच्छा प्रयास।' : 'इस topic को और revise करो।'

@@ -52,8 +52,89 @@ export function initJarvis(): void {
     }
   })
 
-  // Wake word: continuously listen for "Jarvis" even when panel is closed
+  // Wake word: say "Jarvis" to open
   startWakeWordListener()
+  // Clap wake: double-clap opens JARVIS (works even when tab is minimised)
+  startClapDetection()
+}
+
+// ── Clap detection (double-clap = wake, works when tab is backgrounded) ──────
+
+let _clapStream: MediaStream | null = null
+let _clapCtx: AudioContext | null   = null
+let _clapEnabled = false
+
+async function startClapDetection(): Promise<void> {
+  // Ask permission once and keep mic open at near-zero CPU cost
+  try {
+    _clapStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+  } catch {
+    console.info('[JARVIS] Mic permission denied — clap wake disabled')
+    return
+  }
+
+  _clapCtx = new AudioContext()
+  const analyser = _clapCtx.createAnalyser()
+  analyser.fftSize = 512
+  _clapCtx.createMediaStreamSource(_clapStream).connect(analyser)
+
+  const data = new Uint8Array(analyser.frequencyBinCount)
+
+  // Calibration: compute ambient noise floor over first 2 seconds
+  let ambient = 0
+  let calibSamples = 0
+  const THRESHOLD_ABOVE_AMBIENT = 55  // clap must be this many units louder than ambient
+  const CLAP_MIN_MS  = 80    // min time between clap start and next check
+  const CLAP_MAX_MS  = 900   // max time between two claps for double-clap
+  let lastClapTime   = 0
+  let suppressUntil  = 0
+
+  _clapEnabled = true
+
+  // Use setInterval (not rAF) so it runs in background tabs
+  const iv = setInterval(() => {
+    if (!_clapEnabled) { clearInterval(iv); return }
+
+    analyser.getByteFrequencyData(data)
+    // RMS volume
+    const rms = Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length)
+
+    // Calibrate for 2 seconds
+    if (calibSamples < 40) {
+      ambient = (ambient * calibSamples + rms) / (calibSamples + 1)
+      calibSamples++
+      return
+    }
+
+    const now = Date.now()
+    if (now < suppressUntil) return   // ignore echoes / reverberation
+
+    if (rms > ambient + THRESHOLD_ABOVE_AMBIENT) {
+      suppressUntil = now + CLAP_MIN_MS   // suppress next 80ms (one clap decay)
+
+      if (lastClapTime && now - lastClapTime < CLAP_MAX_MS) {
+        // ✅ Double clap detected!
+        lastClapTime = 0
+        onClapWake()
+      } else {
+        lastClapTime = now
+      }
+    }
+  }, 50)   // 20 checks/sec — negligible CPU
+}
+
+function onClapWake(): void {
+  // Visual flash on the J button
+  const btn = document.getElementById('jarvis-btn')
+  btn?.classList.add('listening')
+  setTimeout(() => btn?.classList.remove('listening'), 600)
+
+  if (!_open) {
+    openPanel()
+    setTimeout(() => startListening(), 700)
+  } else {
+    startListening()
+  }
 }
 
 // ── Wake word: "Jarvis" ───────────────────────────────────────────────────────
@@ -384,18 +465,46 @@ function buildSystemPrompt(): string {
   const cs   = getCurrentState()
   const date = todayIST()
   const parts: string[] = [
-    `You are JARVIS — the AI assistant built into Mission 2028, Om Shisodiya's personal UPSC CSE 2028 command center.`,
-    `Today: ${date}. Subject: ${cs?.today.subject ?? 'Unknown'}.`,
-    cs ? `Backlog: ${cs.backlogRemaining} lectures. Streak: ${cs.streak} days. SP: ${cs.selectionProbabilityPct?.toFixed(1) ?? '--'}%. Rank: ${cs.rankProjection}.` : '',
-    cs?.performance.prelimsAvg != null ? `Prelims avg accuracy: ${cs.performance.prelimsAvg.toFixed(1)}%.` : '',
+    `You are JARVIS — the highly intelligent AI assistant built into Mission 2028, the personal UPSC CSE 2028 command center of Om Shisodiya, an IAS aspirant preparing for CSE 2028 with PW IAS Prarambh 2027 batch.`,
     ``,
-    `You help Om with UPSC preparation: topic explanations, MCQ generation, answer feedback, current affairs, study planning.`,
-    `Address him as "Om". Be concise (2-3 sentences for quick questions; detailed for explanations). Be motivating.`,
+    `LIVE PREP DATA (as of ${date}):`,
+    cs ? [
+      `• Today's subject: ${cs.today.subject} (${cs.today.dayType})`,
+      `• Today's topic: ${cs.today.topicLabel}`,
+      `• Target: ${cs.today.targetQuestions} MCQs, ${cs.today.mainsTarget} Mains answer`,
+      `• Backlog: ${cs.backlogRemaining} lectures remaining`,
+      `• Streak: ${cs.streak} days`,
+      `• Prelims avg accuracy: ${cs.performance.prelimsAvg?.toFixed(1) ?? '--'}%`,
+      `• Optional avg: ${cs.performance.optionalAvg?.toFixed(1) ?? '--'}%`,
+      `• Selection Probability: ${cs.selectionProbabilityPct?.toFixed(1) ?? '--'}%`,
+      `• Rank projection: ${cs.rankProjection} (${cs.approxRank})`,
+      `• Hours studied today: ${cs.hours.today.toFixed(1)}h`,
+      `• Total tests taken: ${cs.cumulative.testsTaken}`,
+    ].join('\n') : '(data loading)',
     ``,
-    `To control the app embed a JSON tag: <CMD>{"action":"ACTION"}</CMD>`,
-    `Actions: start_timer | stop_timer | lock_screen | skip_today | open_add_score | open_settings | scroll_to:section`,
-    `Sections: engine | intel | routine | constitution | plan`,
-    `Example: "Starting your focus timer now. <CMD>{"action":"start_timer"}</CMD>"`,
+    `YOUR CAPABILITIES — you can help Om with ABSOLUTELY ANYTHING:`,
+    `1. UPSC CONTENT: Explain any topic from Polity, History, Geography, Economy, Environment, Science, Art & Culture, IR, Ethics, Essay`,
+    `2. CONSTITUTION: Explain any Article, Schedule, or Part in detail with case laws and examples`,
+    `3. MCQ GENERATION: Generate practice questions with options and explanations for any subject`,
+    `4. ANSWER WRITING: Review and give detailed feedback on Mains answers (structure, content, examples, diagrams)`,
+    `5. CURRENT AFFAIRS: Discuss any recent event and link it to UPSC syllabus`,
+    `6. STUDY PLANNING: Suggest what to prioritize based on his backlog and exam timeline`,
+    `7. MOTIVATION: Give honest, supportive assessment of his progress`,
+    `8. GENERAL KNOWLEDGE: Answer any factual question`,
+    `9. MATHEMATICS: Help with CSAT quant, reasoning, data interpretation`,
+    `10. ESSAY WRITING: Help brainstorm, outline, and write UPSC essays`,
+    ``,
+    `APP CONTROL — embed commands using <CMD>{"action":"..."}</CMD>:`,
+    `• start_timer: starts the focus timer`,
+    `• stop_timer: pauses the focus timer`,
+    `• lock_screen: locks the screen (PIN required to unlock)`,
+    `• skip_today: advances planner to tomorrow's schedule`,
+    `• open_add_score: opens the Add Score modal`,
+    `• open_settings: opens planner settings`,
+    `• scroll_to with section: engine | intel | routine | constitution | plan`,
+    `Example: "Starting your 25-minute focus block now. <CMD>{"action":"start_timer"}</CMD>"`,
+    ``,
+    `PERSONALITY: You are highly capable, concise, and motivating. Address him as "Om". For quick questions: 2-3 sentences. For explanations: be thorough and structured. Never say "I can't" — find a way to help. You are his personal UPSC tutor, strategist, and assistant rolled into one.`,
   ]
   return parts.filter(Boolean).join('\n')
 }

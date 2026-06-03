@@ -124,3 +124,94 @@ Claude Code: surface these to the user at the right phase; do not attempt to do 
 - Keep the IIFE/`boot()` pattern in engine code; new features are functions registered in `boot()`.
 - Optimistic UI: write local first, sync in background; never block the UI on the network.
 - Reuse engine helpers (`$`, `$$`, `clamp`, `lerp`, `onView`, `reduced`) — don't reinvent them.
+
+---
+
+# ADDITIONAL FEATURES (v2) — required, not optional
+
+These two were under-specified in the first draft. Build them; they are core, not nice-to-haves.
+
+## A. Universal Scoring & Ranking
+**Goal:** anywhere the user finishes a test/mock/DPP/quiz/sectional, they enter a **score + max score**; the app **accumulates** all of it and computes performance + a **rank estimate** alongside ongoing details. One entry point, used everywhere.
+
+**Data:** add a general table (extends the schema):
+```sql
+create table public.scores (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  label text,                 -- "PW Prelims Mock 7", "Polity DPP 3"
+  category text default 'mock', -- prelims | csat | mains | optional | dpp | sectional | quiz
+  subject text,               -- optional, for subject-wise rollups
+  score numeric not null,
+  max_score numeric not null,
+  taken_on date default current_date,
+  created_at timestamptz default now()
+);
+alter table public.scores enable row level security;
+create policy owner_all on public.scores using (user_id=auth.uid()) with check (user_id=auth.uid());
+```
+
+**Compute (`services/analytics.ts`, pure functions):**
+- `percentage = score/max*100`; rolling average; per-subject accuracy; trend over time (by `taken_on`).
+- **Cumulative:** total marks scored vs attempted across all entries; total tests taken; consistency.
+- **Rank estimate (self-benchmark, clearly labelled):** there is no live cohort, so estimate a percentile/AIR **band** against a configurable target (e.g. expected Prelims cutoff in marks, editable in settings) and against the user's own historical distribution. If the user supplies a known cohort size + topper score for a specific mock, scale that mock's rank accordingly. Always render with the caption "self-benchmark, not an official prediction."
+- These outputs **feed the existing prototype functions** — `rankSim()`, `donuts()`, `barCharts()`, `heatmap()` — replacing their seeded values with real ones.
+
+**UI:** an **"Add Score"** action reachable from the command menu and from any test/mock card: fields `label, category, subject?, score, max, date` → save → all dashboards recompute live.
+
+**Acceptance:** enter several scores across different categories/subjects; the cumulative total, average %, subject-wise readiness donuts, score trend, and the AIR band all update and persist across devices.
+
+## B. Full Constitution module (data-driven)
+**Goal:** the prototype's `constitution()` cross-fades only a handful of hardcoded `ARTICLES[]`. Replace that with the **entire Constitution** so the user can browse/search/hover **everything**.
+
+**Data:** ship **`constitution.json`** (provided — 527 KB) as a static asset (`/src/data/constitution.json`). Shape:
+```
+{ source, preamble,
+  parts:    [ { part:"PART III", title:"FUNDAMENTAL RIGHTS",
+               articles:[ { num:"21A", heading:"Right to education.", omitted:false, text:"..." } ] } ],
+  schedules:[ { name:"SEVENTH SCHEDULE", about:"..." } ] }
+```
+Coverage: **21 Parts · 481 Articles (478 with full text) · 12 Schedules · full Preamble.**
+
+**UI (keep the cinematic shell):**
+- Keep the constellation canvas + slow cross-fade as the **ambient highlight reel**, but source its rotation from a **curated subset** read out of the JSON (Preamble + iconic articles: 14, 19, 21, 21A, 32, 44, 51A, 368) instead of a hardcoded array.
+- Add a **browsable index**: Part → article list (number + heading). Hovering or clicking an article opens a panel with its **full text**; schedules and the Preamble are reachable too.
+- Add a **search box** filtering by article number or keyword across headings + text (e.g. "education" → 15, 21A, 45, 46, 51A …).
+- Use existing tokens; Devanagari serif for the सत्यमेव जयते motto, body font for article text.
+
+**Acceptance:** all 21 Parts and 481 articles are listed; search "education" returns Art 21A/45/46/51A; clicking any article shows its complete text; the ambient cross-fade still runs.
+
+**Phase placement:** Scoring & Ranking → Phase 5 (with tests/analytics). Full Constitution → Phase 5/6 (content + polish). Add the `scores` table whenever you next touch the schema.
+
+---
+
+# ADDITIONAL FEATURES (v3)
+
+## C. Configurable Focus Timer (user-adjustable)
+The prototype timer is a fixed 25-min Pomodoro. Make it **fully user-adjustable**:
+- Editable **focus length, short break, long break, and sessions-per-long-break**.
+- Quick **+/- steppers** on the timer card to nudge the focus length up or down on the fly, plus **presets**: 25/5, 50/10, 90/20 (deep work), and Custom.
+- Persist the config in `app_state` under key `timerConfig`. The running timer always reads the current config; a change applies to the next session. Logged minutes still credit `study_sessions` / `focusLog` for today using the **actual** elapsed length.
+- Sustainable-study nudge: after several focus blocks with no long break, gently suggest a longer rest. Never hard-block — it's a suggestion, not a lock.
+
+**Acceptance:** change focus from 25→50 min and the break lengths; the setting persists across reload and devices; a completed session logs the real configured minutes.
+
+## D. More features (build in Phase 5/6 unless noted)
+1. **Daily & weekly goals.** User sets a personal target (study hours or lectures/day, sessions/week). Show a progress ring. Supportive and user-set — never punitive, and never imply failure for missing it. Store in `app_state` `goals`. *(Keep it encouraging; the point is consistency, not pressure.)*
+2. **Mistake Notebook.** Log questions you got wrong/shaky on: question, your answer, correct concept, subject, source. Each entry **auto-enrols into the SRS queue** so you revisit it. This is one of the highest-leverage UPSC tools. New table:
+   ```sql
+   create table public.mistakes (
+     id uuid primary key default gen_random_uuid(),
+     user_id uuid not null references auth.users(id) on delete cascade,
+     subject text, question text, my_answer text, correct_note text,
+     source text, created_at timestamptz default now());
+   alter table public.mistakes enable row level security;
+   create policy owner_all on public.mistakes using (user_id=auth.uid()) with check (user_id=auth.uid());
+   ```
+3. **Quick Notes.** Attach a short markdown note to any lecture or topic; searchable. New table `notes (id, user_id, lecture_id?, topic_id?, body, created_at)` with the same RLS pattern.
+4. **"Revise this" flag.** One tap on any lecture/topic pushes it straight into the SRS queue (`revisions`) with a due date of today — for when something didn't stick.
+5. **Calendar / Agenda view.** A month/week view overlaying planner blocks + scheduled mocks + SRS-due revisions + the holidays already in your data (uses `planned_date` and `plan_days`). Gives a single "what's my week" picture.
+6. **Quick Capture inbox.** One always-available box to dump a thought, doubt, or task; triage later into a to-do, note, or lecture. Store in `app_state` `inbox`.
+7. **Sync status indicator.** A small dot showing online/offline + "last synced" time, reading the `store-sync` queue state. Important reassurance for an offline-first app you use on mobile.
+
+All of these follow the existing patterns: `app_state` for simple state, a new RLS-protected table for structured entities, pure logic in `services/`, and UI mounted from `boot()` in the vanilla engine. None of them touch the cinematic code except to add a new card/section.

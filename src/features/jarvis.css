@@ -202,3 +202,59 @@
   border-color: var(--accent);
   animation: jp-pulse .8s ease infinite;
 }
+
+/* ── JARVIS master on/off toggle ──────── */
+#jarvis-master-toggle {
+  position: fixed;
+  bottom: 30px;
+  left: 24px;
+  z-index: 850;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px 0 11px;
+  background: rgba(5,7,15,.88);
+  border: 1px solid rgba(240,181,74,.18);
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--muted, #6f7d9e);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  transition: border-color .25s, color .25s, box-shadow .25s;
+  backdrop-filter: blur(10px);
+  user-select: none;
+}
+#jarvis-master-toggle:hover {
+  border-color: rgba(240,181,74,.40);
+  color: var(--ink-soft, #b9c6e6);
+}
+#jarvis-master-toggle.on {
+  border-color: rgba(240,181,74,.55);
+  color: var(--accent, #f0b54a);
+  box-shadow: 0 0 14px rgba(240,181,74,.14);
+}
+#jarvis-master-toggle .jmt-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--muted, #6f7d9e);
+  flex-shrink: 0;
+  transition: background .25s, box-shadow .25s;
+}
+#jarvis-master-toggle.on .jmt-dot {
+  background: var(--accent, #f0b54a);
+  box-shadow: 0 0 7px var(--accent, #f0b54a);
+}
+/* Dim orb when JARVIS is disabled */
+#jarvis-btn.disabled {
+  opacity: .32;
+  pointer-events: none;
+}
+/* nudge pulse on proactive notification */
+#jarvis-btn.nudge {
+  animation: jp-pulse .9s ease 3;
+}
+/* Panel must sit above the aurora overlay */
+#jarvis-panel { z-index: 850 !important; }

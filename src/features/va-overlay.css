@@ -1,0 +1,192 @@
+/* ════════════════════════════════════════════════════════════════════
+   VA OVERLAY — Siri-style full-screen aurora + waveform
+   Keyed entirely off  data-state  on <body>:
+     idle | listening | thinking | speaking
+   Overlay is pointer-events:none so the page stays fully clickable.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* live amplitude 0..1, driven by VA.setAmplitude() */
+:root { --amp: 0; }
+
+/* ── Base overlay shell ──────────────────────────────────────────── */
+#va-overlay {
+  position: fixed; inset: 0; z-index: 400;
+  pointer-events: none;
+}
+
+/* ── Page dim + blur while assistant is awake ────────────────────── */
+.va-page-dim {
+  position: fixed; inset: 0; z-index: 399;
+  background: rgba(3, 5, 12, 0);
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  transition: background .6s ease, backdrop-filter .6s ease;
+  pointer-events: none;
+}
+body:not([data-state="idle"]) .va-page-dim {
+  background: rgba(3, 5, 12, .40);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* ── AURORA curtains ─────────────────────────────────────────────── */
+.va-aurora {
+  position: fixed; inset: -10%; z-index: 400;
+  pointer-events: none; overflow: hidden;
+  opacity: 0; transition: opacity .7s ease;
+  filter: blur(56px) saturate(1.35);
+  -webkit-mask-image: radial-gradient(130% 120% at 50% 50%, #000 30%, transparent 92%);
+          mask-image: radial-gradient(130% 120% at 50% 50%, #000 30%, transparent 92%);
+}
+body:not([data-state="idle"]) .va-aurora {
+  opacity: calc(.62 + var(--amp) * .38);
+}
+body[data-state="thinking"] .va-aurora { opacity: .60; }
+
+.va-aurora span {
+  position: absolute; mix-blend-mode: screen;
+  border-radius: 48% 52% 60% 40% / 55% 48% 52% 45%;
+  filter: blur(8px); will-change: transform;
+}
+.va-aurora .r1 {
+  width: 62vw; height: 120vh; left: -6vw; top: -30vh;
+  background: radial-gradient(circle, var(--saffron, #ff9933), transparent 62%);
+  animation: vaAuroraDrift1 13s ease-in-out infinite;
+}
+.va-aurora .r2 {
+  width: 54vw; height: 120vh; left: 24vw; top: -26vh;
+  background: radial-gradient(circle, var(--violet, #b06cff), transparent 62%);
+  animation: vaAuroraDrift2 17s ease-in-out infinite;
+}
+.va-aurora .r3 {
+  width: 58vw; height: 120vh; right: -4vw; top: -32vh;
+  background: radial-gradient(circle, var(--cool, #4aa0ff), transparent 62%);
+  animation: vaAuroraDrift1 15s ease-in-out infinite reverse;
+}
+.va-aurora .r4 {
+  width: 50vw; height: 120vh; left: 36vw; top: -20vh;
+  background: radial-gradient(circle, var(--teal, #43e6d0), transparent 62%);
+  animation: vaAuroraDrift2 19s ease-in-out infinite reverse;
+}
+.va-aurora .r5 {
+  width: 46vw; height: 120vh; left: 8vw; top: -24vh;
+  background: radial-gradient(circle, var(--accent, #f0b54a), transparent 62%);
+  animation: vaAuroraDrift1 21s ease-in-out infinite;
+}
+
+@keyframes vaAuroraDrift1 {
+  0%, 100% { transform: translateX(0)   translateY(0)   scaleY(1)    skewX(-6deg); }
+  50%       { transform: translateX(8vw) translateY(4vh) scaleY(1.12) skewX(8deg);  }
+}
+@keyframes vaAuroraDrift2 {
+  0%, 100% { transform: translateX(0)    translateY(2vh)  scaleY(1.08) skewX(5deg);  }
+  50%       { transform: translateX(-7vw) translateY(-3vh) scaleY(.94)  skewX(-7deg); }
+}
+
+/* ── Rotating conic edge glow ────────────────────────────────────── */
+.va-glow {
+  position: fixed; inset: -12%;
+  background: conic-gradient(from var(--rot, 0deg),
+    var(--accent, #f0b54a),
+    var(--saffron, #ff9933),
+    var(--violet, #b06cff),
+    var(--cool, #4aa0ff),
+    var(--teal, #43e6d0),
+    var(--india-green, #1fbf6b),
+    var(--accent-2, #ffe39a),
+    var(--accent, #f0b54a));
+  filter: blur(calc(60px + var(--amp) * 34px)) saturate(1.25);
+  -webkit-mask-image: radial-gradient(120% 116% at 50% 50%, transparent 52%, #000 74%);
+          mask-image: radial-gradient(120% 116% at 50% 50%, transparent 52%, #000 74%);
+  opacity: 0; transform: scale(1);
+  transition: opacity .6s ease, transform .6s ease;
+}
+body:not([data-state="idle"]) .va-glow { opacity: .55; }
+body[data-state="thinking"]  .va-glow { opacity: .78; }
+body[data-state="listening"] .va-glow,
+body[data-state="speaking"]  .va-glow {
+  transform: scale(calc(1 + var(--amp) * .03));
+}
+
+/* ── Crisp inner rim line ────────────────────────────────────────── */
+.va-rim {
+  position: fixed; inset: 10px; border-radius: 30px;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px  color-mix(in oklab, var(--accent, #f0b54a) 30%, transparent),
+    inset 0 0 60px -20px color-mix(in oklab, var(--accent-2, #ffe39a) 60%, transparent);
+  opacity: 0; transition: opacity .6s ease;
+}
+body:not([data-state="idle"]) .va-rim { opacity: 1; }
+
+/* ── Centred circular waveform canvas ────────────────────────────── */
+.va-ring {
+  position: fixed; left: 50%; top: 46%;
+  transform: translate(-50%, -50%);
+  z-index: 402; width: 340px; height: 340px;
+  pointer-events: none;
+  opacity: 0; transition: opacity .5s ease;
+}
+body[data-state="listening"] .va-ring,
+body[data-state="thinking"]  .va-ring,
+body[data-state="speaking"]  .va-ring { opacity: 1; }
+
+.va-ring canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+
+/* ── Bottom dock — state label + transcript ──────────────────────── */
+.va-dock {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 403;
+  padding: 40px 24px 50px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  text-align: center; pointer-events: none;
+  -webkit-mask-image: linear-gradient(0deg, #000 60%, transparent);
+          mask-image: linear-gradient(0deg, #000 60%, transparent);
+  opacity: 0; transform: translateY(16px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+body:not([data-state="idle"]) .va-dock { opacity: 1; transform: none; }
+
+.va-state-label {
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 11px; letter-spacing: .3em; text-transform: uppercase;
+  color: var(--accent-ink, #f3dba6);
+  display: inline-flex; align-items: center; gap: 10px;
+}
+.va-state-label .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent, #f0b54a);
+  box-shadow: 0 0 10px var(--accent, #f0b54a);
+  transition: background .3s, box-shadow .3s;
+}
+body[data-state="listening"] .va-state-label .dot {
+  background: var(--good, #45e0a8);
+  box-shadow: 0 0 10px var(--good, #45e0a8);
+}
+body[data-state="speaking"] .va-state-label .dot {
+  background: var(--accent-2, #ffe39a);
+  box-shadow: 0 0 10px var(--accent-2, #ffe39a);
+}
+
+.va-transcript {
+  font-family: var(--font-display, 'Sora', system-ui, sans-serif);
+  font-weight: 500; letter-spacing: -.01em;
+  font-size: clamp(20px, 3.2vw, 32px);
+  line-height: 1.28; color: var(--ink, #eaf0ff);
+  max-width: 760px; text-wrap: pretty;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, .65);
+}
+.va-transcript .caret {
+  display: inline-block; width: 3px; height: 1em;
+  background: var(--accent, #f0b54a);
+  margin-left: 3px; vertical-align: -2px;
+  border-radius: 2px; animation: vaBlink 1s steps(1) infinite;
+}
+@keyframes vaBlink { 50% { opacity: 0; } }
+
+/* ── reduced-motion: kill all continuous animations ─────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .va-glow, .va-aurora span { animation: none !important; }
+  .va-transcript .caret { animation: none; opacity: 1; }
+}

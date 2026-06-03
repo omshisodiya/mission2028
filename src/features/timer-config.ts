@@ -31,9 +31,17 @@ export function initConfigurableTimer(): void {
 }
 
 function setup(): void {
-  const card    = document.getElementById('focus')
+  const card = document.getElementById('focus')
   if (!card) return
 
+  // ── State — declared before any early-return so the JARVIS listener can use them ──
+  let cfg: TimerConfig = loadTimerConfig()
+  type Mode = 'focus' | 'shortBreak' | 'longBreak'
+  let mode: Mode = 'focus', total = 0, remaining = 0
+  let running = false, iv: ReturnType<typeof setInterval> | null = null
+  let focusDone = 0
+
+  // ── UI element references (may be null before full render) ────────────────
   const fg      = card.querySelector<SVGCircleElement>('.ring-fg')
   const timeEl  = card.querySelector<HTMLElement>('.ring-time')
   const modeEl  = card.querySelector<HTMLElement>('.ring-mode')
@@ -42,17 +50,28 @@ function setup(): void {
   const skipBtn  = card.querySelector<HTMLButtonElement>('[data-act="skip"]')
   const sessEl  = document.getElementById('sess-count')
   const minEl   = document.getElementById('focus-mins')
-  if (!fg || !timeEl || !startBtn) return
 
   const R = 116, C = 2 * Math.PI * R
-  fg.style.strokeDasharray = String(C)
+  if (fg) fg.style.strokeDasharray = String(C)
 
-  // ── State ─────────────────────────────────────────────────────────────────
-  let cfg: TimerConfig = loadTimerConfig()
-  type Mode = 'focus' | 'shortBreak' | 'longBreak'
-  let mode: Mode = 'focus', total = 0, remaining = 0
-  let running = false, iv: ReturnType<typeof setInterval> | null = null
-  let focusDone = 0   // sessions this run (for long-break trigger)
+  // ── JARVIS integration — registered BEFORE any UI early-returns ───────────
+  // This ensures the listener always works even if some UI elements are missing.
+  window.addEventListener('jarvis:set-timer', (e: Event) => {
+    const detail = (e as CustomEvent<{ focus: number }>).detail
+    if (!detail?.focus) return
+    cfg.focus = Math.max(1, Math.min(180, Number(detail.focus)))
+    store()?.set('timerConfig', cfg)
+    if (iv) { clearInterval(iv!); iv = null }
+    running = false
+    applyMode('focus')
+    // Sync the config stepper display
+    const vEl = card.querySelector<HTMLElement>('.tc-val[data-k="focus"]')
+    if (vEl) vEl.textContent = String(cfg.focus)
+    // Auto-start: fires after a brief render cycle
+    setTimeout(() => {
+      if (!running) { running = true; iv = setInterval(tickDown, 1000); render() }
+    }, 120)
+  })
 
   // ── Render ────────────────────────────────────────────────────────────────
   function render(): void {
@@ -124,6 +143,9 @@ function setup(): void {
       applyMode(focusDone % cfg.sessionsPerLong === 0 ? 'longBreak' : 'shortBreak')
     } else applyMode('focus')
   }
+
+  // UI-only guard — listener is already registered above, so timer still responds to JARVIS
+  if (!fg || !timeEl || !startBtn) { applyMode('focus'); return }
 
   // Clone buttons to remove engine's hardcoded handlers
   function repl(btn: HTMLButtonElement | null, fn: () => void): void {
@@ -223,22 +245,6 @@ function setup(): void {
   }
 
   applyMode('focus')   // initial render with configured time
-
-  // JARVIS can set a custom focus duration and start immediately
-  window.addEventListener('jarvis:set-timer', (e: Event) => {
-    const detail = (e as CustomEvent<{ focus: number }>).detail
-    if (!detail?.focus) return
-    cfg.focus = detail.focus
-    store()?.set('timerConfig', cfg)
-    // Stop current timer, reset to new duration
-    if (iv) { clearInterval(iv!); iv = null }
-    running = false
-    applyMode('focus')
-    // Auto-start after a short render delay
-    setTimeout(() => {
-      if (!running) { running = true; iv = setInterval(tickDown, 1000); render() }
-    }, 200)
-  })
 }
 
 function row(k: string, label: string, val: number, _min: number, _max: number): string {

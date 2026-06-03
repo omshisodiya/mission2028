@@ -222,6 +222,19 @@ function setup(): void {
   }
 
   applyMode('focus')   // initial render with configured time
+
+  // JARVIS can set a custom focus duration via this event
+  window.addEventListener('jarvis:set-timer', (e: Event) => {
+    const detail = (e as CustomEvent<{ focus: number }>).detail
+    if (detail?.focus) {
+      cfg.focus = detail.focus
+      store()?.set('timerConfig', cfg)
+      // Reset to focus mode with new duration
+      if (iv) { clearInterval(iv!); iv = null }
+      running = false
+      applyMode('focus')
+    }
+  })
 }
 
 function row(k: string, label: string, val: number, _min: number, _max: number): string {

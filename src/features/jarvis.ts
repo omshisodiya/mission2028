@@ -139,9 +139,9 @@ async function startClapDetection(): Promise<void> {
   // If user has calibrated, _clapThreshold is an absolute RMS value
   // Otherwise fall back to relative threshold above ambient
   const USE_CALIBRATED = _clapThreshold > 0
-  const THRESHOLD_ABOVE_AMBIENT = 50  // fallback relative threshold
-  const CLAP_MIN_MS  = 80    // min time between clap start and next check
-  const CLAP_MAX_MS  = 900   // max time between two claps for double-clap
+  const THRESHOLD_ABOVE_AMBIENT = 32  // lowered: more sensitive to hand claps
+  const CLAP_MIN_MS  = 60    // reduced: faster claps register
+  const CLAP_MAX_MS  = 1200  // increased: more time between two claps
   let lastClapTime   = 0
   let suppressUntil  = 0
 
@@ -498,9 +498,11 @@ function sendText(input: HTMLInputElement): void {
 interface QuickCmd { pattern: RegExp; action: string; section?: string; value?: string; reply: string }
 
 const QUICK_CMDS: QuickCmd[] = [
-  // Timer
+  // Timer with custom minutes
+  { pattern: /(\d+)\s*(?:min|minute|minutes|mins|minat)\s*(?:ka|ke|ka timer|timer)/i,
+    action:'start_timer', reply:'Timer set kiya.' },
   { pattern: /timer.*start|start.*timer|shuru karo|chalu karo|pomodoro start|focus start|focus shuru|timer on/i,
-    action:'start_timer', reply:'Focus timer shuru kiya, Om! 💪 Concentrate karo.' },
+    action:'start_timer', reply:'Focus timer shuru kiya.' },
   { pattern: /timer.*stop|band karo|pause karo|roko|timer off|stop timer|timer pause/i,
     action:'stop_timer', reply:'Timer paused. Break lo, Om.' },
   { pattern: /timer.*reset|reset.*timer|timer reset/i,
@@ -536,6 +538,17 @@ const QUICK_CMDS: QuickCmd[] = [
 ]
 
 function tryQuickCommand(text: string): boolean {
+  // Custom timer minutes: "50 minute ka timer", "25 min ka", "45 minutes focus"
+  const customMins = text.match(/(\d+)\s*(?:min|minute|minutes|mins|minat)/i)
+  if (customMins) {
+    const mins = parseInt(customMins[1])
+    if (mins >= 1 && mins <= 180) {
+      setCustomTimerMinutes(mins)
+      respond(`${mins} minute ka timer set kiya.`)
+      return true
+    }
+  }
+
   for (const cmd of QUICK_CMDS) {
     if (cmd.pattern.test(text)) {
       runAppCommand({ action: cmd.action, section: cmd.section, value: cmd.value })
@@ -544,6 +557,29 @@ function tryQuickCommand(text: string): boolean {
     }
   }
   return false
+}
+
+/** Set the configurable timer to custom minutes and start it. */
+function setCustomTimerMinutes(mins: number): void {
+  // Update the stepper value
+  const valEl = document.getElementById('ai-hours-val')
+  const rangeEl = document.getElementById('ai-hours') as HTMLInputElement | null
+  if (valEl) valEl.textContent = String(mins)
+  if (rangeEl) { rangeEl.value = String(mins); rangeEl.dispatchEvent(new Event('input', { bubbles: true })) }
+
+  // Update the FOCUS duration in the tcfg-ui stepper
+  const focusVal = document.querySelector<HTMLElement>('.tc-val[data-k="focus"]')
+  if (focusVal) focusVal.textContent = String(mins)
+
+  // Click the + / - buttons to set correct value (simulate through the config)
+  // Actually: dispatch a custom event the timer-config listens for
+  window.dispatchEvent(new CustomEvent('jarvis:set-timer', { detail: { focus: mins } }))
+
+  // Start the timer
+  setTimeout(() => {
+    const startBtn = document.querySelector<HTMLButtonElement>('[data-act="start"]')
+    if (startBtn && startBtn.textContent?.toLowerCase().includes('start')) startBtn.click()
+  }, 300)
 }
 
 // ── Clap calibration ──────────────────────────────────────────────────────────

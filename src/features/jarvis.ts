@@ -95,6 +95,11 @@ let _wakeRec: any  = null
 // Language preference (persisted)
 let _lang: 'en-IN' | 'hi-IN' = (localStorage.getItem('jarvis_lang') as 'en-IN' | 'hi-IN') ?? 'en-IN'
 
+// Response language preference — separate from STT lang
+// 'auto' = detect from query; 'hi' = always Hindi; 'en' = always English
+let _replyLang: 'auto' | 'hi' | 'hinglish' | 'en' =
+  (localStorage.getItem('jarvis_reply_lang') as 'auto'|'hi'|'hinglish'|'en') ?? 'auto'
+
 // Last spoken response (for system.repeat)
 let _lastReply = ''
 
@@ -772,22 +777,30 @@ async function processQuery(text: string): Promise<void> {
     addMsg('user', text); cl('cm-ca-log'); respond('Current Affairs log opened.'); return
   }
 
-  // 10k. Constitution lookup — constitution.lookup
-  if (/article\s*\d+|anuched\s*\d+|which.*article|konsa.*article|article.*batao|constitution.*lookup/i.test(tl)) {
+  // 10k. Constitution lookup — ONLY for "open/show/go to" requests
+  // "explain Article 21" / "Article 21 batao" → let Groq answer with full text
+  // "open Article 21" / "show Article 21" → just scroll to it
+  if (/article\s*\d+|anuched\s*\d+/i.test(tl) &&
+      /\b(open|show|scroll|go to|dikhao|le.*chalo|section|search)\b/i.test(tl) &&
+      !/\b(explain|batao|samjhao|tell|describe|kya.*hai|what.*is|ke.*baare|about)\b/i.test(tl)) {
     const m = tl.match(/article\s*(\d+[a-z]?)/i) ?? tl.match(/anuched\s*(\d+)/i)
     addMsg('user', text); scr('constitution')
-    respond(`Opening Constitution${m ? ` — Article ${m[1]}` : ''}.`)
+    respond(`Opening Constitution — Article ${m?.[1] ?? '...'}.`)
     return
   }
 
-  // 10l. Switch language — system.setLanguage
-  if (/switch.*hindi|hindi.*mein.*bol|speak.*hindi|change.*language.*hindi|hindi.*switch/i.test(tl)) {
-    _lang = 'hi-IN'; localStorage.setItem('jarvis_lang', 'hi-IN')
-    addMsg('user', text); respond('Hindi mein switch ho gaya.'); return
+  // 10l. Switch language — all natural phrasings ──────────────────────────────
+  if (/hindi.*mein|hindi.*bolo|hindi.*jawab|hindi.*bol\b|answer.*hindi|respond.*hindi|speak.*hindi|switch.*hindi|hindi.*switch|hindi.*chahiye|hindi.*please|ab.*hindi|reply.*hindi|hindi.*reply|hindi.*answer|mujhe.*hindi|in.*hindi|hindi.*me.*baat|hindi.*me.*bol|hindi.*medium/i.test(tl)) {
+    _replyLang = 'hi'; localStorage.setItem('jarvis_reply_lang', 'hi')
+    addMsg('user', text); respond('Bilkul! Ab main Hindi mein jawab dunga. Kya chahiye?'); return
   }
-  if (/switch.*english|english.*mein.*bol|speak.*english|change.*language.*english/i.test(tl)) {
-    _lang = 'en-IN'; localStorage.setItem('jarvis_lang', 'en-IN')
-    addMsg('user', text); respond('Switched to English.'); return
+  if (/hinglish|hindi.*mix.*english|mix.*language/i.test(tl)) {
+    _replyLang = 'hinglish'; localStorage.setItem('jarvis_reply_lang', 'hinglish')
+    addMsg('user', text); respond('Sure! Hinglish mein baat karte hain. Batao kya chahiye?'); return
+  }
+  if (/switch.*english|english.*mein.*bol|speak.*english|change.*language.*english|answer.*english|reply.*english|english.*medium|back.*english/i.test(tl)) {
+    _replyLang = 'en'; localStorage.setItem('jarvis_reply_lang', 'en')
+    addMsg('user', text); respond('Switched to English. What do you need?'); return
   }
 
   // 10m. Stop / sleep — system.sleep
@@ -902,21 +915,20 @@ async function executeIntent(transcript: string): Promise<void> {
     const result: RouterResult & { answer?: string } = await route(transcript)
     clearTimeout(safetyTimer)
 
+    // Determine the language JARVIS should respond in
+    const detectedLang = detectResponseLang(transcript)
+
     if (result.intent === 'qa.answer') {
-      // ── Tier 3: UPSC knowledge question → Groq tutor mode ──────────────────
-      const cacheKey = transcript.toLowerCase().trim().slice(0, 120)
+      // ── Tier 3: UPSC knowledge question → Groq llama-3.3-70b tutor mode ────
+      const cacheKey = `${detectedLang}:${transcript.toLowerCase().trim().slice(0, 120)}`
       const cached   = getCached(cacheKey)
       if (cached) { respond(cached); return }
 
-      setStatus('Searching knowledge base…')
-      const qaResult = await llmRoute(transcript, 'qa')
+      setStatus(detectedLang === 'hi' ? 'जवाब ढूंढ रहा हूं…' : 'Searching knowledge base…')
+      const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
       const answer   = qaResult.answer?.trim()
-      if (answer) {
-        setCached(cacheKey, answer)
-        respond(answer)
-      } else {
-        respond(offlineAnswer(transcript))
-      }
+      if (answer) { setCached(cacheKey, answer); respond(answer) }
+      else respond(offlineAnswer(transcript))
       return
     }
 
@@ -929,6 +941,21 @@ async function executeIntent(transcript: string): Promise<void> {
     setState('idle'); VA.setState('idle')
     respond(offlineAnswer(transcript))
   }
+}
+
+/** Determine the best response language, respecting _replyLang preference. */
+function detectResponseLang(transcript: string): 'en' | 'hi' | 'hinglish' {
+  if (_replyLang !== 'auto') return _replyLang as 'en'|'hi'|'hinglish'
+  return detectLang(transcript)
+}
+
+/** Prepend a language instruction to the transcript so Groq responds correctly. */
+function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): string {
+  const langInstr =
+    lang === 'hi'       ? '[RESPOND STRICTLY IN HINDI — Devanagari script]\n' :
+    lang === 'hinglish' ? '[RESPOND IN HINGLISH — mix of Hindi words in Roman script]\n' :
+                          '[RESPOND IN ENGLISH]\n'
+  return langInstr + transcript
 }
 
 // ── Language-aware response helpers ──────────────────────────────────────────
@@ -1160,9 +1187,13 @@ async function dispatchIntent(r: RouterResult): Promise<string> {
     // ── System ────────────────────────────────────────────────────────────────
     case 'system.setLanguage': {
       const lang = String(p.lang ?? 'en-IN') as 'en-IN' | 'hi-IN'
-      _lang = lang
+      _lang      = lang
+      _replyLang = lang === 'hi-IN' ? 'hi' : 'en'
       localStorage.setItem('jarvis_lang', lang)
-      return lang === 'hi-IN' ? 'Hindi mein switch kar diya.' : 'Switched to English.'
+      localStorage.setItem('jarvis_reply_lang', _replyLang)
+      return lang === 'hi-IN'
+        ? 'Hindi mein switch ho gaya. Ab main Hindi mein jawab dunga.'
+        : 'Switched to English. Go ahead.'
     }
 
     case 'system.repeat':
@@ -2103,6 +2134,12 @@ function buildPrompt(): string {
   const focusMins = getTodayFocusMins()
   const remCount  = _reminders.length
 
+  const replyLangInstruction =
+    _replyLang === 'hi'       ? 'LANGUAGE: Always respond in Hindi (Devanagari). Never use English words unless it is a proper noun.' :
+    _replyLang === 'hinglish' ? 'LANGUAGE: Respond in Hinglish — Hindi words in Roman script mixed with English. Natural conversational mix.' :
+    _replyLang === 'en'       ? 'LANGUAGE: Always respond in English.' :
+                                'LANGUAGE: Match the user\'s language — Hindi if they write in Hindi, Hinglish if Hinglish, English if English. STRICT — do not switch.'
+
   return [
     `You are JARVIS — the super-intelligent AI assistant for Om Shisodiya's UPSC CSE 2028 preparation.`,
     `Date: ${d}. Today's subject: ${cs?.today?.subject??'—'}. Backlog: ${cs?.backlogRemaining??'?'} lectures.`,
@@ -2111,11 +2148,13 @@ function buildPrompt(): string {
     focusMins ? `Focus today: ${focusMins} minutes.` : '',
     remCount ? `Active reminders: ${remCount}.` : '',
     ``,
-    `VOICE RULES:`,
-    `Speak, don't write. No markdown, no bullets, no numbered lists. Short sentences only. 1-3 sentences per answer.`,
-    `Match the user's language exactly: Hindi → Hindi, Hinglish → Hinglish, English → English.`,
-    `Do not recite statistics unless directly asked. Answer only what was asked.`,
-    `Be brilliant, warm, direct. You care deeply about Om achieving CSE selection in 2028.`,
+    replyLangInstruction,
+    ``,
+    `VOICE OUTPUT RULES (you are being spoken aloud, not displayed):`,
+    `No markdown. No bullet points. No numbered lists. No asterisks or symbols.`,
+    `Short spoken sentences only — 1 to 3 sentences per answer.`,
+    `Do not dump statistics unless directly asked. Answer only what was asked.`,
+    `Be brilliant, warm, and direct. You care deeply about Om achieving CSE 2028 selection.`,
     ``,
     `SCOPE: UPSC GS1/GS2/GS3/GS4/CSAT, Constitution, current affairs, polity, history, geography, economics, environment, science, answer writing, Prelims MCQs, Mains essays, motivation.`,
     ``,

@@ -439,117 +439,111 @@ function startAura(): void {
   frame()
 }
 
-// ── Listening — continuous recognition so the full command is heard ───────────
-// WHY continuous=true: with continuous=false the browser fires onresult on every
-// brief pause, so "start" fires processQuery before "timer" is spoken, causing
-// flickering and partial command execution.
+// ── Voice Capture ─────────────────────────────────────────────────────────────
+// Design:
+//  • continuous=false  — simpler, avoids Chrome v120+ onend timing bugs
+//  • interimResults=true — shows real-time transcript in the overlay
+//  • CRITICAL: stop _wakeRec FIRST so two STT instances never fight the mic
+//  • Process on isFinal result; if onend fires before final, commit interim
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function startListening(): Promise<void> {
   if (_state === 'listening') return
   if (_isSpeaking) { wakeAndListen(); return }
 
-  setStatus('🎙 Listening — speak your command…')
+  // ── CRITICAL: kill wake word recognizer BEFORE opening command mic ──────────
+  // Running two Chrome STT instances simultaneously causes mic contention →
+  // only the first word is captured. Stop _wakeRec unconditionally here.
+  _wakeRec?.stop(); _wakeRec = null; _wakeRunning = false
+
+  setStatus('🎙 Speak your command…')
   setState('listening')
   VA.setState('listening')
   document.getElementById('jp-mic')?.classList.add('active')
   document.getElementById('jarvis-btn')?.classList.add('listening')
 
-  // Waveform analyser (optional — mic recognition works without it)
+  // Waveform analyser — failure is non-fatal, recognition continues without it
   try {
     const ms = await navigator.mediaDevices.getUserMedia({ audio: true })
     _micStream = ms
     _audioCtx  = new AudioContext()
     _analyser  = _audioCtx.createAnalyser(); _analyser.fftSize = 64
     _audioCtx.createMediaStreamSource(ms).connect(_analyser)
-  } catch { /* no waveform — recognition still works */ }
+  } catch { /* waveform won't show, recognition works via browser default mic */ }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   if (!SR) {
-    speak('Voice recognition is not available in this browser. Please use Chrome and type your commands.')
-    stopListening()
-    return
+    const msg = 'Voice recognition needs Chrome. Please type your command below.'
+    setStatus(msg); speak(msg); stopListening(); return
   }
 
   const r = new SR()
   _rec = r
-  r.lang             = _lang
-  r.continuous       = true   // keeps mic open for multi-word commands
-  r.interimResults   = true   // shows transcript in real time while user speaks
-  r.maxAlternatives  = 1
 
-  let accumulated  = ''   // builds up the full command from interim results
-  let silenceTimer: ReturnType<typeof setTimeout> | null = null
-  let committed    = false  // true once we've sent to processQuery
+  // continuous=false: Chrome waits for natural end-of-utterance → fires once
+  // interimResults=true: VA overlay shows words as you speak (great UX)
+  r.lang            = _lang
+  r.continuous      = false
+  r.interimResults  = true
+  r.maxAlternatives = 3
 
-  const commit = (text: string) => {
-    if (committed || !text.trim()) return
+  let finalText  = ''   // populated on isFinal result
+  let interimTxt = ''   // last interim — fallback if onend fires without final
+  let committed  = false
+
+  const commit = (text: string): void => {
+    if (committed) return
+    const clean = text.trim()
+    if (!clean) { stopListening(); VA.setState('idle'); setState('idle'); setStatus('Tap 🎙 or say "Jarvis".'); return }
     committed = true
-    if (silenceTimer) clearTimeout(silenceTimer)
-    const final = text.trim()
     stopListening()
-    VA.setTranscript(final, false)
-    void processQuery(final)
+    VA.setTranscript(clean, false)
+    void processQuery(clean)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onresult = (e: any) => {
     if (committed) return
-    let interim = ''
+    let interim = '', fin = ''
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const seg = (e.results[i][0].transcript as string).trim()
-      if (e.results[i].isFinal) {
-        accumulated += (accumulated ? ' ' : '') + seg
-      } else {
-        interim = seg
-      }
+      if (e.results[i].isFinal) fin  = seg
+      else                       interim = seg
     }
-    const display = (accumulated + (interim ? ' ' + interim : '')).trim()
-    if (display) VA.setTranscript(display, false)
-
-    // If browser gave us a final segment, reset the silence timer
-    if (accumulated) {
-      if (silenceTimer) clearTimeout(silenceTimer)
-      // Wait 1.4s for user to continue — if silent, commit the command
-      silenceTimer = setTimeout(() => commit(accumulated), 1400)
-    }
+    if (fin)     { finalText  = fin;     VA.setTranscript(fin, false);     commit(fin) }
+    else if (interim) { interimTxt = interim; VA.setTranscript(interim, false) }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onerror = (e: any) => {
     if (committed) return
-    if (silenceTimer) clearTimeout(silenceTimer)
-    stopListening()
-    VA.setState('idle'); setState('idle')
-    if (e?.error === 'not-allowed') {
-      setStatus('Microphone access blocked. Allow mic permission and reload.')
-    } else if (e?.error === 'network') {
-      setStatus('Network error — check your connection.')
-    } else {
-      setStatus('Tap 🎙 to try again, or type your command.')
-    }
+    stopListening(); VA.setState('idle'); setState('idle')
+    const code = e?.error ?? ''
+    setStatus(
+      code === 'not-allowed' ? 'Mic blocked — allow microphone in browser settings.' :
+      code === 'network'     ? 'Network error. Check connection.' :
+      code === 'no-speech'   ? 'Nothing heard. Tap 🎙 to try again.' :
+                               'Tap 🎙 to retry.'
+    )
   }
 
   r.onend = () => {
     if (committed) return
-    if (silenceTimer) clearTimeout(silenceTimer)
-    // Ended before we got a result — try to commit what we have
-    if (accumulated) { commit(accumulated); return }
-    stopListening()
-    VA.setState('idle'); setState('idle')
-    setStatus('Tap 🎙 or say "Jarvis" to wake me.')
+    // Chrome fired onend before sending a final result — commit the interim
+    commit(finalText || interimTxt)
   }
 
-  try {
-    r.start()
-  } catch {
-    stopListening()
-    VA.setState('idle'); setState('idle')
-    setStatus('Could not access microphone.')
+  try { r.start() } catch {
+    stopListening(); VA.setState('idle'); setState('idle')
+    setStatus('Microphone unavailable. Please type below.')
   }
 }
 
 function stopListening(): void {
-  _rec?.stop(); _rec = null
+  _rec?.stop();     _rec = null
+  // Also stop wake word — prevents mic contention on restart
+  _wakeRec?.stop(); _wakeRec = null; _wakeRunning = false
   _micStream?.getTracks().forEach(t => t.stop()); _micStream = null
   _audioCtx?.close(); _audioCtx = null; _analyser = null
   document.getElementById('jp-mic')?.classList.remove('active')
@@ -2198,7 +2192,7 @@ function speak(text: string): void {
         _clapEnabled = true; setState('idle')
         setStatus('Ready — say Jarvis or double clap')
         VA.setState('idle')
-        startWakeWord()   // always restart after speaking (handles open+closed panel)
+        if (_state !== 'listening') startWakeWord()  // don't interrupt if user re-opened mic
       }, 2500)
       return
     }
@@ -2222,7 +2216,8 @@ function speak(text: string): void {
 
 // ── Wake word detection — "Jarvis" at start OR end, strips + routes inline ────
 function startWakeWord(): void {
-  if (!_jarvisEnabled || _wakeRunning || _isSpeaking || _sleeping) return
+  // Never start wake word while command mic is open — would cause mic contention
+  if (!_jarvisEnabled || _wakeRunning || _state === 'listening' || _isSpeaking || _sleeping) return
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   if (!SR) return
@@ -2279,7 +2274,7 @@ function startWakeWord(): void {
     }
   }
 
-  r.onend   = () => { _wakeRunning = false; if (_jarvisEnabled && !_isSpeaking && !_sleeping) setTimeout(startWakeWord, 600) }
+  r.onend   = () => { _wakeRunning = false; if (_jarvisEnabled && _state !== 'listening' && !_isSpeaking && !_sleeping) setTimeout(startWakeWord, 600) }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onerror = (err: any) => {
     _wakeRunning = false

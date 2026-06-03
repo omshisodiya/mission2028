@@ -1,3 +1,8 @@
+// Check screen lock FIRST — before engine, before auth, before anything.
+// If locked, PIN screen appears immediately on every load/reload.
+import { checkStartupLock } from './features/screen-lock'
+checkStartupLock()
+
 // Engine and UI shells boot immediately — auth + data sync happen in background.
 import './engine/image-slot.js'
 import './engine/engine.js'
@@ -17,6 +22,7 @@ import { initFocusMode } from './features/focus-mode'
 import { injectExportButton } from './features/export'
 import { initConfigurableTimer } from './features/timer-config'
 import { initScreenLock } from './features/screen-lock'
+// checkStartupLock already imported at the top
 
 // UI shells mount synchronously so sections are always visible.
 mountPlannerUI()

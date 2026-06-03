@@ -1204,6 +1204,201 @@ async function dispatchIntent(r: RouterResult): Promise<string> {
       setStatus('Sleeping — double-clap or tap to wake')
       return 'Going to sleep. Double-clap or tap me to wake up.'
 
+    // ── CSV intent aliases (IDs used in voice_commands_2000.csv) ─────────────
+    // These use different IDs from voice_intents.json but same app action
+
+    // query.selprob → same as query.selectionProb
+    case 'query.selprob': {
+      const sp = getCurrentState()?.selectionProbabilityPct
+      if (sp != null) return L(lang, `Selection probability: ${sp.toFixed(1)}%.`, `Selection probability ${sp.toFixed(1)}% hai.`, `SP ${sp.toFixed(1)}%.`)
+      return L(lang, 'Log more scores to compute selection probability.', 'Pehle scores log karo.', 'More scores chahiye.')
+    }
+
+    // query.streak → streak information
+    case 'query.streak':
+    case 'query.consistency': {
+      const cs = getCurrentState()
+      const m  = getTodayFocusMins()
+      const s  = cs?.streak ?? 0
+      return L(lang, `${s}-day streak. ${m} minutes studied today.`, `${s} din ki streak. Aaj ${m} minute padhai.`, `${s}-day streak, ${m} min today.`)
+    }
+
+    // brief.today → briefing
+    case 'brief.today': return buildStatusReport()
+
+    // cd.prelims → countdown
+    case 'cd.prelims': return buildExamCountdown()
+
+    // const.article → constitution lookup (alias)
+    case 'const.article': {
+      scr('constitution')
+      const art = p.article ? `Article ${p.article}` : 'the Constitution'
+      return L(lang, `Opening ${art}.`, `${art} khol raha hoon.`, `Opening ${art}.`)
+    }
+
+    // const.search → constitution search
+    case 'const.search': {
+      scr('constitution')
+      const q = String(p.query ?? p.article ?? '')
+      if (q) setTimeout(() => { const inp = document.querySelector<HTMLInputElement>('#const-search'); if (inp) { inp.value = q; inp.dispatchEvent(new Event('input')) } }, 400)
+      return L(lang, `Searching Constitution for "${q || 'your query'}".`, `Sanvidhan mein "${q || '...'}" search kar raha hoon.`, `Constitution search: "${q || '...'}"`)
+    }
+
+    // sys.lang → setLanguage alias
+    case 'sys.lang': {
+      const lk = String(p.lang ?? 'en-IN') as 'en-IN'|'hi-IN'
+      _lang = lk; _replyLang = lk === 'hi-IN' ? 'hi' : 'en'
+      localStorage.setItem('jarvis_lang', lk); localStorage.setItem('jarvis_reply_lang', _replyLang)
+      return lk === 'hi-IN' ? 'Hindi mein switch ho gaya.' : 'Switched to English.'
+    }
+
+    // sys.repeat → repeat last
+    case 'sys.repeat': return _lastReply || L(lang, 'Nothing to repeat.', 'Kuch nahi hua pehle.', 'Nothing yet.')
+
+    // sys.sleep → sleep
+    case 'sys.sleep':
+      _sleeping = true; setStatus('Sleeping…')
+      return L(lang, 'Going to sleep. Double-clap to wake.', 'So raha hoon. Double-clap se jagao.', 'Sleeping. Double-clap to wake.')
+
+    // sys.help → help
+    case 'sys.help':
+      return L(lang,
+        "Say 'start timer', 'show plan', 'add score', 'quiz me on Polity', 'explain Article 21', or any UPSC question.",
+        "Kaho: 'timer shuru karo', 'plan dikhao', 'score add karo', ya koi bhi UPSC sawaal.",
+        "Say 'start timer', 'plan dikhao', 'score add', ya UPSC ke baare mein kuch bhi.")
+
+    // ── New intents from CSV ──────────────────────────────────────────────────
+
+    // timer.extend → add X minutes to running timer
+    case 'timer.extend': {
+      const add = Number(p.minutes ?? 10)
+      window.dispatchEvent(new CustomEvent('jarvis:extend-timer', { detail: { add } }))
+      // Fallback: just reset with extra time by checking display
+      const timeEl = document.querySelector<HTMLElement>('.ring-time')?.textContent ?? '25:00'
+      const [mm, ss] = timeEl.split(':').map(Number)
+      const remaining = (mm ?? 0) * 60 + (ss ?? 0)
+      const newTotal = Math.round((remaining + add * 60) / 60)
+      fireTimer(newTotal)
+      return L(lang, `Adding ${add} more minutes. Timer extended.`, `${add} aur minute add kiye.`, `${add} more minutes added.`)
+    }
+
+    // timer.break → start a break
+    case 'timer.break': {
+      const brk = Number(p.minutes ?? 5)
+      q('[data-act="skip"]')   // skip to break in timer-config
+      return L(lang, `${brk}-minute break started.`, `${brk} minute ka break shuru.`, `Break of ${brk} minutes started.`)
+    }
+
+    // lecture.next → next lecture info
+    case 'lecture.next': {
+      scr('plan')
+      const row  = document.querySelector<HTMLElement>('#plan .plan-row:not(.done)')
+      const title = row?.querySelector<HTMLElement>('.pl-title')?.textContent?.trim()
+      const meta  = row?.querySelector<HTMLElement>('.pl-meta')?.textContent?.trim()
+      if (title) return L(lang, `Next up: "${title}". ${meta ?? ''}`, `Agla lecture: "${title}". ${meta ?? ''}`, `Next: "${title}".`)
+      return L(lang, 'No pending lectures.', 'Koi pending lecture nahi.', 'No pending lectures.')
+    }
+
+    // search.lecture → search in planner
+    case 'search.lecture': {
+      const q2 = String(p.subject ?? p.query ?? '')
+      scr('plan')
+      if (q2) setTimeout(() => { const inp = document.querySelector<HTMLInputElement>('#lp-search'); if (inp) { inp.value = q2; inp.dispatchEvent(new Event('input')) } }, 300)
+      return L(lang, `Searching for "${q2 || 'lectures'}".`, `"${q2 || 'lectures'}" search kar raha hoon.`, `Searching: "${q2 || 'lectures'}"`)
+    }
+
+    // goal.set → open goals
+    case 'goal.set': {
+      cl('cm-goals')
+      return L(lang, 'Goals opened. Set your target.', 'Goals khul gayi. Target set karo.', 'Goals opened.')
+    }
+
+    // env.focusMode → toggle focus mode
+    case 'env.focusMode': {
+      cl('focus-mode-btn')
+      return L(lang, 'Focus Mode toggled.', 'Focus Mode toggle ho gaya.', 'Focus Mode toggled.')
+    }
+
+    // env.theme → same as focus mode / visual toggle
+    case 'env.theme': {
+      cl('focus-mode-btn')
+      return L(lang, 'Display mode toggled.', 'Display mode change ho gaya.', 'Display mode toggled.')
+    }
+
+    // cap.note → quick note
+    case 'cap.note': {
+      const note = String(p.text ?? p.note ?? '')
+      if (note) addToInbox(note)
+      cl('cm-add-note')
+      return note ? L(lang, `Noted: "${note}".`, `Note ho gaya: "${note}".`, `Noted: "${note}".`) : L(lang, 'Notes opened.', 'Notes khul gayi.', 'Notes open.')
+    }
+
+    // ans.log → answer writing log
+    case 'ans.log': {
+      cl('cm-answer-log')
+      return L(lang, 'Answer Writing log opened.', 'Answer Writing log khul gaya.', 'Answer log opened.')
+    }
+
+    // test.log → log a test score
+    case 'test.log': {
+      cl('cm-add-score')
+      return L(lang, 'Add your test score here.', 'Test score yahan daalo.', 'Score entry open.')
+    }
+
+    // test.next → suggest next test
+    case 'test.next': {
+      const cs = getCurrentState()
+      scr('intel')
+      return L(lang, `Your next mock should cover ${cs?.today?.subject ?? 'your weakest subject'}.`,
+        `Agla mock ${cs?.today?.subject ?? 'aapke kamzor subject'} pe hona chahiye.`,
+        `Next mock should be on ${cs?.today?.subject ?? 'weak subject'}.`)
+    }
+
+    // plan.behind → what to do when behind schedule
+    case 'plan.behind': {
+      const cs = getCurrentState()
+      const b  = cs?.backlogRemaining ?? 0
+      cl('ai-gen')
+      return L(lang,
+        `${b} lectures behind. Generating a catch-up plan now.`,
+        `${b} lectures baaki hai. Catch-up plan bana raha hoon.`,
+        `${b} lectures pending. Generating plan…`)
+    }
+
+    // revision.flag → flag current lecture for urgent revision
+    case 'revision.flag': {
+      cl('cm-revise-now')
+      return L(lang, 'Flagged for revision. SRS will schedule it.', 'Revision ke liye flag ho gaya.', 'Flagged for revision.')
+    }
+
+    // syl.coverage → syllabus coverage
+    case 'syl.coverage': {
+      scr('intel')
+      const cs = getCurrentState()
+      const done = document.querySelectorAll('#plan .plan-row.done').length
+      const total = document.querySelectorAll('#plan .plan-row').length
+      const pct = total ? Math.round((done / total) * 100) : 0
+      return L(lang, `Syllabus coverage: ${pct}% (${done} of ${total} lectures done).`,
+        `Syllabus ${pct}% complete hai — ${done} lectures ho gaye ${total} mein se.`,
+        `Coverage: ${pct}% — ${done}/${total} lectures.`)
+    }
+
+    // cal.week → weekly calendar view
+    case 'cal.week': {
+      cl('cm-calendar')
+      return L(lang, 'Weekly calendar opened.', 'Weekly calendar khul gaya.', 'Week calendar open.')
+    }
+
+    // mot.motivate → motivation
+    case 'mot.motivate': return motivationLine()
+
+    // exp.excel / exp.backup → export
+    case 'exp.excel':
+    case 'exp.backup': {
+      cl('cm-export-btn')
+      return L(lang, 'Exporting your data.', 'Data export ho raha hai.', 'Exporting data.')
+    }
+
     default:
       return ''
   }

@@ -19,7 +19,22 @@ export interface RouterResult {
   confidence: number
 }
 
-const _allIntentIds = ((intentsRaw as { intents: { id: string }[] }).intents).map(i => i.id)
+// All intent IDs: from voice_intents.json (25) + all CSV intents (46 total, different naming)
+const _allIntentIds = [
+  // From voice_intents.json
+  ...((intentsRaw as { intents: { id: string }[] }).intents).map(i => i.id),
+  // Additional IDs used in voice_commands_2000.csv (exact strings from CSV column 3)
+  'ans.log','brief.today','ca.add','cal.week','cap.note','cd.prelims',
+  'const.article','const.search','env.focusMode','env.theme',
+  'exp.backup','exp.excel','goal.set','lecture.markDone','lecture.next',
+  'mistake.add','mot.motivate','nav.goto','plan.behind','plan.generate',
+  'plan.today','qa.answer','query.average','query.backlog','query.consistency',
+  'query.hours','query.rank','query.selprob','query.streak',
+  'revision.due','revision.flag','routine.logHours','routine.setType',
+  'score.add','search.lecture','syl.coverage',
+  'sys.help','sys.lang','sys.repeat','sys.sleep',
+  'test.log','test.next','timer.break','timer.extend','timer.start','timer.stop',
+]
 
 // ── CSV parsing → keyword index ───────────────────────────────────────────────
 const STOPWORDS = new Set([

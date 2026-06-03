@@ -58,6 +58,7 @@ export function mountPlannerUI(): void {
           <button class="lp-filter" data-f="done">Done</button>
         </div>
         <div class="lp-actions">
+          <button class="btn ghost" id="lp-skip-day" title="Manually show tomorrow's schedule" style="font-size:11px;padding:6px 10px;">Skip today →</button>
           <button class="btn ghost lp-btn-add" id="lp-add">+ Add</button>
           <button class="btn primary lp-btn-import" id="lp-import">Import Excel</button>
         </div>`
@@ -76,6 +77,23 @@ export function mountPlannerUI(): void {
 
       document.getElementById('lp-import')?.addEventListener('click', openImportWizard)
       document.getElementById('lp-add')?.addEventListener('click', openManualAdd)
+      document.getElementById('lp-skip-day')?.addEventListener('click', () => {
+        // Manually trigger auto-advance to next day's subject
+        const today  = todayIST()
+        const [y, m, d] = today.split('-').map(Number)
+        const nextDate   = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+        const nextDow    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(Date.UTC(y, m-1, d+1)).getUTCDay()]
+        const SUBJ_MAP: Record<string, string[]> = {
+          Mon: ['SJS','Polity'], Tue: ['Geography'], Wed: ['Environment'],
+          Thu: ['Medieval','History'], Fri: ['Economy'], Sat: ['Mathematics'], Sun: [],
+        }
+        const kws = SUBJ_MAP[nextDow] ?? []
+        const label = new Date(Date.UTC(y,m-1,d+1)).toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',timeZone:'UTC'})
+        _autoAdvanced = true; _advancedDate = label
+        _subjectKws = kws
+        _todaySubject = kws.length ? kws[0] + ' (tomorrow)' : 'Tomorrow'
+        _page = 1; render()
+      })
     }
 
     // Show empty state until auth + data arrive

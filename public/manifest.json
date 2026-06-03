@@ -5,14 +5,20 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#05070f",
-  "theme_color": "#f0b54a",
+  "theme_color": "#05070f",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "/assets/national-emblem.webp",
       "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/webp",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/national-emblem.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "maskable"
     }
   ],
   "categories": ["education", "productivity"],

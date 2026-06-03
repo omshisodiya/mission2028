@@ -1,10 +1,10 @@
 /**
  * jarvis.ts — Mission: JARVIS
- * Voice-activated AI assistant for UPSC prep.
- * - Voice input:  Web Speech API (free, built-in)
- * - AI brain:     Groq API free tier — Llama 3.3 70B (VITE_GROQ_API_KEY)
- * - Voice output: Web Speech Synthesis API (free, built-in)
- * - Animation:    Canvas arc-reactor + real mic waveform
+ * - Voice input/output: Web Speech API (free)
+ * - Vision: camera capture + file upload → Groq Llama 4 Vision (free)
+ * - AI: Groq Llama 3.3 70B / Llama 4 Scout Vision (VITE_GROQ_API_KEY)
+ * - Dynamic DOM control: JARVIS discovers and acts on ANY page element
+ * - Animation: canvas arc-reactor + real mic waveform
  */
 import './jarvis.css'
 import { getCurrentState } from './core-engine'
@@ -419,6 +419,14 @@ function sendText(input: HTMLInputElement): void {
 // ── AI processing ─────────────────────────────────────────────────────────────
 
 async function processQuery(userText: string): Promise<void> {
+  // Vision trigger detection
+  if (isVisionTrigger(userText)) {
+    addMessage('user', userText)
+    setState('idle', 'Opening camera…')
+    openVisionCapture(userText)
+    return
+  }
+
   addMessage('user', userText)
   setState('thinking', 'Thinking…')
 
@@ -461,6 +469,217 @@ async function processQuery(userText: string): Promise<void> {
     console.error('[JARVIS]', e)
     respond("I encountered an issue connecting to my brain. Please check your API key or try again.")
   }
+}
+
+// ── Vision: "See this / Scan / Dekho" ────────────────────────────────────────
+
+const VISION_TRIGGERS = ['see this','scan','dekho','dekhо','yeh dekho','image','photo',
+  'picture','scan karo','analyze this','analyse','padhо','padho yeh','evaluate this',
+  'check this','is mein kya hai','batao kya hai']
+
+export function isVisionTrigger(text: string): boolean {
+  const t = text.toLowerCase()
+  return VISION_TRIGGERS.some(kw => t.includes(kw))
+}
+
+export function openVisionCapture(context: string): void {
+  if (document.getElementById('jarvis-vision-modal')) return
+
+  const modal = document.createElement('div')
+  modal.id = 'jarvis-vision-modal'
+  modal.style.cssText =
+    'position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;' +
+    'background:rgba(5,7,15,.9);backdrop-filter:blur(8px);'
+
+  modal.innerHTML = `
+    <div style="background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r);
+      padding:24px;width:340px;display:flex;flex-direction:column;gap:16px;text-align:center;">
+      <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;
+        color:var(--accent);text-transform:uppercase;">⬡ JARVIS Vision Scan</div>
+      <div style="font-size:14px;color:var(--ink-soft);">
+        Show me what you want analyzed — question paper, notes, diagram, newspaper, anything.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button id="jv-camera" style="padding:12px;background:var(--panel-2);border:1px solid var(--line-2);
+          border-radius:var(--r-sm);color:var(--ink);font-size:14px;cursor:pointer;
+          transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent)'"
+          onmouseout="this.style.borderColor='var(--line-2)'">
+          📷 Use Camera (take photo)
+        </button>
+        <button id="jv-upload" style="padding:12px;background:var(--panel-2);border:1px solid var(--line-2);
+          border-radius:var(--r-sm);color:var(--ink);font-size:14px;cursor:pointer;
+          transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent)'"
+          onmouseout="this.style.borderColor='var(--line-2)'">
+          📁 Upload Image / PDF screenshot
+        </button>
+        <input id="jv-file-inp" type="file" accept="image/*" style="display:none" />
+      </div>
+      <div id="jv-preview" style="display:none;"></div>
+      <button id="jv-cancel" style="background:none;border:none;color:var(--muted);
+        font-family:var(--font-mono);font-size:11px;cursor:pointer;letter-spacing:.1em;">
+        CANCEL
+      </button>
+    </div>
+  `
+  document.body.appendChild(modal)
+
+  const fileInp = document.getElementById('jv-file-inp') as HTMLInputElement
+
+  // Upload from file
+  document.getElementById('jv-upload')?.addEventListener('click', () => fileInp.click())
+  fileInp.addEventListener('change', () => {
+    const file = fileInp.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = reader.result as string
+      closeVisionModal()
+      analyzeImage(base64, context)
+    }
+    reader.readAsDataURL(file)
+  })
+
+  // Take photo from camera
+  document.getElementById('jv-camera')?.addEventListener('click', async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      const video = document.createElement('video')
+      video.srcObject = stream
+      video.setAttribute('playsinline', '')
+      await video.play()
+
+      // Small preview + capture button
+      const preview = document.getElementById('jv-preview')!
+      preview.style.display = 'block'
+      preview.innerHTML = ''
+      video.style.cssText = 'width:100%;border-radius:8px;max-height:200px;object-fit:cover;'
+      preview.appendChild(video)
+
+      const snapBtn = document.createElement('button')
+      snapBtn.textContent = '📸 Capture'
+      snapBtn.style.cssText = 'width:100%;padding:10px;margin-top:8px;background:var(--accent);' +
+        'color:#000;border:none;border-radius:var(--r-sm);font-weight:700;cursor:pointer;font-size:14px;'
+      preview.appendChild(snapBtn)
+
+      snapBtn.addEventListener('click', () => {
+        const canvas = document.createElement('canvas')
+        canvas.width  = video.videoWidth
+        canvas.height = video.videoHeight
+        canvas.getContext('2d')!.drawImage(video, 0, 0)
+        stream.getTracks().forEach(t => t.stop())
+        const base64 = canvas.toDataURL('image/jpeg', 0.85)
+        closeVisionModal()
+        analyzeImage(base64, context)
+      })
+    } catch {
+      alert('Camera not accessible. Please upload an image instead.')
+    }
+  })
+
+  document.getElementById('jv-cancel')?.addEventListener('click', closeVisionModal)
+  modal.addEventListener('click', e => { if (e.target === modal) closeVisionModal() })
+}
+
+function closeVisionModal(): void {
+  document.getElementById('jarvis-vision-modal')?.remove()
+}
+
+async function analyzeImage(base64: string, userContext: string): Promise<void> {
+  if (!GROQ_KEY) { respond('Add VITE_GROQ_API_KEY to enable vision scanning.'); return }
+
+  setState('thinking', 'Scanning… / स्कैन हो रहा है…')
+
+  const cs = getCurrentState()
+  const sysCtx = `You are JARVIS, the AI assistant for Om Shisodiya's UPSC CSE 2028 preparation.
+Today's subject: ${cs?.today.subject ?? 'Unknown'}. Backlog: ${cs?.backlogRemaining ?? '?'} lectures.
+Analyze the image carefully. For UPSC context:
+- If it's a question paper: identify the topic, explain the question, provide a model answer.
+- If it's handwritten notes: summarize and suggest improvements.
+- If it's a newspaper: extract key UPSC-relevant points and link to syllabus.
+- If it's a diagram/chart/map: explain it in UPSC context.
+- If it's a Mains answer: give structured feedback (intro, content, examples, conclusion).
+Respond in the same language as the user's context (Hindi/Hinglish/English).`
+
+  try {
+    const res = await fetch(GROQ_URL.replace('/chat/completions', '/chat/completions'), {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',  // Llama 4 with vision
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text',      text: `${sysCtx}\n\nUser says: "${userContext || 'Analyze this image'}"` },
+            { type: 'image_url', image_url: { url: base64 } },
+          ],
+        }],
+        max_tokens: 600,
+        temperature: 0.6,
+      }),
+    })
+    if (!res.ok) throw new Error(`Vision API error ${res.status}`)
+    const data = await res.json() as { choices: { message: { content: string } }[] }
+    const reply = data.choices[0].message.content.trim()
+
+    // Show image thumbnail in chat
+    addMessage('user', `[Image: ${userContext || 'Scan this'}]`)
+    const cleanReply = executeCommands(reply)
+    respond(cleanReply)
+  } catch (e) {
+    console.error('[JARVIS vision]', e)
+    respond('Image scan failed. Please try again or describe what you see.')
+  }
+}
+
+// ── Dynamic DOM discovery + action ────────────────────────────────────────────
+
+/** Build a snapshot of all interactive elements on the page for the AI. */
+function buildDOMMap(): string {
+  const items: string[] = []
+  const seen = new Set<string>()
+
+  document.querySelectorAll(
+    'button:not([style*="display:none"]):not([style*="display: none"]), ' +
+    'a[href], input[type="button"], [data-act], select'
+  ).forEach(el => {
+    const id   = el.id ? `#${el.id}` : ''
+    const text = el.textContent?.trim().replace(/\s+/g,' ').slice(0, 40) ?? ''
+    const tag  = el.tagName.toLowerCase()
+    const key  = `${tag}${id}${text}`
+    if (!seen.has(key) && (id || text)) {
+      seen.add(key)
+      items.push(`${tag}${id}${text ? ` "${text}"` : ''}`)
+    }
+  })
+  return items.slice(0, 60).join('\n')
+}
+
+/** Execute a dynamic action from AI: <ACT>selector|action|value</ACT> */
+function executeDynamicAction(actStr: string): void {
+  try {
+    const [selector, action, value] = actStr.split('|').map(s => s.trim())
+    const el = document.querySelector(selector) as HTMLElement | null
+    if (!el) { console.warn('[JARVIS ACT] element not found:', selector); return }
+
+    switch (action) {
+      case 'click':   el.click(); break
+      case 'scroll':  el.scrollIntoView({ behavior: 'smooth', block: 'center' }); break
+      case 'fill':
+        if ((el as HTMLInputElement).value !== undefined) {
+          (el as HTMLInputElement).value = value ?? ''
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+        }
+        break
+      case 'focus':   el.focus(); break
+      case 'select':
+        if ((el as HTMLSelectElement).options) {
+          (el as HTMLSelectElement).value = value ?? ''
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+        }
+        break
+    }
+  } catch (e) { console.error('[JARVIS ACT]', e) }
 }
 
 function buildSystemPrompt(): string {
@@ -508,6 +727,19 @@ function buildSystemPrompt(): string {
     `Always embed command + explain what you're doing. Example:`,
     `"Chalo Om, aapka focus timer shuru karte hain! <CMD>{"action":"start_timer"}</CMD>"`,
     ``,
+    `DYNAMIC PAGE CONTROL — you can act on ANY element:`,
+    `Use <ACT>CSS_SELECTOR|action|value</ACT> where action = click|scroll|fill|select|focus`,
+    `Examples:`,
+    `  <ACT>#lp-import|click</ACT>  — opens Import Excel`,
+    `  <ACT>#rtn-day-type|select|Holiday</ACT>  — sets day type`,
+    `  <ACT>#jarvis-text|fill|Economics notes</ACT>  — fills input`,
+    `  <ACT>.lp-filter[data-f="today"]|click</ACT>  — switches to Today filter`,
+    `Current interactive elements on page:`,
+    buildDOMMap(),
+    ``,
+    `VISION — when user says "see this/scan/dekho/analyze image": you will receive image content.`,
+    `Analyze it in UPSC context: question papers, notes, diagrams, newspapers, Mains answers.`,
+    ``,
     `LANGUAGE — CRITICAL RULE:`,
     `• Detect the language Om uses in his message.`,
     `• If Hindi (Devanagari): reply fully in Hindi.`,
@@ -524,15 +756,18 @@ function buildSystemPrompt(): string {
 // ── App command execution ─────────────────────────────────────────────────────
 
 function executeCommands(reply: string): string {
+  // Parse <CMD>{"action":"..."}</CMD> — structured commands
   const cmdRegex = /<CMD>(.*?)<\/CMD>/g
-  const clean = reply.replace(cmdRegex, '').trim()
+  // Parse <ACT>selector|action|value</ACT> — dynamic DOM actions
+  const actRegex = /<ACT>(.*?)<\/ACT>/g
 
-  const matches = [...reply.matchAll(cmdRegex)]
-  for (const m of matches) {
-    try {
-      const cmd = JSON.parse(m[1]) as { action: string; section?: string }
-      runAppCommand(cmd)
-    } catch { /* invalid JSON */ }
+  let clean = reply.replace(cmdRegex, '').replace(actRegex, '').trim()
+
+  for (const m of [...reply.matchAll(cmdRegex)]) {
+    try { runAppCommand(JSON.parse(m[1]) as { action: string; section?: string; value?: string }) } catch { /* ignore */ }
+  }
+  for (const m of [...reply.matchAll(actRegex)]) {
+    executeDynamicAction(m[1])
   }
   return clean
 }

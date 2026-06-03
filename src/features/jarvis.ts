@@ -502,7 +502,7 @@ function speak(text: string): void {
 let _wakeRec: any = null
 
 function startWakeWord(): void {
-  if (_wakeRunning || _open) return
+  if (_wakeRunning || _open || _isSpeaking) return
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   if (!SR) return
@@ -510,22 +510,42 @@ function startWakeWord(): void {
   _wakeRunning = true
   const r = new SR()
   _wakeRec = r
-  r.continuous = true; r.lang = 'en-IN'; r.interimResults = true
+  // Single-shot: listen once for a short phrase, check for "Jarvis", restart if not heard.
+  // This is FAR more reliable than continuous — doesn't pick up ambient speech/TV/radio.
+  r.continuous      = false
+  r.lang            = 'en-IN'
+  r.interimResults  = false   // only FINAL results — no partial matches
+  r.maxAlternatives = 2
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onresult = (e: any) => {
     if (_isSpeaking) return
-    const t = Array.from(e.results as any[]).map((x: any) => x[0].transcript as string).join(' ').toLowerCase()
-    if (t.includes('jarvis')) {
-      _wakeRec?.stop(); _wakeRunning = false
+    // Check all alternatives for "jarvis"
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const heard = Array.from(e.results[0] as any[])
+      .map((alt: any) => (alt.transcript as string).toLowerCase())
+      .join(' ')
+
+    // Strict check: "jarvis" must be a recognisable word, not part of something else
+    if (heard.includes('jarvis') || heard.includes('jarbi') || heard.includes('jarwis')) {
+      _wakeRunning = false
       document.getElementById('jarvis-btn')?.classList.add('listening')
       setTimeout(() => document.getElementById('jarvis-btn')?.classList.remove('listening'), 500)
       if (!_open) { openPanel(); setTimeout(() => void startListening(), 700) }
       else void startListening()
     }
+    // If not jarvis, onend fires → restart
   }
-  r.onend = () => { _wakeRunning = false; if (!_isSpeaking && !_open) setTimeout(startWakeWord, 1200) }
-  r.onerror = () => { _wakeRunning = false; if (!_open) setTimeout(startWakeWord, 2000) }
-  try { r.start() } catch { _wakeRunning = false }
+
+  // Auto-restart after each session (continuous listening via restarts)
+  r.onend   = () => { _wakeRunning = false; if (!_isSpeaking && !_open) setTimeout(startWakeWord, 600) }
+  r.onerror = (err: any) => {
+    _wakeRunning = false
+    // network errors → longer pause; no-speech → quick restart
+    const delay = err.error === 'network' ? 5000 : 800
+    if (!_open) setTimeout(startWakeWord, delay)
+  }
+  try { r.start() } catch { _wakeRunning = false; setTimeout(startWakeWord, 3000) }
 }
 
 async function startClapWatch(): Promise<void> {

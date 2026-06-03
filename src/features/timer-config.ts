@@ -58,11 +58,12 @@ function setup(): void {
   function render(): void {
     const mm = String(Math.floor(remaining / 60)).padStart(2, '0')
     const ss = String(remaining % 60).padStart(2, '0')
-    timeEl!.textContent = `${mm}:${ss}`
-    modeEl!.textContent = mode === 'focus' ? 'Deep Focus' : mode === 'shortBreak' ? 'Short Break' : 'Long Break'
-    fg!.style.strokeDashoffset = String(C * (1 - (total - remaining) / total))
-    startBtn!.textContent = running ? 'Pause' : remaining < total ? 'Resume' : 'Start'
-    // Mirror running time on the national emblem stamp
+    if (timeEl) timeEl.textContent = `${mm}:${ss}`
+    if (modeEl) modeEl.textContent = mode === 'focus' ? 'Deep Focus' : mode === 'shortBreak' ? 'Short Break' : 'Long Break'
+    if (fg)     fg.style.strokeDashoffset = String(C * (1 - (total - remaining) / total))
+    // startBtn was replaced by a clone — find the ACTUAL visible button via live DOM query
+    const liveStart = card?.querySelector<HTMLButtonElement>('[data-act="start"]')
+    if (liveStart) liveStart.textContent = running ? 'Pause' : remaining < total ? 'Resume' : 'Start'
     if (running) emblemShowTimer(mm, ss); else emblemRestore()
   }
 
@@ -223,17 +224,20 @@ function setup(): void {
 
   applyMode('focus')   // initial render with configured time
 
-  // JARVIS can set a custom focus duration via this event
+  // JARVIS can set a custom focus duration and start immediately
   window.addEventListener('jarvis:set-timer', (e: Event) => {
     const detail = (e as CustomEvent<{ focus: number }>).detail
-    if (detail?.focus) {
-      cfg.focus = detail.focus
-      store()?.set('timerConfig', cfg)
-      // Reset to focus mode with new duration
-      if (iv) { clearInterval(iv!); iv = null }
-      running = false
-      applyMode('focus')
-    }
+    if (!detail?.focus) return
+    cfg.focus = detail.focus
+    store()?.set('timerConfig', cfg)
+    // Stop current timer, reset to new duration
+    if (iv) { clearInterval(iv!); iv = null }
+    running = false
+    applyMode('focus')
+    // Auto-start after a short render delay
+    setTimeout(() => {
+      if (!running) { running = true; iv = setInterval(tickDown, 1000); render() }
+    }, 200)
   })
 }
 

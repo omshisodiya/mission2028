@@ -13,11 +13,21 @@ let _page = 1                        // how many pages of PAGE_SIZE to show
 // Set by core-engine after CoreState is computed — no import needed
 let _subjectKws: string[]  = []
 let _todaySubject           = ''
+let _autoAdvanced           = false   // true when we show a future day (no study today)
+let _advancedDate           = ''      // the date we're showing instead of today
 
-/** Called by core-engine.ts after CoreState is computed. */
-export function setPlannerSubjectContext(subject: string, keywords: string[]): void {
-  _todaySubject = subject
-  _subjectKws   = keywords
+/** Called by core-engine.ts after CoreState is computed.
+ *  autoAdvanced=true means today had 0 hours — show the next day's schedule. */
+export function setPlannerSubjectContext(
+  subject: string,
+  keywords: string[],
+  autoAdvanced = false,
+  advancedDate = '',
+): void {
+  _todaySubject  = subject
+  _subjectKws    = keywords
+  _autoAdvanced  = autoAdvanced
+  _advancedDate  = advancedDate
   render()   // re-render immediately with new priority
 }
 let _mounted = false
@@ -203,12 +213,18 @@ function render(): void {
   const showing   = Math.min(_page * PAGE_SIZE, visible.length)
   const pageSlice = visible.slice(0, showing)
 
-  // Banner showing today's subject from routine
+  // Banner — shows today's subject, or "auto-advanced to next day" if no study today
   const banner = todaySubject && subjectKws.length
-    ? `<div class="lp-subject-banner">
-        <span class="mono muted" style="font-size:10px;letter-spacing:.12em;">TODAY'S SUBJECT</span>
-        <span style="color:var(--accent-ink);font-size:13px;font-weight:600;">${esc(todaySubject)}</span>
-       </div>`
+    ? _autoAdvanced
+      ? `<div class="lp-subject-banner" style="border-left-color:var(--warn);">
+          <span class="mono muted" style="font-size:10px;letter-spacing:.12em;">NO STUDY TODAY · AUTO-ADVANCED</span>
+          <span style="color:var(--warn);font-size:12px;">Showing ${_advancedDate} schedule — log hours to reset to today</span>
+          <span style="color:var(--accent-ink);font-size:13px;font-weight:600;">${esc(todaySubject)}</span>
+         </div>`
+      : `<div class="lp-subject-banner">
+          <span class="mono muted" style="font-size:10px;letter-spacing:.12em;">TODAY'S SUBJECT</span>
+          <span style="color:var(--accent-ink);font-size:13px;font-weight:600;">${esc(todaySubject)}</span>
+         </div>`
     : ''
 
   const rows = pageSlice.map(l => {

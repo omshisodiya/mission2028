@@ -4,6 +4,7 @@
  * No widget computes its own numbers. All reads go through CoreState.
  */
 import { computeCoreState, todayIST, type CoreState, type CoreInputs } from '../services/core'
+import { getSubject as getSubjectForDate } from '../services/routine'
 import { computePlan, DEFAULT_SETTINGS, type PlannerLecture } from '../services/planner'
 import { listRoutineDays } from '../data/repositories/routine'
 import { listScores } from '../data/repositories/scores'
@@ -73,6 +74,28 @@ export function onSessionComplete(minutes: number): void {
 
 export function getCurrentState(): CoreState | null { return _state }
 
+/** Compute subject for any date using the rotation rules. */
+function nextDaySubject(dateStr: string): string {
+  return getSubjectForDate(dateStr)
+}
+
+/** Convert a subject string to lecture-routing keywords. */
+function subjectToKeywords(subject: string): string[] {
+  const KEYWORD_MAP: Record<string, string> = {
+    'SJS':         'Polity',
+    'Geography':   'Geography',
+    'Environment': 'Environment',
+    'Medieval':    'History',
+    'Economy':     'Economy',
+    'Mathematics': 'Mathematics',
+  }
+  const found: string[] = []
+  for (const [kw, label] of Object.entries(KEYWORD_MAP)) {
+    if (subject.includes(kw)) { found.push(kw); if (label !== kw) found.push(label) }
+  }
+  return found
+}
+
 /** Extract subject keywords from today's subject string for lecture routing. */
 export function todaySubjectKeywords(): string[] {
   const subject = _state?.today.subject ?? ''
@@ -140,7 +163,21 @@ function bindWidgets(s: CoreState): void {
   safeRun('briefing',     () => bindBriefing(s))
   safeRun('autoTodos',    () => bindAutoTodos(s))
   safeRun('aiUpgrade',    () => upgradeAIPlannerInput(s))
-  safeRun('plannerCtx',   () => setPlannerSubjectContext(s.today.subject, todaySubjectKeywords()))
+  safeRun('plannerCtx',   () => {
+    const hoursToday = s.hours.byDay[s.today.date] ?? 0
+    if (hoursToday === 0) {
+      // No study today — advance the planner to show the NEXT day's schedule
+      const [y, m, d] = s.today.date.split('-').map(Number)
+      const nextDate   = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+      const nextSubj   = nextDaySubject(nextDate)
+      const nextKws    = subjectToKeywords(nextSubj)
+      const label      = new Date(Date.UTC(y, m - 1, d + 1))
+        .toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' })
+      setPlannerSubjectContext(nextSubj, nextKws, true, label)
+    } else {
+      setPlannerSubjectContext(s.today.subject, todaySubjectKeywords(), false, '')
+    }
+  })
 }
 
 // Headline metrics strip (in the routine section)

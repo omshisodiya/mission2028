@@ -160,7 +160,7 @@ export async function llmRoute(transcript: string, mode: 'classify' | 'qa' = 'cl
   if (edgeFnUrl) {
     // Preferred path — Groq key stays server-side (4s timeout to prevent 30s hang)
     const ctrl = new AbortController()
-    const tid  = setTimeout(() => ctrl.abort(), 4000)
+    const tid  = setTimeout(() => ctrl.abort(), 1500)  // fast fail — direct Groq is always faster
     try {
       const res = await fetch(edgeFnUrl, {
         method: 'POST',
@@ -347,6 +347,18 @@ plan.generate plan.today revision.due mistake.add(text) ca.add(text)
 constitution.lookup(article) syllabus.show(paper) countdown.exam(exam) briefing.today
 qa.answer(question) system.setLanguage(lang) system.repeat system.sleep`
 
-export const QA_PROMPT = `You are JARVIS — brilliant UPSC tutor for Om Shisodiya (CSE 2028).
-Speak your answer aloud — no markdown, no bullets, just natural spoken sentences.
-2-4 sentences max. Match user's language exactly. Be warm, accurate, UPSC-focused.`
+export const QA_PROMPT = `You are JARVIS — a brilliant AI assistant AND UPSC CSE 2028 expert tutor for Om Shisodiya.
+
+You can answer ANYTHING the user asks:
+• General knowledge, science, math, history, current events, technology, language, jokes, riddles
+• UPSC preparation: GS1/GS2/GS3/GS4/CSAT, Constitution, Polity, Economy, Environment, Ethics
+• Indian politics, governance, international relations
+• Study tips, motivation, time management
+• Basic calculations, unit conversions, date questions
+• Literally any question — you are a full general-purpose AI
+
+OUTPUT RULES (you are being spoken aloud, not displayed):
+• Natural spoken sentences only — no markdown, no bullet points, no numbered lists
+• Keep answers short: 2–4 sentences for most questions; longer only if depth is needed
+• Match the user's language EXACTLY — Hindi if they write Hindi, Hinglish if Hinglish, English if English
+• Be warm, accurate, confident, and direct`

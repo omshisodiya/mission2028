@@ -19,9 +19,10 @@ const VA = {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = 'llama-3.3-70b-versatile'
-const GROQ_KEY   = import.meta.env.VITE_GROQ_API_KEY as string | undefined
+const GROQ_URL      = 'https://api.groq.com/openai/v1/chat/completions'
+const GROQ_MODEL    = 'llama-3.3-70b-versatile'
+const GROQ_KEY      = import.meta.env.VITE_GROQ_API_KEY as string | undefined
+const GROQ_AVAILABLE = !!(import.meta.env.VITE_GROQ_API_KEY as string | undefined)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type JState    = 'idle' | 'listening' | 'thinking' | 'speaking'
@@ -908,7 +909,7 @@ async function executeIntent(transcript: string): Promise<void> {
       setStatus('Ready — say Jarvis or double clap')
       respond(offlineAnswer(transcript))
     }
-  }, 8000)
+  }, 15_000)  // 15s — enough for Edge Fn timeout (1.5s) + direct Groq (~2s)
 
   try {
     // ── Tier 1 + 2: route() tries local first, falls to Groq classification ──
@@ -917,6 +918,23 @@ async function executeIntent(transcript: string): Promise<void> {
 
     // Determine the language JARVIS should respond in
     const detectedLang = detectResponseLang(transcript)
+
+    // If const.article / const.search matched but user wants an explanation
+    // → promote to qa.answer so Groq gives a full spoken answer
+    const EXPLAIN_RE = /explain|batao|samjhao|tell.*me|kya.*hai|what.*is|ke.*baare|about|describe|meaning|matlab|definition|summarize/i
+    if ((result.intent === 'const.article' || result.intent === 'const.search') && EXPLAIN_RE.test(transcript)) {
+      result.intent = 'qa.answer'
+      result.params = { question: transcript }
+    }
+
+    // Promote mot.motivate + query intents that can be AI-enhanced to qa.answer
+    // when Groq is available — gives a richer personalised answer
+    // (keep as local dispatch if no key available)
+    const GROKABLE = new Set(['mot.motivate','syl.coverage','plan.behind','test.next'])
+    if (GROKABLE.has(result.intent) && GROQ_AVAILABLE) {
+      result.intent = 'qa.answer'
+      result.params = { question: transcript }
+    }
 
     if (result.intent === 'qa.answer') {
       // ── Tier 3: UPSC knowledge question → Groq llama-3.3-70b tutor mode ────
@@ -934,7 +952,17 @@ async function executeIntent(transcript: string): Promise<void> {
 
     // ── Dispatch classified intent to app action ─────────────────────────────
     const reply = await dispatchIntent(result)
-    respond(reply || offlineAnswer(transcript))
+    if (reply) { respond(reply); return }
+
+    // Intent matched but returned nothing → treat as general AI question
+    // (covers misclassified questions, general knowledge, math, jokes, anything)
+    if (GROQ_AVAILABLE) {
+      setStatus(detectedLang === 'hi' ? 'सोच रहा हूं…' : 'Thinking…')
+      const fallback = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
+      respond(fallback.answer?.trim() || offlineAnswer(transcript))
+    } else {
+      respond(offlineAnswer(transcript))
+    }
 
   } catch {
     clearTimeout(safetyTimer)
@@ -2351,7 +2379,7 @@ function buildPrompt(): string {
     `Do not dump statistics unless directly asked. Answer only what was asked.`,
     `Be brilliant, warm, and direct. You care deeply about Om achieving CSE 2028 selection.`,
     ``,
-    `SCOPE: UPSC GS1/GS2/GS3/GS4/CSAT, Constitution, current affairs, polity, history, geography, economics, environment, science, answer writing, Prelims MCQs, Mains essays, motivation.`,
+    `SCOPE: You are a FULL GENERAL-PURPOSE AI. Answer ANY question — general knowledge, science, math, jokes, current events, AND UPSC: GS1–4, CSAT, Constitution, polity, history, geography, economics, environment, science, motivation.`,
     ``,
     `APP COMMANDS — embed when you'd naturally trigger an action:`,
     `<CMD>{"action":"start_timer"}</CMD>  <CMD>{"action":"stop_timer"}</CMD>  <CMD>{"action":"reset_timer"}</CMD>`,

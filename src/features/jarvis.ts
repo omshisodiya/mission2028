@@ -365,7 +365,7 @@ function startAnimation(): void {
 
 async function startListening(): Promise<void> {
   if (_state === 'listening') return
-  setState('listening', 'Listening…')
+  setState('listening', 'सुन रहा हूँ… / Listening…')
 
   // Real microphone waveform via AudioContext
   try {
@@ -378,14 +378,16 @@ async function startListening(): Promise<void> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SR) { speak("Speech recognition isn't supported in this browser. Please type your question."); setState('idle', 'Type to ask'); return }
+  if (!SR) { speak("Speech recognition isn't supported. Please type."); setState('idle', 'Type to ask'); return }
 
   _recognition = new SR()
-  _recognition.lang = 'en-IN'
+  // Recognize Hindi + English + Hinglish — 'hi-IN' catches Devanagari and often Hinglish too
+  _recognition.lang = 'hi-IN'
   _recognition.interimResults = false
-  _recognition.maxAlternatives = 1
+  _recognition.maxAlternatives = 3  // try multiple interpretations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _recognition.onresult = (e: any) => {
+    // Pick best transcript across alternatives
     const text: string = e.results[0][0].transcript
     stopListening()
     processQuery(text)
@@ -494,17 +496,27 @@ function buildSystemPrompt(): string {
     `9. MATHEMATICS: Help with CSAT quant, reasoning, data interpretation`,
     `10. ESSAY WRITING: Help brainstorm, outline, and write UPSC essays`,
     ``,
-    `APP CONTROL — embed commands using <CMD>{"action":"..."}</CMD>:`,
-    `• start_timer: starts the focus timer`,
-    `• stop_timer: pauses the focus timer`,
-    `• lock_screen: locks the screen (PIN required to unlock)`,
-    `• skip_today: advances planner to tomorrow's schedule`,
-    `• open_add_score: opens the Add Score modal`,
-    `• open_settings: opens planner settings`,
-    `• scroll_to with section: engine | intel | routine | constitution | plan`,
-    `Example: "Starting your 25-minute focus block now. <CMD>{"action":"start_timer"}</CMD>"`,
+    `APP CONTROL — embed commands: <CMD>{"action":"ACTION","section":"...","value":"..."}</CMD>`,
+    `Timer: start_timer | stop_timer | reset_timer | skip_timer`,
+    `Navigation: scroll_to (section: engine|intel|routine|constitution|plan|hero) | open_menu | close_menu | go_home`,
+    `Lock: lock_screen`,
+    `Planner: skip_today | reset_today | filter_today | filter_backlog | filter_all | filter_done | open_import | add_lecture | generate_plan`,
+    `Logs: open_add_score | open_ca_log | open_answer_log`,
+    `Settings: open_settings | focus_mode | export_data`,
+    `Routine: set_day_type (value: College|Holiday|Leave|Test Day)`,
+    `Constitution: show_constitution`,
+    `Always embed command + explain what you're doing. Example:`,
+    `"Chalo Om, aapka focus timer shuru karte hain! <CMD>{"action":"start_timer"}</CMD>"`,
     ``,
-    `PERSONALITY: You are highly capable, concise, and motivating. Address him as "Om". For quick questions: 2-3 sentences. For explanations: be thorough and structured. Never say "I can't" — find a way to help. You are his personal UPSC tutor, strategist, and assistant rolled into one.`,
+    `LANGUAGE — CRITICAL RULE:`,
+    `• Detect the language Om uses in his message.`,
+    `• If Hindi (Devanagari): reply fully in Hindi.`,
+    `• If Hinglish (Roman Hindi mix): reply in Hinglish.`,
+    `• If English: reply in English.`,
+    `• Match his energy and language EXACTLY. Never switch language unless he does.`,
+    `• For UPSC terms (like 'Article', 'Directive Principles'), keep them in English even in Hindi responses.`,
+    ``,
+    `PERSONALITY: You are JARVIS — highly capable, concise, motivating. Address him as "Om" or "Commander". Never say "I can't" or "I don't know" — always find a way. You are his personal UPSC tutor, strategist, assistant, and command center — all in one.`,
   ]
   return parts.filter(Boolean).join('\n')
 }
@@ -525,23 +537,73 @@ function executeCommands(reply: string): string {
   return clean
 }
 
-function runAppCommand(cmd: { action: string; section?: string }): void {
+function runAppCommand(cmd: { action: string; section?: string; value?: string }): void {
+  const click = (id: string) => document.getElementById(id)?.click()
+  const q     = (sel: string) => document.querySelector<HTMLElement>(sel)?.click()
+
   switch (cmd.action) {
+    // ── Focus timer ──────────────────────────────────────────────────────────
     case 'start_timer':
-      (document.querySelector<HTMLButtonElement>('[data-act="start"]'))?.click(); break
     case 'stop_timer':
-    case 'pause_timer':
-      (document.querySelector<HTMLButtonElement>('[data-act="start"]'))?.click(); break
-    case 'lock_screen':
-      document.getElementById('lock-btn')?.click(); break
-    case 'skip_today':
-      document.getElementById('lp-skip-day')?.click(); break
-    case 'open_add_score':
-      document.getElementById('cm-add-score')?.click(); break
-    case 'open_settings':
-      document.getElementById('ai-settings-btn')?.click(); break
+    case 'pause_timer':    q('[data-act="start"]'); break
+    case 'reset_timer':    q('[data-act="reset"]'); break
+    case 'skip_timer':     q('[data-act="skip"]'); break
+
+    // ── Navigation ───────────────────────────────────────────────────────────
     case 'scroll_to':
-      document.getElementById(cmd.section ?? '')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break
+      document.getElementById(cmd.section ?? '')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break
+    case 'open_menu':
+      // Simulate tap on the emblem stamp to open command menu
+      document.getElementById('emblem-stamp')?.click(); break
+    case 'close_menu':
+      document.getElementById('menu-backdrop')?.click(); break
+    case 'go_home':
+      document.getElementById('hero')?.scrollIntoView({ behavior: 'smooth' }); break
+
+    // ── Screen lock ──────────────────────────────────────────────────────────
+    case 'lock_screen':    click('lock-btn'); break
+
+    // ── Planner ──────────────────────────────────────────────────────────────
+    case 'skip_today':     click('lp-skip-day'); break
+    case 'reset_today':    click('lp-skip-day'); break  // toggles back
+    case 'filter_today':   q('.lp-filter[data-f="today"]'); break
+    case 'filter_backlog': q('.lp-filter[data-f="backlog"]'); break
+    case 'filter_all':     q('.lp-filter[data-f="all"]'); break
+    case 'filter_done':    q('.lp-filter[data-f="done"]'); break
+    case 'open_import':    click('lp-import'); break
+    case 'add_lecture':    click('lp-add'); break
+
+    // ── Generate plan ────────────────────────────────────────────────────────
+    case 'generate_plan':  click('ai-gen'); break
+    case 'open_settings':  click('ai-settings-btn'); break
+
+    // ── Scores & logs ────────────────────────────────────────────────────────
+    case 'open_add_score': click('cm-add-score'); break
+    case 'open_ca_log':    click('ca-add-btn'); break
+    case 'open_answer_log':click('al-add-btn'); break
+
+    // ── Focus mode ───────────────────────────────────────────────────────────
+    case 'focus_mode':
+    case 'toggle_focus':   click('focus-mode-btn'); break
+
+    // ── Export ───────────────────────────────────────────────────────────────
+    case 'export_data':    click('cm-export-btn'); break
+
+    // ── Routine day type ─────────────────────────────────────────────────────
+    case 'set_day_type': {
+      const sel = document.getElementById('rtn-day-type') as HTMLSelectElement | null
+      if (sel && cmd.value) {
+        sel.value = cmd.value
+        sel.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      break
+    }
+
+    // ── Constitution (scroll to) ─────────────────────────────────────────────
+    case 'show_constitution':
+      document.getElementById('constitution')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break
   }
 }
 
@@ -563,15 +625,26 @@ function handleOffline(q: string): string {
 function speak(text: string): void {
   _synth.cancel()
   const utt = new SpeechSynthesisUtterance(text)
-  utt.rate  = 1.05
-  utt.pitch = 0.95
+  utt.rate   = 1.05
+  utt.pitch  = 0.95
   utt.volume = 1
-  // Prefer a calm, English (India) voice
+
   const voices = _synth.getVoices()
-  const preferred = voices.find(v => v.lang === 'en-IN') ?? voices.find(v => v.lang.startsWith('en'))
-  if (preferred) utt.voice = preferred
-  utt.onstart = () => setState('speaking', 'Speaking…')
-  utt.onend   = () => setState('idle', 'Ready — say something or type')
+
+  // Detect language from content (Hindi Devanagari chars in Unicode range)
+  const isHindi = /[ऀ-ॿ]/.test(text)
+  if (isHindi) {
+    utt.lang = 'hi-IN'
+    const hiVoice = voices.find(v => v.lang === 'hi-IN')
+    if (hiVoice) utt.voice = hiVoice
+  } else {
+    utt.lang = 'en-IN'
+    const enVoice = voices.find(v => v.lang === 'en-IN') ?? voices.find(v => v.lang.startsWith('en'))
+    if (enVoice) utt.voice = enVoice
+  }
+
+  utt.onstart = () => setState('speaking', isHindi ? 'बोल रहा हूँ…' : 'Speaking…')
+  utt.onend   = () => setState('idle', 'Ready — Jarvis बोलें या type करें')
   _synth.speak(utt)
 }
 

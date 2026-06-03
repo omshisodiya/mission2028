@@ -439,61 +439,113 @@ function startAura(): void {
   frame()
 }
 
-// ── Listening ─────────────────────────────────────────────────────────────────
+// ── Listening — continuous recognition so the full command is heard ───────────
+// WHY continuous=true: with continuous=false the browser fires onresult on every
+// brief pause, so "start" fires processQuery before "timer" is spoken, causing
+// flickering and partial command execution.
 async function startListening(): Promise<void> {
-  if (_state === 'listening') return   // already listening — don't double-start
-  if (_isSpeaking) { wakeAndListen(); return }  // defer until speaking ends
-  setStatus('🎙 Listening…'); setState('listening')
+  if (_state === 'listening') return
+  if (_isSpeaking) { wakeAndListen(); return }
+
+  setStatus('🎙 Listening — speak your command…')
+  setState('listening')
   VA.setState('listening')
   document.getElementById('jp-mic')?.classList.add('active')
   document.getElementById('jarvis-btn')?.classList.add('listening')
 
+  // Waveform analyser (optional — mic recognition works without it)
   try {
     const ms = await navigator.mediaDevices.getUserMedia({ audio: true })
-    _micStream = ms; _audioCtx = new AudioContext()
-    _analyser = _audioCtx.createAnalyser(); _analyser.fftSize = 64
+    _micStream = ms
+    _audioCtx  = new AudioContext()
+    _analyser  = _audioCtx.createAnalyser(); _analyser.fftSize = 64
     _audioCtx.createMediaStreamSource(ms).connect(_analyser)
-  } catch { /* no waveform, still try recognition */ }
+  } catch { /* no waveform — recognition still works */ }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SR) { speak('Speech recognition not available. Please type.'); return }
+  if (!SR) {
+    speak('Voice recognition is not available in this browser. Please use Chrome and type your commands.')
+    stopListening()
+    return
+  }
 
-  let got = false
-  // Primary = user's chosen language, secondary = the other language as fallback
-  const secondary = _lang === 'hi-IN' ? 'en-IN' : 'hi-IN'
+  const r = new SR()
+  _rec = r
+  r.lang             = _lang
+  r.continuous       = true   // keeps mic open for multi-word commands
+  r.interimResults   = true   // shows transcript in real time while user speaks
+  r.maxAlternatives  = 1
 
-  function tryLang(lang: string, fallback = false): void {
-    const r = new SR(); _rec = r
-    r.lang = lang; r.interimResults = false; r.maxAlternatives = 5
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    r.onresult = (e: any) => {
-      if (got) return; got = true
-      const alts: string[] = []
-      for (let j=0; j<Math.min(e.results[0].length,5); j++)
-        alts.push((e.results[0][j].transcript as string).trim())
-      // Prefer alternative that carries a parseable number (timer commands)
-      let best = alts[0] ?? ''
-      for (const alt of alts) { if (parseSpokenMinutes(alt) !== null) { best = alt; break } }
-      VA.setTranscript(best, false)   // show what was heard while thinking
-      stopListening(); void processQuery(best)
-    }
-    r.onerror = (err: unknown) => {
-      if (!got && !fallback) { tryLang(secondary, true); return }
-      if (!got) {
-        stopListening()
-        VA.setState('idle'); setState('idle')
-        const isPermission = err && typeof err === 'object' && 'error' in err && (err as {error:string}).error === 'not-allowed'
-        setStatus(isPermission ? 'Mic permission denied — please type.' : 'Could not hear you. Try again or type.')
+  let accumulated  = ''   // builds up the full command from interim results
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null
+  let committed    = false  // true once we've sent to processQuery
+
+  const commit = (text: string) => {
+    if (committed || !text.trim()) return
+    committed = true
+    if (silenceTimer) clearTimeout(silenceTimer)
+    const final = text.trim()
+    stopListening()
+    VA.setTranscript(final, false)
+    void processQuery(final)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  r.onresult = (e: any) => {
+    if (committed) return
+    let interim = ''
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const seg = (e.results[i][0].transcript as string).trim()
+      if (e.results[i].isFinal) {
+        accumulated += (accumulated ? ' ' : '') + seg
+      } else {
+        interim = seg
       }
     }
-    r.onend = () => {
-      if (!got && !fallback) { tryLang(secondary, true); return }
-      if (!got) { VA.setState('idle'); setState('idle'); setStatus('Ready — say Jarvis or double clap') }
+    const display = (accumulated + (interim ? ' ' + interim : '')).trim()
+    if (display) VA.setTranscript(display, false)
+
+    // If browser gave us a final segment, reset the silence timer
+    if (accumulated) {
+      if (silenceTimer) clearTimeout(silenceTimer)
+      // Wait 1.4s for user to continue — if silent, commit the command
+      silenceTimer = setTimeout(() => commit(accumulated), 1400)
     }
-    try { r.start() } catch { if (!fallback) tryLang(secondary, true) }
   }
-  tryLang(_lang)   // start with user's preferred language; falls back to secondary on error
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  r.onerror = (e: any) => {
+    if (committed) return
+    if (silenceTimer) clearTimeout(silenceTimer)
+    stopListening()
+    VA.setState('idle'); setState('idle')
+    if (e?.error === 'not-allowed') {
+      setStatus('Microphone access blocked. Allow mic permission and reload.')
+    } else if (e?.error === 'network') {
+      setStatus('Network error — check your connection.')
+    } else {
+      setStatus('Tap 🎙 to try again, or type your command.')
+    }
+  }
+
+  r.onend = () => {
+    if (committed) return
+    if (silenceTimer) clearTimeout(silenceTimer)
+    // Ended before we got a result — try to commit what we have
+    if (accumulated) { commit(accumulated); return }
+    stopListening()
+    VA.setState('idle'); setState('idle')
+    setStatus('Tap 🎙 or say "Jarvis" to wake me.')
+  }
+
+  try {
+    r.start()
+  } catch {
+    stopListening()
+    VA.setState('idle'); setState('idle')
+    setStatus('Could not access microphone.')
+  }
 }
 
 function stopListening(): void {
@@ -502,6 +554,7 @@ function stopListening(): void {
   _audioCtx?.close(); _audioCtx = null; _analyser = null
   document.getElementById('jp-mic')?.classList.remove('active')
   document.getElementById('jarvis-btn')?.classList.remove('listening')
+  if (_state === 'listening') setState('thinking')
   if (VA.state === 'listening') VA.setState('thinking')
 }
 

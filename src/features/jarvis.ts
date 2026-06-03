@@ -299,10 +299,11 @@ function togglePanel(): void {
   if (_open) { closePanel() } else { _everActivated = true; openPanel() }
 }
 
-function openPanel(): void {
+/** Open the panel. Pass greet=false when waking via wake word so we start
+ *  listening immediately instead of blocking for 5-10 seconds of greeting. */
+function openPanel(greet = true): void {
   if (_open) return
   _open = true
-  // Aurora stays at ambient idle — only activates on actual voice
 
   const p = document.createElement('div')
   p.id = 'jarvis-panel'
@@ -314,7 +315,7 @@ function openPanel(): void {
         <button id="jp-close" class="jp-close">✕</button>
       </div>
     </div>
-    <div class="jp-status" id="jp-status">Ready — say "Jarvis" or double-clap</div>
+    <div class="jp-status" id="jp-status">Listening…</div>
     <div class="jp-chat" id="jp-chat"></div>
     <div class="jp-input-row">
       <button id="jp-mic" class="jp-mic-btn" title="Tap to speak">🎙</button>
@@ -334,7 +335,16 @@ function openPanel(): void {
   document.getElementById('jp-send')?.addEventListener('click', () => sendText(inp))
   inp.addEventListener('keydown', e => { if (e.key === 'Enter') sendText(inp) })
 
-  setTimeout(() => greet(), 400)
+  if (greet) setTimeout(() => greetFull(), 400)
+}
+
+/** Poll until JARVIS is not speaking, then start the microphone.
+ *  Used after wake word so the mic opens as soon as the cue tone finishes. */
+function wakeAndListen(tries = 0): void {
+  if (!_open) return
+  if (_isSpeaking && tries < 30) { setTimeout(() => wakeAndListen(tries + 1), 150); return }
+  if (_state === 'listening') return   // already listening
+  void startListening()
 }
 
 function closePanel(): void {
@@ -431,7 +441,8 @@ function startAura(): void {
 
 // ── Listening ─────────────────────────────────────────────────────────────────
 async function startListening(): Promise<void> {
-  if (_state === 'listening' || _isSpeaking) return
+  if (_state === 'listening') return   // already listening — don't double-start
+  if (_isSpeaking) { wakeAndListen(); return }  // defer until speaking ends
   setStatus('🎙 Listening…'); setState('listening')
   VA.setState('listening')
   document.getElementById('jp-mic')?.classList.add('active')
@@ -608,12 +619,12 @@ async function processQuery(text: string): Promise<void> {
   }
 
   // 6. Full status / report
-  if (/how.*doing|status report|status batao|kaisa.*ja|progress|meri report|full status|briefing/i.test(tl)) {
+  if (/how.*doing|status.*report|status batao|kaisa.*ja|progress|meri report|full status|briefing|overview|summary/i.test(tl)) {
     addMsg('user', text); respond(buildStatusReport()); return
   }
 
   // 7. Today's plan / what to study
-  if (/aaj.*plan|today.*plan|what.*study|kya.*padhna|plan.*today|what.*pending|kya.*pending|aaj.*kya|pending.*aaj/i.test(tl)) {
+  if (/aaj.*plan|today.*plan|what.*study|kya.*padhna|plan.*today|what.*pending|kya.*pending|aaj.*kya|pending.*aaj|schedule|what.*do.*today|today.*what|aaj.*ka.*kaam|agenda/i.test(tl)) {
     addMsg('user', text); respond(buildTodayReport()); return
   }
 
@@ -1967,12 +1978,21 @@ function execCommands(reply: string): string {
 
 function offlineAnswer(t: string): string {
   const cs  = getCurrentState(), tl = t.toLowerCase()
-  if (/backlog|lecture|left|baki/i.test(tl)) return `${cs?.backlogRemaining??'?'} lectures remaining.`
-  if (/streak|consecutive/i.test(tl))         return `${cs?.streak??0}-day streak.`
-  if (/subject|today|aaj/i.test(tl))          return `Today: ${cs?.today?.subject??'—'}.`
-  if (/rank|select|probability/i.test(tl))    return `SP ${cs?.selectionProbabilityPct?.toFixed(1)??'--'}%.`
-  if (/motivat|inspire|tired|thak/i.test(tl)) return motivationLine()
-  return 'Add VITE_GROQ_API_KEY for full AI. Basic commands and status work offline.'
+  // Data-driven answers — work without any API key
+  if (/backlog|lecture|left|baki|pending/i.test(tl)) return `${cs?.backlogRemaining??'?'} lectures remaining in your backlog.`
+  if (/streak|consecutive|din.*padha/i.test(tl))     return `${cs?.streak??0}-day streak. Keep it going!`
+  if (/subject|today|aaj.*kya|kya.*aaj/i.test(tl))  return `Today: ${cs?.today?.subject??'—'}.`
+  if (/rank|select|probability|sp/i.test(tl))        return `Selection probability: ${cs?.selectionProbabilityPct?.toFixed(1)??'--'}%.`
+  if (/motivat|inspire|tired|thak|himmat/i.test(tl)) return motivationLine()
+  if (/status|report|briefing|how.*doing/i.test(tl)) return buildStatusReport()
+  if (/plan|schedule|today.*plan|kya.*padhna/i.test(tl)) return buildTodayReport()
+  if (/tip|advice|suggestion/i.test(tl))             return studyTip()
+  if (/time.*left|kitna.*time|timer.*remaining/i.test(tl)) {
+    const el = document.querySelector<HTMLElement>('.ring-time')
+    return el?.textContent ? `${el.textContent} remaining on the timer.` : 'Timer is not running.'
+  }
+  // Groq not configured — helpful message (not a config error message)
+  return "I can handle commands like 'start timer', 'show plan', 'add score', 'quiz me on Polity', and all UPSC topics. What do you need?"
 }
 
 // ── Speech output — male voice ────────────────────────────────────────────────
@@ -2066,16 +2086,17 @@ function startWakeWord(): void {
       addMsg('user', command)
       void executeIntent(command)
     } else {
-      // "Jarvis" alone:
-      // • If assistant is currently active (panel open or overlay on) → dismiss/close
-      // • If sleeping → wake up and listen
-      if (_open || VA.state !== 'idle') {
-        closePanel()   // sets VA.setState('idle') internally
+      // "Jarvis" alone: always activate listening — never close the panel.
+      // Use Case A: panel closed → open (no greeting) + listen
+      // Use Case B: panel open already → just listen again (user wants to give another command)
+      _everActivated = true
+      if (!_open) {
+        openPanel(false)   // open WITHOUT greeting so mic starts immediately
+        greetWake()        // tiny cue "Yes?" (~400ms)
       } else {
-        _everActivated = true
-        openPanel()
-        setTimeout(() => void startListening(), 700)
+        greetWake()        // tiny cue even when panel already open
       }
+      wakeAndListen()      // polls until cue finishes, then starts mic
     }
   }
 
@@ -2209,8 +2230,9 @@ async function runCalibration(): Promise<void> {
 }
 
 // ── Greeting ──────────────────────────────────────────────────────────────────
-function greet(): void {
-  // Use morning brief if first open of day, otherwise simple greeting
+
+/** Full greeting for manual panel open — morning brief or time-of-day line. */
+function greetFull(): void {
   const alreadyGreeted = localStorage.getItem('jarvis_morning') === _TODAY
   if (!alreadyGreeted) {
     const cs = getCurrentState()
@@ -2220,8 +2242,13 @@ function greet(): void {
     return
   }
   const h = parseInt(new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'numeric',hour12:false}))
-  const line = h<12 ? 'Good morning, Om. What\'s on the agenda?' : h<17 ? 'Good afternoon, Om. How can I help?' : 'Good evening, Om. What do you need?'
-  respond(line)
+  respond(h<12 ? "Good morning, Om. What do you need?" : h<17 ? "Good afternoon, Om. Go ahead." : "Good evening, Om. What's up?")
+}
+
+/** Short 1-word cue for wake-word activation — mic opens immediately after this. */
+function greetWake(): void {
+  setStatus('Listening…')
+  speak('Yes?')   // 1 word, <400ms — mic opens as soon as it finishes
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

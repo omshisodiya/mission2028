@@ -8,6 +8,17 @@ import { getCurrentState } from './core-engine'
 import { todayIST } from '../services/core'
 import { isVisionTrigger, openVisionCapture } from './jarvis-vision'
 import { route, llmRoute, detectLang, type RouterResult } from './jarvis-router'
+import {
+  logGap, lookupGeneratedCap, executeCapability, generateCapabilityFromGap,
+  startEvolutionLoop, getEvolutionReport, decomposeAndExecute, creativesolve,
+  loadGaps, loadCaps,
+} from './jarvis-evolution'
+import {
+  findElement, clickElement as domClick, fillElement as domFill, readElement,
+  readSection, readAllSections, mapAllInteractiveElements,
+  scrollToAndHighlight, fillRoutineFromVoice, getTimerState, setTimerDuration,
+  startDOMMonitor, onDOMEvent,
+} from './jarvis-dom-control'
 // VA overlay lives in index.html as inline script — access via window.VA
 type _VAGlobal = { setState(s:string):void; setAmplitude(v:number):void; setTranscript(t:string,f:boolean):void; readonly state:string }
 const _w = window as Window & { VA?: _VAGlobal }
@@ -563,6 +574,28 @@ export function initJarvis(): void {
     startProactiveEngine()
     startAppSync()
     void requestNotifPermission()  // ask once for browser notifications
+
+    // Self-evolution + DOM control systems
+    startEvolutionLoop(respond)    // background capability generation
+    startDOMMonitor()              // watch DOM for state changes
+
+    // React to DOM events for smarter awareness
+    onDOMEvent((evt, detail) => {
+      if (evt === 'timer-started' && _open) {
+        const lang = detectResponseLang('')
+        const { remaining } = getTimerState()
+        if (_ambientMode === 'off')
+          setTimeout(() => speak(L(lang, `Session started. ${remaining} to go.`, `Session शुरू। ${remaining} बचा।`, `Session shuru. ${remaining} bacha.`)), 300)
+      }
+      if (evt === 'lecture-checked') {
+        const d = detail as { title?: string }
+        if (d?.title) {
+          checkMilestones()
+          if (_open) setTimeout(() => speak(celebrationLine()), 200)
+        }
+      }
+    })
+
     // Heartbeat: restart wake word if it silently dies every 15 seconds
     setInterval(() => {
       if (_jarvisEnabled && !_wakeRunning && !_isSpeaking && !_sleeping) startWakeWord()
@@ -2227,9 +2260,60 @@ async function processQuery(text: string): Promise<void> {
     }
   }
 
-  // 19. Intent router + AI fallback (covers all unmatched commands + UPSC Q&A)
+  // 19. Check generated capabilities (self-evolved commands)
+  const genCap = lookupGeneratedCap(tl)
+  if (genCap) {
+    addMsg('user', text)
+    const result = executeCapability(genCap)
+    if (result.ok) {
+      respond(L(detectResponseLang(text),
+        `Done via evolved capability: ${genCap.description}`,
+        `Evolved capability से किया: ${genCap.description}`,
+        `Evolved capability: ${genCap.description}`
+      ))
+      return
+    }
+  }
+
+  // 20. Multi-step decomposition — if the request sounds complex and multi-part
+  if (/and (then|also)|after that|then (open|show|set|start|mark|add)|phir (bhi|se|dikhao|shuru)/i.test(tl) &&
+      tl.split(/\s+/).length > 8) {
+    addMsg('user', text)
+    void decomposeAndExecute(text, respond, async (subtask) => {
+      await processQuery(subtask)
+    })
+    return
+  }
+
+  // 21. Intent router + AI fallback (covers all unmatched commands + UPSC Q&A)
+  // Tier 5: if everything else fails, log as a gap and attempt self-evolution
   addMsg('user', text)
-  void executeIntent(text)   // executeIntent sets its own thinking state
+  void executeIntentWithEvolution(text)
+}
+
+async function executeIntentWithEvolution(text: string): Promise<void> {
+  // First try the standard intent pipeline
+  await executeIntent(text)
+
+  // If JARVIS gave a generic offline answer, the intent wasn't handled —
+  // log it as a gap and attempt to generate a new capability
+  if (_lastReply && /I handle timer|Main timer|sambhalta hoon/i.test(_lastReply)) {
+    logGap(text)
+    const gaps = loadGaps()
+    const thisGap = gaps.find(g => g.query === text.toLowerCase().trim().slice(0, 200))
+    if (thisGap && thisGap.count >= 2 && !thisGap.attempted && GROQ_AVAILABLE) {
+      const cap = await generateCapabilityFromGap(thisGap, respond)
+      if (cap) {
+        const result = executeCapability(cap)
+        if (result.ok) respond(`Executed new capability: ${cap.description}`)
+      } else {
+        // Last resort: creative solver
+        const ctx = buildPersonalContext()
+        const creative = await creativesolve(text, ctx, respond)
+        if (creative) respond(creative)
+      }
+    }
+  }
 }
 
 // ── Intent router → action registry ──────────────────────────────────────────
@@ -4224,6 +4308,47 @@ const CMDS: Cmd[] = [
   // ════════════════════════════════════════════════════════════════════════════
   // COMMAND BANK v10 — Self-Learning & Full Website Control
   // ════════════════════════════════════════════════════════════════════════════
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v11 — Full DOM Control + Evolution + Genius Mode
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── FULL DOM CONTROL: Read anything ──────────────────────────────────────
+  { re: /read.*entire.*page|read.*everything.*visible|full.*page.*report|what.*page.*say/i,  action: () => { const snaps=readAllSections(); const lines=snaps.filter(s=>s.visible).map(s=>`${s.id}: ${Object.values(s.stats).join(', ')||s.text.slice(0,2).join(' | ')}`); respond(lines.length?lines.join(' | '):'No visible sections detected.') }, reply: '' },
+  { re: /read.*routine.*section|routine.*data.*all|all.*routine.*values/i,                  action: () => { const s=readSection('routine-section'); const i=Object.entries(s.inputs).map(([k,v])=>`${k}=${v}`).join(', '); respond(i||s.text.slice(0,3).join(' | ')||'Routine section not visible or empty.') }, reply: '' },
+  { re: /read.*planner.*section|planner.*data.*all|all.*planner.*values/i,                  action: () => { const s=readSection('plan'); respond(`Planner: ${s.text.slice(0,4).join(' | ')||'No lectures visible'}`) }, reply: '' },
+  { re: /what.*buttons.*visible|show.*all.*controls|map.*all.*elements/i,                   action: () => { const els=mapAllInteractiveElements().slice(0,10); respond(`Visible controls: ${els.map(e=>`${e.type}:${e.text||e.id}`).join(', ')}`) }, reply: '' },
+  { re: /timer.*exact.*state|timer.*full.*status|exact.*timer.*info/i,                      action: () => { const s=getTimerState(); respond(`Timer: ${s.running?'running':'stopped'}, ${s.remaining} remaining${s.session?`, session ${s.session}`:''}.`) }, reply: '' },
+
+  // ── FULL DOM CONTROL: Fill routine directly by voice ─────────────────────
+  { re: /set.*study.*hours.*(\d+(?:\.\d+)?)|study.*hours.*set.*(\d+(?:\.\d+)?)|log.*(\d+(?:\.\d+)?).*hours/i, action: () => { const m=_lastUserQuery.match(/(\d+(?:\.\d+)?)\s*(?:hours?|ghante|hr)/i); if(m){fillRoutineFromVoice({hours:parseFloat(m[1])}); respond(`Study hours set to ${m[1]}h and saved.`)} }, reply: '' },
+  { re: /set.*mains.*(\d+)|mains.*written.*(\d+)|log.*(\d+).*mains/i,                      action: () => { const m=_lastUserQuery.match(/(\d+)\s*(?:mains|answer|ans)/i); if(m){fillRoutineFromVoice({mains:parseInt(m[1])}); respond(`Mains written set to ${m[1]}.`)} }, reply: '' },
+  { re: /set.*attempted.*(\d+)|attempted.*(\d+)|log.*(\d+).*attempted/i,                   action: () => { const m=_lastUserQuery.match(/(\d+)\s*(?:attempted|questions?|ques)/i); if(m){fillRoutineFromVoice({attempted:parseInt(m[1])}); respond(`Attempted set to ${m[1]}.`)} }, reply: '' },
+  { re: /set.*correct.*(\d+)|correct.*(\d+)|log.*(\d+).*correct/i,                         action: () => { const m=_lastUserQuery.match(/(\d+)\s*correct/i); if(m){fillRoutineFromVoice({correct:parseInt(m[1])}); respond(`Correct answers set to ${m[1]}.`)} }, reply: '' },
+  { re: /highlight.*section|flash.*section|point.*to.*section/i,                            action: () => { const m=_lastUserQuery.match(/(?:highlight|flash|point.*to)\s+(\w+)/i); if(m){scrollToAndHighlight(m[1]); respond(`Highlighting ${m[1]} section.`)} }, reply: '' },
+  { re: /click.*button\s+(.+)|press.*button\s+(.+)|tap.*button\s+(.+)/i,                   action: () => { const m=_lastUserQuery.match(/(?:click|press|tap)\s+(?:button\s+)?(.+)/i); if(m){const ok=domClick(m[1].trim()); respond(ok?`Clicked "${m[1].trim()}".`:`Button "${m[1].trim()}" not found.`)} }, reply: '' },
+  { re: /fill.*field\s+(.+)\s+with\s+(.+)|set.*field\s+(.+)\s+to\s+(.+)/i,               action: () => { const m=_lastUserQuery.match(/(?:fill|set)\s+(?:field\s+)?(.+?)\s+(?:with|to)\s+(.+)/i); if(m){const ok=domFill(m[1].trim(),m[2].trim()); respond(ok?`Filled "${m[1].trim()}" with "${m[2].trim()}".`:`Field "${m[1].trim()}" not found.`)} }, reply: '' },
+
+  // ── SELF-EVOLUTION: Stats, Reports, Control ───────────────────────────────
+  { re: /evolution.*report|self.*evolution.*status|jarvis.*grew.*how|how.*evolving/i,       action: () => { const r=getEvolutionReport(); respond(`Evolution status: ${r.capsTotal} capabilities generated (${r.capsHighConf} high confidence), ${r.gapsTotal} gaps tracked (${r.gapsAttempted} resolved). ${r.topGaps.length?'Top gaps: '+r.topGaps.slice(0,2).join(', '):'All major gaps resolved.'} Last auto-run: ${r.lastRun.slice(0,10)}.`) }, reply: '' },
+  { re: /what.*new.*capabilities|generated.*capabilities.*list|jarvis.*new.*skills/i,       action: () => { const r=getEvolutionReport(); respond(r.recentCaps.length?`Recently evolved: ${r.recentCaps.join(', ')}.`:'No capabilities generated yet. Use me more and I will evolve.') }, reply: '' },
+  { re: /evolve.*now|force.*evolution|generate.*capabilities.*now|jarvis.*learn.*now/i,     action: () => { const gaps=loadGaps().filter(g=>!g.attempted).slice(0,3); if(!gaps.length){respond('No gaps to resolve right now. Keep asking me new things!');return;} respond(`Starting evolution cycle for ${gaps.length} gaps…`); gaps.forEach((g,i)=>setTimeout(async()=>{const cap=await generateCapabilityFromGap(g,respond); if(cap) respond(`✓ New skill: ${cap.description}`)},i*3000)) }, reply: '' },
+  { re: /what.*cant.*you.*do|jarvis.*limitations.*full|capability.*gaps/i,                  action: () => { const gaps=loadGaps().filter(g=>!g.attempted).slice(0,5); respond(gaps.length?`Known gaps (working to solve): ${gaps.map(g=>g.query.slice(0,40)).join('; ')}. Say "evolve now" to trigger capability generation.`:'No known gaps right now. I can handle everything you have asked!') }, reply: '' },
+  { re: /teach.*jarvis.*to.*(.+)|jarvis.*learn.*how.*to.*(.+)|train.*jarvis.*(.+)/i,       action: () => { const m=_lastUserQuery.match(/(?:teach|learn how to|train jarvis)\s+(?:to\s+)?(.+)/i); if(m){const gap={query:m[1].trim(),count:3,lastAt:new Date().toISOString(),category:'action',attempted:false}; void generateCapabilityFromGap(gap,respond)} else respond('Tell me what to learn: "Teach JARVIS to [task]"') }, reply: '' },
+
+  // ── GENIUS MODE: Chain-of-thought, creative solving, deep reasoning ────────
+  { re: /genius.*mode|deep.*think|think.*hard|chain.*of.*thought|step.*by.*step.*reasoning/i, action: () => { respond('Genius mode: I will now reason step by step before answering. Ask your hardest question.'); _ttsSpeed = 'slow' }, reply: '' },
+  { re: /creative.*solution.*for|solve.*creatively|think.*outside.*box.*for|unconventional.*approach/i, action: () => { const topic=_lastUserQuery.replace(/creative.*solution.*for|solve.*creatively|think.*outside.*box.*for|unconventional.*approach/gi,'').trim(); if(topic&&GROQ_AVAILABLE) void executeIntent(`Think like the most creative genius in the world. Give one completely unconventional, unexpected approach to: "${topic}". Must be specific and actionable for a UPSC aspirant. No conventional advice.`) }, reply: '' },
+  { re: /best.*strategy.*for.*upsc|most.*intelligent.*approach.*upsc|genius.*plan.*upsc/i, action: () => { const cs=getCurrentState(); if(GROQ_AVAILABLE) void executeIntent(`Design the most intelligent, creative, evidence-based UPSC preparation strategy for someone with: ${cs?.streak??0} day streak, ${cs?.performance?.prelimsAvg?.toFixed(1)??'?'}% prelims avg, ${cs?.backlogRemaining??'?'} lectures left, exam in 2028. Think like the top 0.1% coach in India. Be specific, unexpected, brilliant.`) }, reply: '' },
+  { re: /analyze.*my.*preparation.*deeply|deep.*analysis.*my.*prep|comprehensive.*prep.*analysis/i, action: () => { const cs=getCurrentState(); const done=document.querySelectorAll('#plan .plan-row.done').length; const tot=document.querySelectorAll('#plan .plan-row').length; if(GROQ_AVAILABLE) void executeIntent(`Deep analysis for Om Shisodiya (UPSC 2028): coverage ${done}/${tot} lectures, avg ${cs?.performance?.prelimsAvg?.toFixed(1)??'?'}%, streak ${cs?.streak??0} days, SP ${cs?.selectionProbabilityPct?.toFixed(1)??'?'}%. Give a 3-point honest coaching assessment: biggest strength, biggest gap, one action that will have 10x impact. Be brutally honest and creative.`) }, reply: '' },
+  { re: /what.*would.*topper.*do|how.*would.*rank.*1.*study|topper.*strategy|air.*1.*method/i, action: () => { if(GROQ_AVAILABLE) void executeIntent('Based on patterns from UPSC rank 1 holders over the last 10 years, what are the 3 most counterintuitive, non-obvious things they did that typical aspirants miss? Be specific, not generic. Think like you are coaching someone to definitely clear.') }, reply: '' },
+
+  // ── DOMAIN MASTERY: Advanced UPSC intelligence ────────────────────────────
+  { re: /connect.*polity.*economy|polity.*economy.*link|interdependence.*polity.*economy/i, action: () => { if(GROQ_AVAILABLE) void executeIntent('Give 3 unexpected, creative connections between Indian Polity and Economy that would impress a UPSC examiner. Each connection should link a constitutional provision to an economic outcome with a real example. No standard textbook links.') }, reply: '' },
+  { re: /predict.*upsc.*2025.*questions|upcoming.*upsc.*questions|likely.*questions.*upsc/i, action: () => { if(GROQ_AVAILABLE) void executeIntent('Based on recent current affairs (2024-25), predict 5 high-probability UPSC Prelims 2025 questions. For each: the question, options, and why it is likely. Focus on themes not directly covered in standard coaching.') }, reply: '' },
+  { re: /create.*mnemonic.*for.*(.+)|mnemonic.*for.*(.+)|remember.*trick.*for.*(.+)/i,     action: () => { const m=_lastUserQuery.match(/(?:create.*mnemonic|mnemonic|remember.*trick)\s+(?:for\s+)?(.+)/i); if(m&&GROQ_AVAILABLE) void executeIntent(`Create the most memorable, creative mnemonic for remembering: "${m[1]}". Make it visual, funny, or shocking — whatever will stick best in long-term memory. No boring acronyms.`) }, reply: '' },
+  { re: /simplify.*(.+)\s+for.*5.*year|explain.*(.+)\s+simple.*as.*possible|eli5.*(.+)/i, action: () => { const m=_lastUserQuery.match(/simplify|explain.*simple|eli5/i); const topic=_lastUserQuery.replace(/simplify|explain.*simple.*as.*possible|for.*5.*year.*old|eli5/gi,'').trim(); if(topic&&GROQ_AVAILABLE) void executeIntent(`Explain "${topic}" as if you are explaining to a 10-year-old using one simple analogy from everyday Indian life. Maximum 2 sentences. Then one UPSC exam angle.`) }, reply: '' },
+  { re: /compare.*everything.*about\s+(.+)\s+and\s+(.+)|full.*comparison.*(.+)\s+vs\s+(.+)/i, action: () => { const m=_lastUserQuery.match(/compare|full.*comparison/i); if(m&&GROQ_AVAILABLE) void executeIntent(`Do a comprehensive but spoken comparison: ${_lastUserQuery}. Cover: definition, constitutional basis, origin, key differences, similarities, UPSC relevance. Be exhaustive but spoken format.`) }, reply: '' },
 
   // ── SELF-LEARNING: Remember / Teach / Correct ─────────────────────────────
   { re: /^(?:jarvis[,\s]+)?remember(?:\s+that)?[:\s]+(.+)/i,                                action: () => { const m=_lastUserQuery.match(/remember(?:\s+that)?[:\s]+(.+)/i); if(m?.length){kbStore(m[1].trim(),m[1].trim(),'user',0.95); respond(L(detectResponseLang(''),'Remembered. I will use this in future answers.','याद रख लिया। अगली बार इस्तेमाल करूंगा।','Yaad kar liya.')); } }, reply: '' },

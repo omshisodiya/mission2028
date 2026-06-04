@@ -22,7 +22,10 @@ import {
   readSection, readAllSections, mapAllInteractiveElements,
   scrollToAndHighlight, fillRoutineFromVoice, getTimerState, setTimerDuration,
   startDOMMonitor, onDOMEvent,
+  openCommandMenu, executeCommandByName, findByDescription,
+  universalClick, universalFill, takePageSnapshot, bootstrapElementMap,
 } from './jarvis-dom-control'
+import { openCommandBar, initCommandBar, closeCommandBar } from './jarvis-command-bar'
 import {
   isSocraticActive, startSocraticMode, continueSocratic, endSocratic,
   buildConceptWeb, buildMemoryPalace, updateAdaptiveProfile, getAdaptiveLevel,
@@ -40,6 +43,22 @@ import {
   setProactiveContext, startProactiveEngine as startProactiveIntelligence,
   recordActivity, silenceFor, getTimedInsight,
 } from './jarvis-proactive'
+import {
+  synthesizeAtomicCap, adversarialTest, updateEnergy, recordTemporalUsage,
+  getTemporalSuggestions, startEvolutionLoopV5, getV5Report, v5Lookup,
+  kgMineFromText, kgContextFor, kgAddEdge,
+} from './jarvis-evolution-v5'
+import {
+  neuralLookup, reinforceNeuralWeights,
+} from './jarvis-evolution-v4'
+import {
+  v6CognitivePipeline, startEvolutionLoopV6, stopEvolutionLoopV6, getV6Report,
+  matchWorkflow, runWorkflow, stopWorkflow, filterNoiseWords, isLikelyCommand,
+  normalizeSTTQuery, updateFormContext, startModalWatcher, v6AutoFillModal,
+  buildLiveContext, classifyQueryComplexity, buildSemanticIndex, getStudyState,
+  updateStudyState, recordPomodoroComplete, setSessionSubject, handleCommandBarTrigger,
+  buildStudyChain, buildScoreEntryChain, executeChain, getRelevantFacts,
+} from './jarvis-evolution-v6'
 import { getSessionStats } from './jarvis-session'
 import {
   startSession as startSessionRecord, endSession as endSessionRecord,
@@ -92,7 +111,8 @@ let _nextRemId = 1
 // Proactive engine
 const _TODAY = new Date().toDateString()
 let _sessionGreeted  = false
-let _lastNudgeMs     = 0
+let _lastNudgeMs        = 0
+let _lastInteractionMs  = 0   // V6: updated whenever user sends a query — suppress nudges for 90s after
 let _pomodorosDone   = 0
 
 // Voice
@@ -173,6 +193,8 @@ function addContextTurn(query: string, answer: string): void {
   const topic = extractTopic(query)
   _contextTurns.push({ query: query.slice(0, 100), answer: answer.slice(0, 200), topic, at: new Date().toISOString() })
   if (_contextTurns.length > MAX_CONTEXT_TURNS) _contextTurns.shift()
+  // V6: update form autocomplete context from conversation
+  updateFormContext(query, answer)
 }
 
 function extractTopic(text: string): string {
@@ -212,6 +234,31 @@ let _ttsVolume: number   = parseFloat(localStorage.getItem('jarvis_volume') ?? '
 
 // Active study subject: set when user announces what they're studying
 let _sessionSubject  = ''
+
+// ── V5 ULTIMATE state ─────────────────────────────────────────────────────────
+
+// Autonomous Agent mode
+let _agentRunning    = false
+
+// Study Session Orchestrator
+interface StudySession {
+  subject:      string
+  durationMins: number
+  startMs:      number
+  checkInAt:    number[]   // timestamps (ms) for scheduled check-ins
+  checkInDone:  number     // how many check-ins completed
+  quizDone:     boolean
+}
+let _orchestratedSession: StudySession | null = null
+let _orchestratorTimerId = 0
+
+// Chain-of-thought: show reasoning steps when thinking
+let _cotEnabled      = localStorage.getItem('jarvis_cot') !== 'false'
+
+// Follow-up prediction: show 2 suggested follow-up questions after AI responses
+let _followupEnabled = localStorage.getItem('jarvis_followup') !== 'false'
+// Last predicted follow-ups (populated after each Groq answer)
+let _followupCache: string[] = []
 
 // Conversation context: last transcript for follow-up chaining
 let _lastUserQuery   = ''
@@ -649,11 +696,18 @@ export function initJarvis(): void {
     startAppSync()
     void requestNotifPermission()  // ask once for browser notifications
 
-    // Self-evolution V1 + V2 + V3 + DOM control systems
+    // Bootstrap element map so JARVIS knows every button/input on the page
+    bootstrapElementMap()
+    setTimeout(() => bootstrapElementMap(), 3000)   // re-scan after lazy renders
+
+    // Self-evolution V1 + V2 + V3 + V5 + DOM control systems
     startEvolutionLoop(respond)     // v1: reactive gap resolution
     startEvolutionLoopV2(respond)   // v2: proactive, clustered, validated
     startEvolutionLoopV3(respond)   // v3: genetic, pipeline, auto-repair
+    startEvolutionLoopV5(respond)   // v5: atomic synthesis, ecosystem, benchmark, pareto
+    startEvolutionLoopV6(respond)   // v6: parallel agents, semantic index, workflows, live DOM
     startDOMMonitor()               // watch DOM for state changes
+    startModalWatcher(respond)      // v6: auto-fill opened forms from voice context
 
     // Proactive intelligence engine
     startProactiveIntelligence(
@@ -698,6 +752,9 @@ export function initJarvis(): void {
     }, 15_000)
   }, 2000)
 
+  // V6: init command bar with Ctrl+Space / Ctrl+/ shortcut
+  initCommandBar(processQuery)
+
   document.addEventListener('keydown', e => {
     if (e.key === 'j' && !['INPUT','TEXTAREA','SELECT'].includes((e.target as HTMLElement).tagName)) {
       e.preventDefault(); togglePanel()
@@ -729,6 +786,9 @@ export function initJarvis(): void {
     // Update memory
     _mem.lastSubject = _sessionSubject || (getCurrentState()?.today?.subject ?? '')
     _mem.lastDate    = todayIST(); saveMem()
+    // V6: record session state
+    recordPomodoroComplete()
+    updateStudyState('break')
     if (msg) { if (_open) respond(msg); else showNudge(msg) }
   }) as EventListener)
 
@@ -760,6 +820,8 @@ function startProactiveEngine(): void {
     if (_isSpeaking || _state !== 'idle') return
     const now = Date.now()
     if (now - _lastNudgeMs < 5 * 60_000) return
+    // V6: suppress nudges for 90 seconds after any user interaction
+    if (now - _lastInteractionMs < 90_000) return
 
     const cs = getCurrentState()
     const h  = new Date().getHours()
@@ -857,6 +919,7 @@ function startAppSync(): void {
 
   // Listen to timer state changes for smart awareness
   window.addEventListener('jarvis:timer-started', ((e: CustomEvent<{mins:number}>) => {
+    updateStudyState('in-session')  // V6: track session state
     pingActivity()
     // Ambient mode: announce quietly
     if (_ambientMode === 'whisper' && !_isSpeaking) {
@@ -1075,6 +1138,10 @@ function openPanel(greet = true): void {
           ['🏛 Socratic', 'socratic mode '+(cs?.today?.subject||'Polity')],
           ['⚔ Debate', 'debate session '+(cs?.today?.subject||'Polity')],
           ['🏺 Memory Palace', 'memory palace for '+(cs?.today?.subject||'articles')],
+          ['🤖 Agent', 'agent: analyze my preparation and suggest this week\'s priority'],
+          ['🎓 2h Session', 'start a 2-hour '+(cs?.today?.subject||'Polity')+' session'],
+          ['💭 Deep Think', 'think: what is the most important UPSC topic I should focus on today?'],
+          ['⏰ Suggestions', 'what should I do now'],
           ['📊 Status', 'full status'],
           ['📋 Review', 'open weekly review'],
           ['🎯 Goals', 'open goals'],
@@ -1091,20 +1158,43 @@ function openPanel(greet = true): void {
     </div>
 
     <div id="jp-tab-evolution" style="display:none;flex:1;overflow-y:auto;padding:10px 12px;">
-      <p style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.12em;margin:0 0 10px;">EVOLUTION ENGINE V2</p>
+      <p style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.12em;margin:0 0 10px;">JARVIS EVOLUTION ENGINE — V6 OMNISCIENT</p>
       <div style="display:flex;flex-direction:column;gap:8px;">
+        <!-- V6 Status Row -->
+        <div style="background:rgba(240,181,74,.08);border:1px solid var(--accent);border-radius:var(--r-sm);padding:8px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:10px;font-family:var(--font-mono);color:var(--accent);font-weight:700;">V6 ACTIVE</span>
+          <span style="font-size:10px;font-family:var(--font-mono);color:var(--muted);">Parallel Agents · Live DOM · Semantic Index · Workflows · Form Autocomplete</span>
+        </div>
+        <!-- V6 Stats Grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          ${(()=>{
+            const v6r = getV6Report()
+            return [
+              ['Facts Extracted', v6r.factsExtracted+' stored'],
+              ['Workflows Run',   v6r.workflowsRun+' executed'],
+              ['Forms Auto-Filled', v6r.formsFilled+' fields'],
+              ['Avg Query Speed', (v6r.avgQueryMs||'—')+' ms'],
+            ].map(([k,v])=>`
+              <div style="background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;">
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--muted);">${k.toUpperCase()}</div>
+                <div style="font-size:14px;font-weight:700;color:var(--accent-ink);">${v}</div>
+              </div>`).join('')
+          })()}
+        </div>
+        <!-- V2/V5 Caps Stats -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
           ${[
             ['Capabilities', v2r.capsTotal+' total / '+v2r.capsValidated+' valid'],
-            ['Versions', v2r.capVersions+' tracked'],
+            ['KB Entries',   kbCount+' learned'],
             ['Gap Clusters', v2r.gapsClustered+' active'],
-            ['KB Entries', kbCount+' learned'],
+            ['Cap Versions', v2r.capVersions+' tracked'],
           ].map(([k,v])=>`
             <div style="background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;">
               <div style="font-size:9px;font-family:var(--font-mono);color:var(--muted);">${k.toUpperCase()}</div>
               <div style="font-size:14px;font-weight:700;color:var(--accent-ink);">${v}</div>
             </div>`).join('')}
         </div>
+        <!-- Capability area assessments -->
         ${v2r.assessments.slice(0,4).map(a=>`
           <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;
             background:var(--panel-2);border-radius:var(--r-sm);border:1px solid var(--line-2);">
@@ -1114,7 +1204,8 @@ function openPanel(greet = true): void {
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
           <button class="jp-skill-btn" data-cmd="evolve v2" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:rgba(240,181,74,.15);border:1px solid var(--accent);border-radius:20px;color:var(--accent);cursor:pointer;">⚡ Evolve Now</button>
           <button class="jp-skill-btn" data-cmd="evolution v2 report" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--ink-soft);cursor:pointer;">📊 Full Report</button>
-          <button class="jp-skill-btn" data-cmd="cluster gaps" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--ink-soft);cursor:pointer;">🔬 Cluster Gaps</button>
+          <button class="jp-skill-btn" data-cmd="v5 report" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--ink-soft);cursor:pointer;">🔬 V5 Status</button>
+          <button class="jp-skill-btn" data-cmd="command bar" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--ink-soft);cursor:pointer;">⌨ Command Bar</button>
         </div>
       </div>
     </div>
@@ -1326,36 +1417,53 @@ async function startListening(): Promise<void> {
   r.interimResults  = true
   r.maxAlternatives = 3
 
-  let finalText  = ''   // populated on isFinal result
-  let interimTxt = ''   // last interim — fallback if onend fires without final
-  let committed  = false
+  let finalText     = ''   // populated on isFinal result
+  let interimTxt    = ''   // last interim — fallback if onend fires without final
+  let committed     = false
+  let silenceTimer  = 0    // auto-commit after sustained silence on high-confidence interim
 
   const commit = (text: string): void => {
     if (committed) return
-    const clean = text.trim()
-    if (!clean) { stopListening(); VA.setState('idle'); setState('idle'); setStatus('Tap 🎙 or say "Jarvis".'); return }
+    // V6: filter noise words and validate as a real command
+    const denoised = filterNoiseWords(text.trim())
+    const normalized = normalizeSTTQuery(denoised)
+    if (!isLikelyCommand(normalized)) {
+      stopListening(); VA.setState('idle'); setState('idle')
+      setStatus('Tap 🎙 or say "Jarvis".')
+      return
+    }
     committed = true
+    clearTimeout(silenceTimer)
     stopListening()
-    VA.setTranscript(clean, false)
-    void processQuery(clean)
+    VA.setTranscript(normalized, false)
+    void processQuery(normalized)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onresult = (e: any) => {
     if (committed) return
+    clearTimeout(silenceTimer)
     let interim = '', fin = ''
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const seg = (e.results[i][0].transcript as string).trim()
-      if (e.results[i].isFinal) fin  = seg
+      if (e.results[i].isFinal) fin = seg
       else                       interim = seg
     }
-    if (fin)     { finalText  = fin;     VA.setTranscript(fin, false);     commit(fin) }
-    else if (interim) { interimTxt = interim; VA.setTranscript(interim, false) }
+    if (fin) {
+      finalText = fin; VA.setTranscript(fin, false); commit(fin)
+    } else if (interim) {
+      interimTxt = interim; VA.setTranscript(interim, false)
+      // Auto-commit interim after 1.8s silence — catches sentences Chrome doesn't mark final
+      silenceTimer = window.setTimeout(() => {
+        if (!committed && interimTxt) commit(interimTxt)
+      }, 1800)
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onerror = (e: any) => {
     if (committed) return
+    clearTimeout(silenceTimer)
     stopListening(); VA.setState('idle'); setState('idle')
     const code = e?.error ?? ''
     const lang = detectResponseLang('')
@@ -1383,6 +1491,7 @@ async function startListening(): Promise<void> {
 
   r.onend = () => {
     if (committed) return
+    clearTimeout(silenceTimer)
     // Chrome fired onend before sending a final result — commit the interim
     commit(finalText || interimTxt)
   }
@@ -1416,11 +1525,40 @@ async function processQuery(text: string): Promise<void> {
 
   // Track query for evolution V2 proactive learning
   appendQueryHistory(text)
+  // V6: suppress proactive nudges for 90s after any user query
+  _lastInteractionMs = Date.now()
 
   // 0. Vision
   if (isVisionTrigger(text)) { addMsg('user', text); openVisionCapture(text, respond); return }
 
   const tl = text.toLowerCase().trim()
+
+  // 0-z. DATE / TIME queries — must fire BEFORE any study-related pattern matching
+  if (/what.*date|today.*date|date.*today|aaj.*kya.*date|kya.*date.*hai|what.*day.*today|today.*is.*what|what.*today|date.*kya.*hai|current.*date|today.*date.*kya/i.test(tl) &&
+      !/study|padh|session|plan|lecture|routine/i.test(tl)) {
+    addMsg('user', text)
+    const now  = new Date()
+    const opts: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' }
+    const dateStr = now.toLocaleDateString('en-IN', opts)
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      `Today is ${dateStr}.`,
+      `आज ${dateStr} है।`,
+      `Aaj ${dateStr} hai.`
+    )); return
+  }
+
+  // 0-y. TIME query
+  if (/what.*time|current.*time|time.*kya.*hai|abhi.*kitne.*baje|kitne.*baje.*hain|time.*batao|time.*check/i.test(tl)) {
+    addMsg('user', text)
+    const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+    const lang = detectResponseLang(text)
+    respond(L(lang,
+      `Current time is ${timeStr} IST.`,
+      `अभी ${timeStr} बज रहे हैं।`,
+      `Abhi ${timeStr} baje hain.`
+    )); return
+  }
 
   // 0a. Single-keyword shortcuts — respond instantly, no router needed
   const QUICK: Record<string, () => void> = {
@@ -1438,6 +1576,44 @@ async function processQuery(text: string): Promise<void> {
     'help': () => respond("Say 'Jarvis' or double-clap to wake me. Then say any command. Try: 'start timer', 'what's my plan', 'add score', 'quiz me on Polity'."),
   }
   if (QUICK[tl]) { addMsg('user', text); QUICK[tl](); if (!['status','briefing','motivate','motivation','help'].includes(tl)) respond(tl + '.'); return }
+
+  // 0b-v5. Stop agent / stop session
+  if (/stop.*agent|agent.*stop|cancel.*agent/i.test(tl)) {
+    _agentRunning = false
+    addMsg('user', text); respond('Agent stopped.'); return
+  }
+  if (/stop.*session.*orchestrat|end.*orchestrated|cancel.*session.*jarvis/i.test(tl)) {
+    if (_orchestratedSession) {
+      clearInterval(_orchestratorTimerId); _orchestratorTimerId = 0; _orchestratedSession = null
+      addMsg('user', text); respond('Orchestrated session ended.'); return
+    }
+  }
+
+  // V5 report
+  if (/v5.*report|evolution.*v5|jarvis.*v5|v5.*status/i.test(tl)) {
+    addMsg('user', text)
+    const r = getV5Report()
+    respond(`JARVIS V5 ULTIMATE: Benchmark ${r.benchmarkScore}% (${r.benchmarkTrend}) · Pareto front ${r.paretoFrontSize} · KG edges ${r.kgEdges} · Atoms ${r.atomicCaps} · Energy-active ${r.energizedCaps}`)
+    return
+  }
+
+  // V5 temporal suggestions
+  if (/what.*should.*do.*now|suggestions.*now|temporal.*suggest|best.*do.*now|aaj.*abhi.*kya/i.test(tl)) {
+    addMsg('user', text)
+    const suggestions = getTemporalSuggestions()
+    respond(suggestions[0] ?? 'Focus on your highest-priority pending task.')
+    return
+  }
+
+  // Toggle follow-up chips
+  if (/follow.*up.*off|disable.*follow|followup.*off/i.test(tl)) {
+    _followupEnabled = false; localStorage.setItem('jarvis_followup', 'false')
+    addMsg('user', text); respond('Follow-up suggestions disabled.'); return
+  }
+  if (/follow.*up.*on|enable.*follow|followup.*on/i.test(tl)) {
+    _followupEnabled = true; localStorage.setItem('jarvis_followup', 'true')
+    addMsg('user', text); respond('Follow-up suggestions enabled. I will show suggested questions after each answer.'); return
+  }
 
   // 0b. Sleep / stop-listening — MUST fire before any other pattern (STT can hear
   //     "listening" as "locking", so we intercept here to avoid false lock trigger)
@@ -1841,6 +2017,8 @@ async function processQuery(text: string): Promise<void> {
     const subj = tl.replace(/i'm|i am|main|mein|studying|padh.*raha|padhna.*shuru|abhi/gi, '').trim()
     if (subj.length > 2) {
       _sessionSubject = subj
+      setSessionSubject(subj)   // V6: persist session subject
+      updateStudyState('in-session')
       addMsg('user', text)
       respond(L(detectResponseLang(text),
         `Tracking your ${subj} session. I'll tailor questions and reminders to this topic.`,
@@ -2484,6 +2662,126 @@ async function processQuery(text: string): Promise<void> {
     }
   }
 
+  // ── 17z. Universal Commands — click/open/fill ANYTHING on the page ──────────
+
+  // "click [element]" / "press [element]" / "tap [element]"
+  {
+    const clickM = tl.match(/^(?:click|press|tap|hit|select)\s+(?:on\s+)?(.{3,60})$/i)
+    if (clickM) {
+      addMsg('user', text)
+      const target = clickM[1].trim()
+      // First try DOM registry
+      const domResult = domClick(target)
+      if (domResult) { respond(L(detectResponseLang(text), `Clicked: ${target}`, `${target} click हो गया`, `${target} click ho gaya`)); return }
+      // Then try universal fuzzy search
+      const uResult = universalClick(target)
+      if (uResult.ok) { respond(L(detectResponseLang(text), `Done: clicked "${uResult.target}"`, `"${uResult.target}" click किया`, `"${uResult.target}" click kiya`)); return }
+      respond(L(detectResponseLang(text), `Could not find "${target}" on the page.`, `"${target}" page पर नहीं मिला।`, `"${target}" page pe nahi mila.`)); return
+    }
+  }
+
+  // "open [element/section]" — smart open handler
+  {
+    const openM = tl.match(/^(?:open|show|launch|display|go to|navigate to|take me to)\s+(.{3,60})$/i)
+    if (openM && !/quiz|session|plan|report|browser|website|link|url|http/i.test(openM[1])) {
+      addMsg('user', text)
+      const target = openM[1].trim()
+      // Try command by name first (command menu items)
+      if (executeCommandByName(target)) {
+        respond(L(detectResponseLang(text), `Opened: ${target}`, `${target} खोला`, `${target} khola`)); return
+      }
+      // Try DOM click
+      const domResult = domClick(target)
+      if (domResult) { respond(L(detectResponseLang(text), `Opened: ${target}`, `${target} खोला`, `${target} khola`)); return }
+      // Universal
+      const uResult = universalClick(target)
+      if (uResult.ok) { respond(L(detectResponseLang(text), `Opened: ${uResult.target}`, `"${uResult.target}" खोला`, `"${uResult.target}" khola`)); return }
+      // Fall through to main intent routing for knowledge "open" queries
+    }
+  }
+
+  // "fill [field] with [value]" / "enter [value] in [field]"
+  {
+    const fillM  = tl.match(/^(?:fill|type|enter|put|write)\s+(.+?)\s+(?:with|in|into|as)\s+(.+)$/i)
+    const fillM2 = tl.match(/^(?:fill|type|enter)\s+"([^"]+)"\s+(?:in|into)\s+(.+)$/i)
+    const fm = fillM ?? fillM2
+    if (fm) {
+      addMsg('user', text)
+      const [, fieldOrValue, valueOrField] = fm
+      // Try to determine which is field and which is value
+      const field = fillM ? valueOrField.trim() : fieldOrValue.trim()
+      const value = fillM ? fieldOrValue.trim() : valueOrField.trim()
+      const result = universalFill(field, value)
+      if (result.ok) {
+        respond(L(detectResponseLang(text), `Filled "${result.target}" with "${value}"`, `"${result.target}" में "${value}" भरा`, `"${result.target}" mein "${value}" bhara`)); return
+      }
+      respond(L(detectResponseLang(text), `Could not find field "${field}" on the page.`, `"${field}" field नहीं मिला।`, `"${field}" field nahi mila.`)); return
+    }
+  }
+
+  // "what's on screen" / "read page" / "describe page" — full snapshot
+  if (/describe.*page|page.*snapshot|what.*page.*show|full.*page.*status|snapshot|kya.*page.*pe|page.*kya.*dikha/i.test(tl)) {
+    addMsg('user', text)
+    const snap = takePageSnapshot()
+    const visible = [
+      snap.sections.length ? `Sections: ${snap.sections.slice(0, 4).join(', ')}` : '',
+      Object.keys(snap.stats).length ? `Stats: ${Object.entries(snap.stats).slice(0, 4).map(([k,v])=>`${k}=${v}`).join(', ')}` : '',
+      snap.buttons.length ? `Buttons: ${snap.buttons.slice(0, 6).join(', ')}` : '',
+      snap.openModals.length ? `Open modals: ${snap.openModals.join(', ')}` : '',
+    ].filter(Boolean).join(' | ')
+    respond(visible || 'Page is loading or no content visible.'); return
+  }
+
+  // "open command menu" / "command bar" / "command palette"
+  if (/command\s*menu|command\s*bar|command\s*palette|open\s*commands|show\s*commands/i.test(tl)) {
+    addMsg('user', text)
+    openCommandBar(processQuery)
+    respond(L(detectResponseLang(text), 'Command bar opened. Type to search.', 'Command bar खुल गया। Type करो।', 'Command bar khul gaya. Type karo.')); return
+  }
+
+  // "list all buttons" / "what can I click" — page element discovery
+  if (/list.*buttons|what.*click|all.*commands|available.*actions|what.*can.*do/i.test(tl)) {
+    addMsg('user', text)
+    const snap = takePageSnapshot()
+    respond(L(detectResponseLang(text),
+      `Available actions: ${snap.buttons.slice(0, 12).join(' | ')}`,
+      `Available actions: ${snap.buttons.slice(0, 12).join(' | ')}`,
+      `Available actions: ${snap.buttons.slice(0, 12).join(' | ')}`
+    )); return
+  }
+
+  // ── V6 WORKFLOW STOP ──────────────────────────────────────────────────────────
+  if (/stop.*workflow|cancel.*workflow|workflow.*stop|workflow.*cancel/i.test(tl)) {
+    addMsg('user', text); stopWorkflow(respond); return
+  }
+
+  // ── V6 STUDY CHAIN SHORTCUTS ─────────────────────────────────────────────────
+  if (/^(study|padhai)\s+(.+?)\s+(\d+)\s*(min|mins|minutes?|hour|hours?|ghante?)/i.test(tl)) {
+    const m = tl.match(/^(?:study|padhai)\s+(.+?)\s+(\d+)\s*(min|mins|minutes?|hour|hours?|ghante?)/i)
+    if (m) {
+      const subject = m[1].trim()
+      const durationMins = /hour|ghante?/i.test(m[3]) ? parseInt(m[2]) * 60 : parseInt(m[2])
+      addMsg('user', text)
+      const chain = buildStudyChain(subject, durationMins)
+      executeChain(chain, (_label, idx, total) => {
+        if (idx === total) respond(L(detectResponseLang(text), `${durationMins}-min ${subject} session started!`, `${durationMins} मिनट का ${subject} session शुरू!`, `${durationMins} min ${subject} session shuru!`))
+      })
+      return
+    }
+  }
+
+  // ── V6 SCORE CHAIN: "log score 145/200 mock 7 polity" ─────────────────────────
+  if (/^(log|add|enter)\s+score\s+(\d+)\s*[/\\]\s*(\d+)/i.test(tl)) {
+    const m = tl.match(/^(?:log|add|enter)\s+score\s+(\d+)\s*[/\\]\s*(\d+)\s*(.*)/i)
+    if (m) {
+      const score = parseInt(m[1]); const max = parseInt(m[2]); const label = m[3].trim() || 'Test'
+      addMsg('user', text)
+      const chain = buildScoreEntryChain(score, max, label)
+      executeChain(chain)
+      respond(L(detectResponseLang(text), `Score entry opened: ${score}/${max} — ${label}`, `Score form खुला: ${score}/${max}`, `Score form khula: ${score}/${max}`)); return
+    }
+  }
+
   // 18. CMDS — fast pattern-action table (900+ patterns)
   for (const cmd of CMDS) {
     if (cmd.re.test(tl)) {
@@ -2494,7 +2792,65 @@ async function processQuery(text: string): Promise<void> {
     }
   }
 
-  // 19. Check generated capabilities (self-evolved commands)
+  // 18b. V5 Autonomous Agent Mode — "agent: analyze my mocks and make a plan"
+  if (/^agent\s*:/i.test(tl) || /^run agent|autonomous.*task|agent.*mode/i.test(tl)) {
+    const goal = text.replace(/^agent\s*:|^run agent|autonomous.*task\s*[:—]?|agent.*mode\s*[:—]?/i, '').trim()
+    if (goal) { addMsg('user', text); void runAutonomousAgent(goal); return }
+  }
+
+  // 18c. Chain-of-thought prefix — "think: why is Article 21 important?"
+  if (/^think\s*:/i.test(tl)) {
+    const q = text.replace(/^think\s*:/i, '').trim()
+    if (q) { addMsg('user', text); void executeIntentWithCoT(q); return }
+  }
+
+  // 18d. Study Session Orchestrator — "start a 2-hour polity session"
+  {
+    const sessM = tl.match(/start\s+(?:a\s+)?(\d+)\s*[-]?\s*hour\s+(.+?)\s+session|start\s+(.+?)\s+session\s+(?:for\s+)?(\d+)\s*h/i)
+    if (sessM) {
+      const durationHours = parseFloat(sessM[1] ?? sessM[4] ?? '1')
+      const subject = ((sessM[2] ?? sessM[3]) || _sessionSubject || 'UPSC GS').trim()
+      addMsg('user', text); void startOrchestratedSession(subject, Math.round(durationHours * 60)); return
+    }
+  }
+
+  // 19. Check generated capabilities: V5 atomic first, then evolved
+  const atomicCap = synthesizeAtomicCap(tl)
+  if (atomicCap) {
+    addMsg('user', text)
+    const result = executeCapability(atomicCap)
+    if (result.ok) {
+      recordTemporalUsage(atomicCap.id)
+      respond(L(detectResponseLang(text),
+        `Done: ${atomicCap.description}`,
+        `${atomicCap.description}`,
+        `${atomicCap.description}`
+      ))
+      return
+    }
+  }
+
+  // V5 neural-enhanced lookup (Pareto-biased)
+  const v5Cap = v5Lookup(tl)
+  if (v5Cap && !atomicCap) {
+    addMsg('user', text)
+    const result = executeCapability(v5Cap)
+    if (result.ok) {
+      updateEnergy(v5Cap.id, true)
+      recordTemporalUsage(v5Cap.id)
+      reinforceNeuralWeights(v5Cap.id, tl, true)
+      respond(L(detectResponseLang(text),
+        `Done via V5 capability: ${v5Cap.description}`,
+        `V5 capability से: ${v5Cap.description}`,
+        `V5 capability: ${v5Cap.description}`
+      ))
+      return
+    } else {
+      updateEnergy(v5Cap.id, false)
+      reinforceNeuralWeights(v5Cap.id, tl, false)
+    }
+  }
+
   const genCap = lookupGeneratedCap(tl)
   if (genCap) {
     addMsg('user', text)
@@ -2519,9 +2875,16 @@ async function processQuery(text: string): Promise<void> {
     return
   }
 
-  // 21. Intent router + AI fallback (covers all unmatched commands + UPSC Q&A)
-  // Tier 5: if everything else fails, log as a gap and attempt self-evolution
+  // 21. V6 Cognitive Pipeline — tries parallel agents + semantic + workflows first
   addMsg('user', text)
+  {
+    const v6lang = detectResponseLang(text)
+    const v6ctx  = buildPersonalContext()
+    const v6handled = await v6CognitivePipeline(text, v6ctx, v6lang, respond)
+    if (v6handled) return
+  }
+
+  // 22. Intent router + AI fallback (covers all unmatched commands + UPSC Q&A)
   void executeIntentWithEvolution(text)
 }
 
@@ -2625,10 +2988,13 @@ async function executeIntent(transcript: string): Promise<void> {
         return
       }
 
+      // ── V5: Enrich with Knowledge Graph context ─────────────────────────────
+      const kgEnrichment = kgContextFor(transcript)
+
       // ── Tier 3: UPSC knowledge question → Groq llama-3.3-70b tutor mode ────
       const cacheKey = `${detectedLang}:${transcript.toLowerCase().trim().slice(0, 120)}`
       const cached   = getCached(cacheKey)
-      if (cached) { respond(cached); return }
+      if (cached) { kgMineFromText(transcript); respond(cached); return }
 
       setStatus(detectedLang === 'hi' ? 'जवाब खोज रहा हूँ…' : detectedLang === 'hinglish' ? 'Jawab dhundh raha hoon…' : 'Searching knowledge base…')
       const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
@@ -2729,7 +3095,10 @@ function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): stri
   const ctx         = buildPersonalContext()
   const personality = getPersonalityPrompt()
   const ctxSummary  = buildContextSummary()
-  return `${langInstr}${personality}\n${ctx}\n${ctxSummary}\n\nQUESTION: ${transcript}`
+  // V5: inject knowledge graph context if available
+  const kgCtx       = kgContextFor(transcript)
+  const kgLine      = kgCtx ? `\n${kgCtx}` : ''
+  return `${langInstr}${personality}\n${ctx}\n${ctxSummary}${kgLine}\n\nQUESTION: ${transcript}`
 }
 
 // ── Streaming Groq response — tokens appear in real-time ─────────────────────
@@ -3536,7 +3905,7 @@ const CMDS: Cmd[] = [
   { re: /constitution.*section|open.*constitution|show.*constitution/i,                    action: _scr('constitution'), reply: 'Constitution section.' },
   { re: /scroll.*top|go.*home|back.*top|upar.*jao|home/i,                                  action: () => window.scrollTo({top:0,behavior:'smooth'}), reply: 'Back to top.' },
   { re: /scroll.*bottom|end.*page|bottom.*page/i,                                          action: () => window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}), reply: 'Scrolled to bottom.' },
-  { re: /open.*menu|command.*menu|menu.*open/i,                                             action: () => cl('command-menu-btn'), reply: 'Command menu opened.' },
+  { re: /open.*menu|command.*menu|menu.*open/i,                                             action: () => openCommandBar(processQuery), reply: 'Command bar opened.' },
 
   // ── TIMER — START / PAUSE / RESET ─────────────────────────────────────────
   { re: /^start$|^shuru$|^chalu$|focus.*start|start.*focus|pomodoro.*start|study.*start|padhai.*shuru|timer.*shuru|timer.*start|start.*timer/i, action: clickStart, reply: 'Timer started. Focus, Om.' },
@@ -4633,8 +5002,8 @@ const CMDS: Cmd[] = [
   { re: /how.*select.*optional.*subject|best.*optional.*for.*me|optional.*selection/i,       action: () => respond('Optional selection criteria: 1. Background — is it your graduation subject? 2. Interest — can you study it for 1000+ hours? 3. Source material — are reliable books available? 4. Scoring trend — check last 5 years toppers\' optionals. High scorers: Sociology, PSIR, Mathematics (high ceiling), Anthropology.'), reply: '' },
 
   // ── WEBSITE INTEGRATION ───────────────────────────────────────────────────
-  { re: /open.*command.*menu|show.*command.*palette|open.*palette/i,                          action: () => { const btn=document.getElementById('command-menu-btn')??document.querySelector<HTMLElement>('[data-cmd-menu]'); btn?.click(); respond('Command menu opened.') }, reply: '' },
-  { re: /close.*command.*menu|hide.*command.*palette/i,                                       action: () => { document.getElementById('command-menu')?.classList.remove('open'); document.getElementById('menu-backdrop')?.classList.remove('show'); respond('Menu closed.') }, reply: '' },
+  { re: /open.*command.*menu|show.*command.*palette|open.*palette/i,                          action: () => { openCommandBar(processQuery); respond('Command bar opened.') }, reply: '' },
+  { re: /close.*command.*menu|hide.*command.*palette|close.*command.*bar/i,                  action: () => { closeCommandBar(); respond('Command bar closed.') }, reply: '' },
   { re: /refresh.*data|reload.*data|sync.*data.*now|force.*data.*reload/i,                   action: () => { respond('Reloading data from Supabase…'); window.dispatchEvent(new CustomEvent('jarvis:force-sync')); setTimeout(()=>respond('Data refreshed. Charts and planner updated.'),2000) }, reply: '' },
   { re: /check.*online.*status|am.*i.*online.*now|network.*status.*check/i,                  action: () => respond(navigator.onLine?'Online and connected. All data syncing to the cloud.':'Offline. Working locally — changes will sync on reconnect.'), reply: '' },
   { re: /show.*revision.*queue.*now|open.*srs.*queue|revision.*list.*show/i,                 action: () => { scr('plan'); setTimeout(()=>{ const lbl=Array.from(document.querySelectorAll<HTMLElement>('#plan .card-label')).find(e=>e.textContent?.toLowerCase().includes('revision')); lbl?.scrollIntoView({behavior:'smooth',block:'start'}); respond(buildRevisionLine()) },500) }, reply: '' },
@@ -6104,6 +6473,22 @@ function renderChat(): void {
         ${isLast && m.role === 'assistant' ? '<div class="jv-fb-slot"></div>' : ''}
       </div>`
   }).join('')
+
+  // Follow-up suggestion chips below last assistant message
+  if (_followupEnabled && _followupCache.length > 0 && _history[_history.length - 1]?.role === 'assistant') {
+    const chipsHtml = _followupCache.map(q => `
+      <button class="jv-followup-chip" data-q="${esc(q)}"
+        style="background:rgba(240,181,74,.1);border:1px solid rgba(240,181,74,.4);
+        border-radius:20px;padding:4px 10px;font-size:10px;font-family:var(--font-mono);
+        color:var(--accent);cursor:pointer;transition:all .15s;white-space:nowrap;">
+        💡 ${esc(q.slice(0,50))}
+      </button>`).join('')
+    el.innerHTML += `
+      <div class="jv-followup-row" style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 8px;">
+        ${chipsHtml}
+      </div>`
+  }
+
   el.scrollTop = el.scrollHeight
 
   // Attach feedback buttons to the last assistant message
@@ -6115,6 +6500,17 @@ function renderChat(): void {
       addFeedbackButtons(bubble.parentElement as HTMLElement, _lastUserQuery, _lastReply)
     }
   }
+
+  // Wire follow-up chips
+  el.querySelectorAll<HTMLButtonElement>('.jv-followup-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _followupCache = []  // clear after use
+      const q = btn.dataset.q ?? ''
+      if (q) void processQuery(q)
+    })
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(240,181,74,.2)' })
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(240,181,74,.1)' })
+  })
 }
 
 function respond(text: string): void {
@@ -6130,6 +6526,301 @@ function respond(text: string): void {
   recordSessionEvent('jarvis_query', _lastUserQuery.slice(0, 80))
   // Record proactive activity
   recordActivity('query')
+  // V5: mine knowledge graph from every Groq-quality response
+  if (clean.length > 60) kgMineFromText(clean + ' ' + _lastUserQuery)
+  // V5: generate follow-up suggestions for substantive answers
+  if (_followupEnabled && clean.length > 80 && _lastUserQuery) {
+    void generateFollowupSuggestions(_lastUserQuery, clean)
+  }
+}
+
+// ── V5: Follow-up Suggestion Generator ───────────────────────────────────────
+
+async function generateFollowupSuggestions(query: string, answer: string): Promise<void> {
+  const k = GROQ_KEY; if (!k) return
+  const tl = query.toLowerCase()
+  // Only for knowledge questions, not for simple commands
+  const isKnowledge = /what|why|how|explain|tell|describe|article|section|concept|topic|batao|samjhao/i.test(tl)
+  if (!isKnowledge) return
+
+  // Build 2 follow-ups based on topic and answer content
+  const topic = extractTopic(query)
+  const FOLLOWUP_TEMPLATES: Record<string, string[][]> = {
+    polity:  [['How does this connect to the Basic Structure doctrine?', 'What are 3 landmark SC cases on this?'],
+              ['What does the Constitution say about this?',             'How is this examined in UPSC Mains?']],
+    history: [['What are the UPSC PYQs on this topic?', 'How does this connect to modern India?'],
+              ['What were the economic implications?',   'How did this affect the freedom movement?']],
+    geography: [['How is this relevant for GS1?',      'Give me a map-based question on this.'],
+                ['What are the environmental impacts?', 'How does this compare globally?']],
+    economy: [['How does government policy address this?', 'What are recent developments in this area?'],
+              ['How is this linked to India\'s growth?',    'What are UPSC Mains angles for this?']],
+    general: [['Can you explain this in simpler terms?', 'What\'s the UPSC exam relevance of this?'],
+              ['Give me a quiz question on this topic.',  'How does this connect to current affairs?']],
+  }
+
+  const opts = FOLLOWUP_TEMPLATES[topic] ?? FOLLOWUP_TEMPLATES.general
+  _followupCache = opts[Math.floor(Math.random() * opts.length)]
+  renderChat()   // re-render to show follow-up chips
+}
+
+// ── V5: Chain-of-Thought Intent Handler ───────────────────────────────────────
+
+async function executeIntentWithCoT(query: string): Promise<void> {
+  const k = GROQ_KEY; if (!k) { void executeIntent(query); return }
+  const lang = detectResponseLang(query)
+
+  // Show CoT reasoning steps in chat first
+  const steps = [
+    L(lang, 'Identifying the key concept…', 'मुख्य concept identify कर रहा हूँ…', 'Key concept identify kar raha hoon…'),
+    L(lang, 'Checking knowledge base and context…', 'KB और context check कर रहा हूँ…', 'KB aur context check kar raha hoon…'),
+    L(lang, 'Building UPSC-relevant answer…', 'UPSC-relevant answer build कर रहा हूँ…', 'UPSC-relevant answer build kar raha hoon…'),
+    L(lang, 'Connecting to exam strategy…', 'Exam strategy से connect कर रहा हूँ…', 'Exam strategy se connect kar raha hoon…'),
+  ]
+
+  addMsg('assistant', `💭 ${steps[0]}`)
+  setState('thinking'); VA.setState('thinking')
+
+  // Animate through steps with delays
+  let stepIdx = 1
+  const stepTimer = window.setInterval(() => {
+    if (stepIdx >= steps.length) { clearInterval(stepTimer); return }
+    const chat = document.getElementById('jp-chat')
+    const lastMsg = chat?.lastElementChild
+    if (lastMsg) {
+      const bubble = lastMsg.querySelector('.jbubble')
+      if (bubble) bubble.textContent = `💭 ${steps[stepIdx]}`
+    }
+    stepIdx++
+  }, 800)
+
+  // Check KG for context enrichment
+  const kgCtx = kgContextFor(query)
+
+  try {
+    const prompt = kgCtx
+      ? `${buildPersonalContext()}\n${kgCtx}\nQuestion: ${query}\nAnswer clearly in 3-4 spoken sentences. UPSC-focused. No markdown.`
+      : query
+
+    // Remove the CoT message and replace with real answer
+    clearInterval(stepTimer)
+    setTimeout(async () => {
+      // Remove the CoT animation message
+      const chat = document.getElementById('jp-chat')
+      const lastMsg = chat?.lastElementChild
+      lastMsg?.remove()
+      _history.pop()
+
+      // Execute actual answer
+      await executeIntent(prompt)
+    }, steps.length * 900 + 200)
+  } catch {
+    clearInterval(stepTimer)
+    await executeIntent(query)
+  }
+}
+
+// ── V5: Autonomous Agent ──────────────────────────────────────────────────────
+
+async function runAutonomousAgent(goal: string): Promise<void> {
+  if (_agentRunning) { respond('An agent task is already running. Say "stop agent" to cancel.'); return }
+  const k = GROQ_KEY
+  if (!k) {
+    respond('Autonomous agent needs Groq API. Set VITE_GROQ_API_KEY to unlock this feature.')
+    return
+  }
+
+  _agentRunning = true
+  const lang = detectResponseLang(goal)
+
+  respond(L(lang,
+    `Agent activated. Goal: "${goal.slice(0, 60)}". Analysing and planning…`,
+    `Agent शुरू। Goal: "${goal.slice(0, 60)}"। Plan बना रहा हूँ…`,
+    `Agent start. Goal: "${goal.slice(0, 60)}". Plan bana raha hoon…`
+  ))
+
+  try {
+    const cs    = getCurrentState()
+    const today = buildTodayReport()
+    const status = buildStatusReport()
+
+    // Step 1: Plan the sub-tasks
+    const planPrompt = `You are JARVIS, an autonomous UPSC preparation agent for Om Shisodiya.
+
+Current State:
+${status}
+
+Goal: "${goal}"
+
+Break this goal into 3-5 concrete sub-tasks. Each must be one specific actionable step.
+Return ONLY JSON: {"tasks":["task 1","task 2","task 3"],"summary":"one sentence overview"}`
+
+    const planRes = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: GROQ_MODEL, stream: false, max_tokens: 400, temperature: 0.3,
+        messages: [{ role: 'user', content: planPrompt }],
+      }),
+    })
+    if (!planRes.ok) throw new Error('plan fetch failed')
+    const planD = await planRes.json() as { choices: { message: { content: string } }[] }
+    const planText = planD.choices[0]?.message?.content?.trim() ?? ''
+    const planMatch = planText.match(/\{[\s\S]*\}/)
+    if (!planMatch) throw new Error('no plan JSON')
+    const plan = JSON.parse(planMatch[0]) as { tasks: string[]; summary: string }
+
+    respond(L(lang,
+      `Plan: ${plan.summary} — ${plan.tasks.length} steps. Executing…`,
+      `Plan: ${plan.summary} — ${plan.tasks.length} steps। Execute हो रहा है…`,
+      `Plan: ${plan.summary} — ${plan.tasks.length} steps. Execute ho raha hai…`
+    ))
+
+    // Step 2: Execute each sub-task
+    const results: string[] = []
+    for (let i = 0; i < plan.tasks.length; i++) {
+      if (!_agentRunning) break  // user cancelled
+      const task = plan.tasks[i]
+
+      respond(L(lang,
+        `Step ${i+1}/${plan.tasks.length}: ${task}`,
+        `Step ${i+1}/${plan.tasks.length}: ${task}`,
+        `Step ${i+1}/${plan.tasks.length}: ${task}`
+      ))
+
+      const taskPrompt = `${buildPersonalContext()}
+Perform this specific task for Om and return a 1-2 sentence result:
+Task: "${task}"
+Context: ${status.slice(0, 300)}
+Reply in spoken English/Hindi as JARVIS. No markdown.`
+
+      const taskRes = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: GROQ_MODEL, stream: false, max_tokens: 200, temperature: 0.4,
+          messages: [{ role: 'user', content: taskPrompt }],
+        }),
+      })
+      if (taskRes.ok) {
+        const taskD = await taskRes.json() as { choices: { message: { content: string } }[] }
+        const result = taskD.choices[0]?.message?.content?.trim() ?? ''
+        if (result) {
+          results.push(result)
+          respond(L(lang, `✓ ${result}`, `✓ ${result}`, `✓ ${result}`))
+        }
+      }
+      await new Promise(r => setTimeout(r, 600))
+    }
+
+    // Step 3: Synthesize final output
+    if (results.length > 0) {
+      const synthesisPrompt = `Summarize these agent results into one actionable recommendation for Om's UPSC preparation:
+${results.map((r, i) => `Step ${i+1}: ${r}`).join('\n')}
+Give a 2-3 sentence conclusion with the most important next action. Spoken format, no markdown.`
+
+      const synthRes = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: GROQ_MODEL, stream: false, max_tokens: 200, temperature: 0.3,
+          messages: [{ role: 'user', content: synthesisPrompt }],
+        }),
+      })
+      if (synthRes.ok) {
+        const synthD = await synthRes.json() as { choices: { message: { content: string } }[] }
+        const synthesis = synthD.choices[0]?.message?.content?.trim()
+        if (synthesis) {
+          respond(L(lang,
+            `Agent complete. ${synthesis}`,
+            `Agent पूरा। ${synthesis}`,
+            `Agent complete. ${synthesis}`
+          ))
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[agent] failed:', e)
+    respond(L(lang, 'Agent encountered an error. Falling back to standard mode.', 'Agent में error आई।', 'Agent mein error aayi.'))
+  } finally {
+    _agentRunning = false
+  }
+}
+
+// ── V5: Study Session Orchestrator ────────────────────────────────────────────
+
+function startOrchestratedSession(subject: string, durationMins: number): void {
+  if (_orchestratorTimerId) { clearInterval(_orchestratorTimerId); _orchestratorTimerId = 0 }
+
+  const now = Date.now()
+  const checkInInterval = Math.max(15, Math.floor(durationMins / 4))
+  const checkIns: number[] = []
+  for (let i = 1; i <= Math.min(4, Math.floor(durationMins / checkInInterval)); i++) {
+    checkIns.push(now + i * checkInInterval * 60_000)
+  }
+
+  _orchestratedSession = {
+    subject, durationMins, startMs: now,
+    checkInAt: checkIns, checkInDone: 0, quizDone: false,
+  }
+
+  _sessionSubject = subject
+  const lang = detectResponseLang('')
+
+  respond(L(lang,
+    `Orchestrated ${durationMins}-min ${subject} session started. I'll check in every ${checkInInterval} minutes. Timer set. Focus, Om.`,
+    `${durationMins} मिनट का ${subject} session शुरू। हर ${checkInInterval} मिनट पर check करूंगा। Timer चालू।`,
+    `${durationMins}-min ${subject} session start. Har ${checkInInterval} minute mein check-in. Timer set. Focus, Om.`
+  ))
+
+  fireTimer(Math.min(durationMins, 50))  // Start focused timer
+
+  const quizTime = now + Math.floor(durationMins / 2) * 60_000
+
+  _orchestratorTimerId = window.setInterval(() => {
+    if (!_orchestratedSession) { clearInterval(_orchestratorTimerId); _orchestratorTimerId = 0; return }
+    const sess  = _orchestratedSession
+    const nowMs = Date.now()
+    const elapsed = Math.round((nowMs - sess.startMs) / 60_000)
+
+    // Check-in
+    for (let i = sess.checkInDone; i < sess.checkInAt.length; i++) {
+      if (nowMs >= sess.checkInAt[i]) {
+        sess.checkInDone++
+        const remaining = sess.durationMins - elapsed
+        const langCI = detectResponseLang('')
+        const checkInMsg = sess.checkInDone === 1
+          ? L(langCI, `${elapsed}-min check-in: How's it going with ${sess.subject}? ${remaining} min remaining.`, `${elapsed} मिनट हो गए। ${sess.subject} कैसा चल रहा है? ${remaining} मिनट बचे।`, `${elapsed} minute ho gaye. ${sess.subject} kaisa chal raha hai? ${remaining} min baki.`)
+          : L(langCI, `Check-in ${sess.checkInDone}: ${elapsed} minutes in. ${remaining} min left. Keep the momentum!`, `Check-in ${sess.checkInDone}: ${elapsed} मिनट हुए। ${remaining} बचे। जारी रखो!`, `Check-in ${sess.checkInDone}: ${elapsed} minute. ${remaining} baki. Jaari rakho!`)
+        showNudge(checkInMsg)
+        break
+      }
+    }
+
+    // Mid-session quiz
+    if (!sess.quizDone && nowMs >= quizTime) {
+      sess.quizDone = true
+      const langQ = detectResponseLang('')
+      showNudge(L(langQ,
+        `Halfway! Quick knowledge check on ${sess.subject}:`,
+        `आधा session! ${sess.subject} पर quick knowledge check:`,
+        `Aadha session! ${sess.subject} pe quick knowledge check:`
+      ))
+      setTimeout(() => { void startQuiz(sess.subject) }, 2000)
+    }
+
+    // Session end
+    if (nowMs >= sess.startMs + sess.durationMins * 60_000) {
+      clearInterval(_orchestratorTimerId); _orchestratorTimerId = 0
+      const langE = detectResponseLang('')
+      const finalMsg = L(langE,
+        `${sess.subject} session complete! ${sess.durationMins} minutes of focused study. Excellent work, Om. Log your progress and take a proper break.`,
+        `${sess.subject} session पूरा! ${sess.durationMins} मिनट की focused study। शानदार काम, ओम। Progress log करो और break लो।`,
+        `${sess.subject} session complete! ${sess.durationMins} minute ki study. Zabardast, Om. Progress log karo aur break lo.`
+      )
+      if (_open) respond(finalMsg); else showNudge(finalMsg)
+      _orchestratedSession = null
+    }
+  }, 30_000)  // tick every 30 seconds
 }
 
 function esc(s: string): string {

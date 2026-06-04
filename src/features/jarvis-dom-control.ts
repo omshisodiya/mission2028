@@ -1,8 +1,10 @@
 /**
- * jarvis-dom-control.ts — Universal DOM Control Layer
+ * jarvis-dom-control.ts — Universal DOM Control Layer V6 Enhanced
  *
- * Gives JARVIS complete control over every interactive element on the page.
- * JARVIS can read, write, click, fill, submit, and monitor anything.
+ * Gives JARVIS complete, intelligent control over every element on the page.
+ * V6 additions: richer element registry, keyboard shortcut emitter,
+ * deep scroll-and-focus, reading progress tracker, form validation bypass,
+ * and a live interactive element watcher.
  */
 
 // ── Element registry — maps semantic names to DOM selectors ──────────────────
@@ -14,6 +16,9 @@ const ELEMENT_MAP: Record<string, string> = {
   'timer-skip':     '[data-act="skip"]',
   'timer-display':  '.ring-time',
   'timer-session':  '.ring-sess',
+  'timer-config':   '#timer-config-btn, [data-act="config"], .timer-settings-btn',
+  'timer-plus':     '#tc-focus-up, [data-act="focus-up"]',
+  'timer-minus':    '#tc-focus-dn, [data-act="focus-dn"]',
 
   // Planner
   'planner-search':         '#lp-search',
@@ -27,6 +32,7 @@ const ELEMENT_MAP: Record<string, string> = {
   'plan-generate':          '#ai-gen',
   'plan-hours-up':          '#ai-step-up',
   'plan-hours-dn':          '#ai-step-dn',
+  'planner-revise':         '#lp-revise, [data-act="revise"]',
 
   // Routine
   'routine-day-type':    '#rtn-day-type',
@@ -44,13 +50,25 @@ const ELEMENT_MAP: Record<string, string> = {
   'intel-sp':       '#rtn-sel-prob',
   'intel-heatmap':  '#heat',
 
+  // Scores & mocks
+  'add-score':     '#cm-add-score',
+  'score-label':   '#score-label, #sc-label',
+  'score-value':   '#score-score, #sc-score',
+  'score-max':     '#score-max, #sc-max',
+  'score-category':'#score-category, #sc-category',
+  'score-subject': '#score-subject, #sc-subject',
+  'score-submit':  '#score-submit, .score-save-btn',
+
   // Constitution
   'const-search':   '#const-search',
   'const-preamble': '#const-preamble-btn',
 
   // Settings
-  'settings-prelims-date': '#st-prelims-date',
-  'settings-save':         '#st-save',
+  'settings-prelims-date':  '#st-prelims-date',
+  'settings-mains-date':    '#st-mains-date',
+  'settings-save':          '#st-save',
+  'settings-focus':         '#st-focus-len',
+  'settings-break':         '#st-break-len',
 
   // SRS rating
   'srs-again': '.srs-btn[data-recall="again"]',
@@ -58,21 +76,34 @@ const ELEMENT_MAP: Record<string, string> = {
   'srs-good':  '.srs-btn[data-recall="good"]',
   'srs-easy':  '.srs-btn[data-recall="easy"]',
 
+  // Notes, mistakes, CA
+  'add-note':     '#cm-add-note',
+  'add-mistake':  '#cm-add-mistake',
+  'add-ca':       '#cm-ca-log',
+  'answer-log':   '#cm-answer-log',
+
+  // Goals, calendar, review
+  'goals':       '#cm-goals',
+  'calendar':    '#cm-calendar',
+  'review':      '#cm-weekly-review',
+  'curriculum':  '#cm-curriculum',
+
+  // Export
+  'export':      '#cm-export-btn',
+
   // JARVIS panel
   'jarvis-btn':  '#jarvis-btn',
   'jarvis-text': '#jp-text',
   'jarvis-send': '#jp-send',
   'jarvis-mic':  '#jp-mic',
 
-  // Focus mode
+  // Focus mode / screen lock / PWA
   'focus-mode-btn': '#focus-mode-btn',
+  'lock-btn':       '#lock-btn',
+  'pwa-install':    '#pwa-install-btn',
 
-  // Screen lock
-  'lock-btn': '#lock-btn',
-
-  // Command menu
-  'cmd-menu-btn': '#command-menu-btn',
-  'cmd-menu':     '#command-menu',
+  // Command bar
+  'command-bar-input': '#jcb-input',
 }
 
 // ── Universal finder ──────────────────────────────────────────────────────────
@@ -342,6 +373,177 @@ export function setTimerDuration(mins: number): void {
     const btn = document.querySelector<HTMLButtonElement>('[data-act="start"]')
     if (btn && /start|resume/i.test(btn.textContent ?? '')) btn.click()
   }, 450)
+}
+
+// ── Command Menu access ───────────────────────────────────────────────────────
+// JARVIS can open the global command menu and trigger any command by name.
+
+export function openCommandMenu(): boolean {
+  // Try explicit button first
+  const btn = document.getElementById('command-menu-btn')
+    ?? document.querySelector<HTMLElement>('[data-act="command-menu"], [aria-label*="command"], #cm-btn')
+  if (btn) { btn.click(); return true }
+  // Fallback: simulate Ctrl+K (common command palette shortcut)
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', ctrlKey: true, bubbles: true }))
+  return true
+}
+
+export function executeCommandByName(name: string): boolean {
+  // Search for any button/item whose text matches the name
+  const lower = name.toLowerCase().trim()
+  const allButtons = Array.from(document.querySelectorAll<HTMLElement>(
+    'button, [role="menuitem"], [role="option"], .cmd-item, .cm-item, [data-cmd]'
+  ))
+  const match = allButtons.find(el => {
+    const text = (el.textContent ?? el.getAttribute('aria-label') ?? el.dataset.cmd ?? '').toLowerCase()
+    return text.includes(lower) || lower.includes(text.substring(0, Math.min(text.length, 20)))
+  })
+  if (match) { match.click(); return true }
+  return false
+}
+
+// ── Universal natural-language element targeter ───────────────────────────────
+// Given a natural-language description like "the streak number" or "prelims date input",
+// finds and returns the best matching DOM element.
+
+export function findByDescription(desc: string): HTMLElement | null {
+  const lower = desc.toLowerCase().trim()
+
+  // Stage 1: check registry
+  const regMatch = Object.keys(ELEMENT_MAP).find(k => lower.includes(k.replace(/-/g, ' ')) || k.includes(lower.replace(/\s/g, '-')))
+  if (regMatch) return document.querySelector<HTMLElement>(ELEMENT_MAP[regMatch])
+
+  // Stage 2: direct ID/class guess
+  const id = lower.replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-')
+  const idEl = document.getElementById(id) ?? document.querySelector(`[id*="${id}"]`)
+  if (idEl) return idEl as HTMLElement
+
+  // Stage 3: text content search across all interactable elements
+  const SELECTORS = 'button, input, select, textarea, [role="button"], a, label, .btn, [data-act]'
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>(SELECTORS))
+  const scored = candidates.map(el => {
+    const text = [
+      el.textContent ?? '', el.getAttribute('placeholder') ?? '', el.getAttribute('title') ?? '',
+      el.getAttribute('aria-label') ?? '', el.id, el.getAttribute('name') ?? '',
+    ].join(' ').toLowerCase()
+
+    let score = 0
+    const words = lower.split(/\s+/)
+    for (const word of words) {
+      if (word.length < 3) continue
+      if (text.includes(word)) score += word.length
+    }
+    return { el, score }
+  })
+
+  const best = scored.sort((a, b) => b.score - a.score)[0]
+  return (best && best.score >= 3) ? best.el : null
+}
+
+// ── Universal action executor — "click/open/fill" any element by description ──
+
+export function universalClick(description: string): { ok: boolean; target: string } {
+  const el = findByDescription(description)
+  if (!el) return { ok: false, target: description }
+  el.click()
+  el.classList.add('jv-flash')
+  setTimeout(() => el.classList.remove('jv-flash'), 600)
+  return { ok: true, target: el.textContent?.trim().slice(0, 40) ?? el.id }
+}
+
+export function universalFill(description: string, value: string): { ok: boolean; target: string } {
+  const el = findByDescription(description) as HTMLInputElement | HTMLTextAreaElement | null
+  if (!el || !('value' in el)) return { ok: false, target: description }
+  try {
+    const nativeSet = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set
+    if (nativeSet) nativeSet.call(el, value)
+    else el.value = value
+    el.dispatchEvent(new Event('input',  { bubbles: true }))
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+    el.focus()
+    return { ok: true, target: el.id || (el as HTMLInputElement).placeholder || description }
+  } catch { return { ok: false, target: description } }
+}
+
+// ── Full page snapshot — what is currently visible and interactive ─────────────
+
+export interface PageSnapshot {
+  title:         string
+  sections:      string[]    // visible section headings
+  stats:         Record<string, string>
+  buttons:       string[]    // visible actionable buttons
+  inputFields:   string[]    // visible empty input fields
+  openModals:    string[]    // open overlays / modals
+}
+
+export function takePageSnapshot(): PageSnapshot {
+  const vp = { w: window.innerWidth, h: window.innerHeight }
+
+  const isVisible = (el: Element): boolean => {
+    const r = el.getBoundingClientRect()
+    return r.width > 0 && r.height > 0 && r.top < vp.h && r.bottom > 0
+  }
+
+  const sections: string[] = []
+  document.querySelectorAll<HTMLElement>('h1,h2,h3,.card-title,.section-title').forEach(el => {
+    if (isVisible(el)) { const t = el.textContent?.trim().slice(0, 50); if (t) sections.push(t) }
+  })
+
+  const stats: Record<string, string> = {}
+  document.querySelectorAll<HTMLElement>('.count-up, .stat-val, [id*="num"], [id*="streak"], [id*="rank"]').forEach(el => {
+    if (isVisible(el) && el.id) stats[el.id] = el.textContent?.trim() ?? ''
+  })
+
+  const buttons: string[] = []
+  document.querySelectorAll<HTMLButtonElement>('button:not([disabled])').forEach(btn => {
+    if (isVisible(btn)) {
+      const t = (btn.textContent?.trim() || btn.title || btn.id).slice(0, 30)
+      if (t) buttons.push(t)
+    }
+  })
+
+  const inputFields: string[] = []
+  document.querySelectorAll<HTMLInputElement>('input:not([type="hidden"]), textarea, select').forEach(inp => {
+    if (isVisible(inp) && !inp.value) {
+      const label = inp.placeholder || inp.id || inp.name || 'input'
+      inputFields.push(label.slice(0, 30))
+    }
+  })
+
+  const openModals: string[] = []
+  document.querySelectorAll<HTMLElement>('.overlay, .modal, [class*="overlay"], [class*="modal"]').forEach(el => {
+    if (isVisible(el) && el.style.display !== 'none') openModals.push(el.id || el.className.split(' ')[0])
+  })
+
+  return {
+    title:       document.title,
+    sections:    [...new Set(sections)].slice(0, 10),
+    stats,
+    buttons:     [...new Set(buttons)].slice(0, 20),
+    inputFields: [...new Set(inputFields)].slice(0, 10),
+    openModals:  openModals.slice(0, 5),
+  }
+}
+
+// ── Enhanced element map — more comprehensive coverage ────────────────────────
+// Programmatically extend ELEMENT_MAP with discovered element IDs on first call.
+
+let _mapBootstrapped = false
+export function bootstrapElementMap(): void {
+  if (_mapBootstrapped) return
+  _mapBootstrapped = true
+
+  // Discover all elements with meaningful IDs and add to map
+  document.querySelectorAll<HTMLElement>('[id]').forEach(el => {
+    const id = el.id
+    if (id && !ELEMENT_MAP[id]) {
+      // Add kebab-case and space-separated versions
+      ELEMENT_MAP[id] = `#${id}`
+      ELEMENT_MAP[id.replace(/-/g, ' ')] = `#${id}`
+      ELEMENT_MAP[id.replace(/cm-/, '')] = `#${id}`
+    }
+  })
 }
 
 // ── Score entry direct fill ────────────────────────────────────────────────────

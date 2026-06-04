@@ -26,6 +26,14 @@ import { injectExportButton } from './features/export'
 import { initConfigurableTimer } from './features/timer-config'
 import { initScreenLock } from './features/screen-lock'
 import { initJarvis } from './features/jarvis'
+import { showCALog, bindCAFeed } from './features/ca-log'
+import { showAnswerLog, bindAnswerTracker } from './features/answer-log'
+import { injectMistakeNotebookToMenu } from './features/mistake-notebook'
+import { injectNotesToMenu } from './features/quick-notes'
+import { injectGoalsToMenu } from './features/goals'
+import { injectCalendarToMenu } from './features/calendar-view'
+import { injectWeeklyReviewToMenu } from './features/weekly-review'
+import { showSettings } from './features/settings'
 // checkStartupLock already imported at the top
 
 // UI shells mount synchronously so sections are always visible.
@@ -150,6 +158,17 @@ async function syncAndBoot(userId: string): Promise<void> {
   // Phase 5-6: inject command menu actions
   injectAddScoreToMenu()
   injectExportButton()
+
+  // Phase 6+: All missing command-menu features — wired here so JARVIS cl() calls work
+  injectCALogToMenu()
+  injectAnswerLogToMenu()
+  injectMistakeNotebookToMenu()
+  injectNotesToMenu()
+  injectGoalsToMenu()
+  injectCalendarToMenu()
+  injectWeeklyReviewToMenu()
+  injectSettingsToMenu()
+  injectReviseNowToMenu()
 
   // Phase 6: Constitution + configurable timer + JARVIS
   void initConstitution()
@@ -293,6 +312,80 @@ function injectOfflineIndicator(): void {
     banner.style.transform = 'translateY(100%)'
   })
   if (!navigator.onLine) banner.style.transform = 'translateY(0)'
+}
+
+// ── All new command-menu injections ──────────────────────────────────────────
+
+function closeMenu(): void {
+  document.getElementById('command-menu')?.classList.remove('open')
+  document.getElementById('menu-backdrop')?.classList.remove('show')
+  document.body.classList.remove('menu-open')
+}
+
+function injectCALogToMenu(): void {
+  const grid = document.querySelector('.cm-grid')
+  if (!grid || document.getElementById('cm-ca-log')) return
+  const card = document.createElement('a')
+  card.className = 'cm-card'; card.id = 'cm-ca-log'; card.href = '#'
+  card.innerHTML = `<span class="cm-no">📰</span><span class="cm-t">Log CA</span><span class="cm-d">Current affairs entry</span>`
+  card.addEventListener('click', e => {
+    e.preventDefault(); closeMenu()
+    showCALog(() => recompute())
+  })
+  grid.appendChild(card)
+}
+
+function injectAnswerLogToMenu(): void {
+  const grid = document.querySelector('.cm-grid')
+  if (!grid || document.getElementById('cm-answer-log')) return
+  const card = document.createElement('a')
+  card.className = 'cm-card'; card.id = 'cm-answer-log'; card.href = '#'
+  card.innerHTML = `<span class="cm-no">✍</span><span class="cm-t">Answer Log</span><span class="cm-d">Log mains answer practice</span>`
+  card.addEventListener('click', e => {
+    e.preventDefault(); closeMenu()
+    showAnswerLog(() => recompute())
+  })
+  grid.appendChild(card)
+}
+
+function injectSettingsToMenu(): void {
+  const grid = document.querySelector('.cm-grid')
+  if (!grid || document.getElementById('cm-settings')) return
+  const card = document.createElement('a')
+  card.className = 'cm-card'; card.id = 'cm-settings'; card.href = '#'
+  card.innerHTML = `<span class="cm-no">⚙</span><span class="cm-t">Settings</span><span class="cm-d">Exam dates, capacity, planner</span>`
+  card.addEventListener('click', e => {
+    e.preventDefault(); closeMenu()
+    showSettings((_s) => recompute())
+  })
+  grid.appendChild(card)
+}
+
+function injectReviseNowToMenu(): void {
+  const grid = document.querySelector('.cm-grid')
+  if (!grid || document.getElementById('cm-revise-now')) return
+  const card = document.createElement('a')
+  card.className = 'cm-card'; card.id = 'cm-revise-now'; card.href = '#'
+  card.innerHTML = `<span class="cm-no">↻</span><span class="cm-t">Revise This</span><span class="cm-d">Push current lecture to SRS today</span>`
+  card.addEventListener('click', async e => {
+    e.preventDefault(); closeMenu()
+    // Flag the first undone lecture for immediate revision
+    const row = document.querySelector<HTMLElement>('#plan .plan-row:not(.done)')
+    const title = row?.querySelector<HTMLElement>('.pl-title')?.textContent?.trim()
+    if (!title) {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'No pending lecture found.', type: 'info' } }))
+      return
+    }
+    const { createRevisionSchedule } = await import('./data/repositories/revisions')
+    try {
+      await createRevisionSchedule('', todayIST())
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: `"${title}" added to today's revision queue.`, type: 'success' } }))
+      recompute()
+    } catch {
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Failed to add revision.', type: 'error' } }))
+    }
+  })
+  grid.appendChild(card)
 }
 
 // ── Add Score in command menu ─────────────────────────────────────────────────

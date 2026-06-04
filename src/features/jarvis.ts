@@ -170,6 +170,239 @@ let _mem: JarvisMemory = (() => {
 })()
 function saveMem(): void { localStorage.setItem(_MEM_KEY, JSON.stringify(_mem)) }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── JARVIS SELF-LEARNING ENGINE ───────────────────────────────────────────────
+// Gradually learns from every Groq response, user feedback, and explicit
+// "remember" commands.  Uses TF-IDF Jaccard similarity to match queries.
+// Never makes a network call on its own — piggybacked on existing Groq calls.
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface LearnedEntry {
+  id:         string    // short hash of normalized query
+  query:      string    // raw user query
+  answer:     string    // stored answer
+  source:     'groq' | 'user'
+  confidence: number    // 0.0–1.0
+  uses:       number
+  liked:      number
+  disliked:   number
+  at:         string    // ISO date
+}
+
+interface FailedEntry {
+  query: string
+  count: number
+  last:  string
+}
+
+const _LEARN_KEY  = 'jarvis_kb_v2'
+const _FAIL_KEY   = 'jarvis_fail_v1'
+const KB_MAX      = 500      // max entries to keep
+const KB_TTL_DAYS = 90       // forget after 90 days of no use
+const SIM_THRESH  = 0.55     // Jaccard similarity to consider a match
+
+function _loadKB(): LearnedEntry[] {
+  try { return JSON.parse(localStorage.getItem(_LEARN_KEY) ?? '[]') as LearnedEntry[] }
+  catch { return [] }
+}
+function _saveKB(kb: LearnedEntry[]): void {
+  localStorage.setItem(_LEARN_KEY, JSON.stringify(kb.slice(0, KB_MAX)))
+}
+function _loadFails(): FailedEntry[] {
+  try { return JSON.parse(localStorage.getItem(_FAIL_KEY) ?? '[]') as FailedEntry[] }
+  catch { return [] }
+}
+function _saveFails(f: FailedEntry[]): void {
+  localStorage.setItem(_FAIL_KEY, JSON.stringify(f.slice(0, 200)))
+}
+
+/** Hash a normalized string to a short ID */
+function _hashStr(s: string): string {
+  let h = 0
+  for (let i = 0; i < s.length; i++) { h = (Math.imul(31, h) + s.charCodeAt(i)) | 0 }
+  return Math.abs(h).toString(36).slice(0, 8)
+}
+
+/** Tokenize a string into a set of bigrams + unigrams for similarity */
+function _tokenSet(s: string): Set<string> {
+  const words = s.toLowerCase()
+    .replace(/[^a-z0-9ऀ-ॿ\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 3)
+  const tokens = new Set<string>(words)
+  for (let i = 0; i < words.length - 1; i++) tokens.add(words[i] + '_' + words[i + 1])
+  return tokens
+}
+
+/** Jaccard similarity between two token sets */
+function _jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0
+  let inter = 0
+  for (const t of a) { if (b.has(t)) inter++ }
+  return inter / (a.size + b.size - inter)
+}
+
+/** Find the best matching KB entry for a query, or null if below threshold */
+function kbLookup(query: string): LearnedEntry | null {
+  const kb  = _loadKB()
+  const now = Date.now()
+  const cutoff = now - KB_TTL_DAYS * 86_400_000
+  const qTokens = _tokenSet(query)
+  let best: LearnedEntry | null = null
+  let bestSim = SIM_THRESH
+
+  for (const e of kb) {
+    // Skip expired low-confidence entries
+    if (e.confidence < 0.4 && new Date(e.at).getTime() < cutoff) continue
+    const sim = _jaccard(qTokens, _tokenSet(e.query))
+    if (sim > bestSim) { bestSim = sim; best = e }
+  }
+  return best
+}
+
+/** Store a new answer in the KB (called after every successful Groq response) */
+function kbStore(query: string, answer: string, source: 'groq' | 'user', confidence = 0.7): void {
+  const kb  = _loadKB()
+  const id  = _hashStr(query.toLowerCase().trim().slice(0, 80))
+  const existing = kb.findIndex(e => e.id === id)
+  const now = new Date().toISOString()
+
+  if (existing >= 0) {
+    kb[existing].answer     = answer
+    kb[existing].uses       += 1
+    kb[existing].confidence  = Math.min(1, kb[existing].confidence + 0.05)
+    kb[existing].at          = now
+  } else {
+    kb.unshift({ id, query: query.slice(0, 300), answer: answer.slice(0, 1200),
+      source, confidence, uses: 0, liked: 0, disliked: 0, at: now })
+  }
+  _saveKB(kb.sort((a, b) => b.confidence - a.confidence))
+}
+
+/** Mark a KB entry as liked (user says "that was right") */
+function kbLike(query: string): void {
+  const kb  = _loadKB()
+  const id  = _hashStr(query.toLowerCase().trim().slice(0, 80))
+  const idx = kb.findIndex(e => e.id === id)
+  if (idx >= 0) { kb[idx].liked++; kb[idx].confidence = Math.min(1, kb[idx].confidence + 0.15) }
+  _saveKB(kb)
+}
+
+/** Mark a KB entry as wrong and provide a correction */
+function kbCorrect(query: string, correction: string): void {
+  const kb  = _loadKB()
+  const id  = _hashStr(query.toLowerCase().trim().slice(0, 80))
+  const idx = kb.findIndex(e => e.id === id)
+  if (idx >= 0) {
+    kb[idx].answer      = correction
+    kb[idx].disliked   += 1
+    kb[idx].confidence  = Math.max(0.1, kb[idx].confidence - 0.2)
+    kb[idx].source      = 'user'
+  } else {
+    kbStore(query, correction, 'user', 0.9)
+    return
+  }
+  _saveKB(kb)
+}
+
+/** Track a query that JARVIS couldn't answer well */
+function kbTrackFail(query: string): void {
+  const fails = _loadFails()
+  const norm  = query.toLowerCase().trim().slice(0, 200)
+  const idx   = fails.findIndex(f => f.query === norm)
+  if (idx >= 0) { fails[idx].count++; fails[idx].last = new Date().toISOString() }
+  else fails.unshift({ query: norm, count: 1, last: new Date().toISOString() })
+  _saveFails(fails.sort((a, b) => b.count - a.count))
+}
+
+/** Build a personal context string prepended to every Groq prompt */
+function buildPersonalContext(): string {
+  const cs      = getCurrentState()
+  const streak  = cs?.streak ?? 0
+  const avg     = cs?.performance?.prelimsAvg
+  const sp      = cs?.selectionProbabilityPct
+  const subj    = cs?.today?.subject ?? ''
+  const backlog = cs?.backlogRemaining ?? 0
+  const weak    = _mem.weakTopics.slice(-4).join(', ') || 'none flagged'
+  const strong  = _mem.strongTopics.slice(-4).join(', ') || 'none flagged'
+
+  const confLines = Object.entries((_mem as { confidence?: Record<string,number> }).confidence ?? {})
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, 4)
+    .map(([t, v]) => `${t} ${v}/5`)
+    .join(', ')
+
+  return [
+    `[PERSONAL CONTEXT — Om Shisodiya, UPSC CSE 2028 aspirant, PW IAS Prarambh 2027]`,
+    streak  > 0          ? `Streak: ${streak} days` : '',
+    subj                 ? `Today's subject: ${subj}` : '',
+    avg    != null       ? `Prelims avg: ${avg.toFixed(1)}%` : '',
+    sp     != null       ? `Selection probability: ${sp.toFixed(1)}%` : '',
+    backlog > 0          ? `Backlog: ${backlog} lectures` : '',
+    weak !== 'none flagged' ? `Weak topics: ${weak}` : '',
+    strong !== 'none flagged' ? `Strong topics: ${strong}` : '',
+    confLines            ? `Confidence scores: ${confLines}` : '',
+    `Session subject: ${_sessionSubject || subj || 'General'}`,
+    `[Respond as JARVIS — Om's personal UPSC AI. Be specific, warm, and concise.]`,
+  ].filter(Boolean).join('\n')
+}
+
+/** Statistics about the KB */
+function kbStats(): { total: number; highConf: number; topFails: string[] } {
+  const kb    = _loadKB()
+  const fails = _loadFails()
+  return {
+    total:    kb.length,
+    highConf: kb.filter(e => e.confidence >= 0.8).length,
+    topFails: fails.slice(0, 3).map(f => f.query.slice(0, 50)),
+  }
+}
+
+// ── Feedback UI on JARVIS chat messages ───────────────────────────────────────
+// Adds 👍 / 👎 buttons to every assistant message bubble
+function addFeedbackButtons(msgEl: HTMLElement, query: string, answer: string): void {
+  if (msgEl.querySelector('.jv-fb')) return
+  const row = document.createElement('div')
+  row.className = 'jv-fb'
+  row.style.cssText = 'display:flex;gap:6px;margin-top:4px;'
+  row.innerHTML = `
+    <button class="jv-like" title="Correct answer"
+      style="background:none;border:1px solid var(--line-2);border-radius:20px;
+      padding:2px 8px;font-size:11px;cursor:pointer;color:var(--muted);transition:all .15s;">👍</button>
+    <button class="jv-dislike" title="Wrong — I'll correct it"
+      style="background:none;border:1px solid var(--line-2);border-radius:20px;
+      padding:2px 8px;font-size:11px;cursor:pointer;color:var(--muted);transition:all .15s;">👎 Fix</button>
+  `
+  msgEl.appendChild(row)
+
+  row.querySelector<HTMLButtonElement>('.jv-like')!.addEventListener('click', () => {
+    kbLike(query)
+    row.innerHTML = '<span style="font-size:11px;color:var(--accent);">✓ Saved to knowledge base</span>'
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Response marked correct — JARVIS learned it.', type: 'success' } }))
+  })
+
+  row.querySelector<HTMLButtonElement>('.jv-dislike')!.addEventListener('click', () => {
+    row.innerHTML = `
+      <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+        <input class="jv-fix-input" placeholder="Correct answer…"
+          style="flex:1;min-width:120px;padding:3px 8px;background:var(--panel-2);
+          border:1px solid var(--line-2);border-radius:20px;color:var(--ink);
+          font-size:11px;outline:none;" />
+        <button class="jv-fix-save"
+          style="background:var(--accent);border:none;border-radius:20px;
+          padding:3px 10px;font-size:11px;cursor:pointer;color:#000;font-weight:600;">Save</button>
+      </div>
+    `
+    row.querySelector<HTMLButtonElement>('.jv-fix-save')!.addEventListener('click', () => {
+      const fix = (row.querySelector<HTMLInputElement>('.jv-fix-input')?.value ?? '').trim()
+      if (!fix) return
+      kbCorrect(query, fix)
+      row.innerHTML = '<span style="font-size:11px;color:var(--accent);">✓ JARVIS updated — will use corrected answer next time.</span>'
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { msg: 'Correction saved to knowledge base.', type: 'success' } }))
+    })
+  })
+}
+
 // ── Focus Guardian — detects distraction during active Pomodoro ──────────────
 let _lastActivityMs   = Date.now()
 let _focusGuardianId  = 0
@@ -1958,7 +2191,33 @@ async function processQuery(text: string): Promise<void> {
     if (cmd) { void processQuery(cmd); return }
   }
 
-  // 18. CMDS — fast pattern-action table (743+ patterns)
+  // 17c. "Jarvis remember [fact]" — direct teach command
+  {
+    const rememberMatch = text.match(/^(?:jarvis[,\s]+)?remember(?:\s+that)?[:\s]+(.+)/i)
+    if (rememberMatch) {
+      const fact = rememberMatch[1].trim()
+      kbStore(fact, fact, 'user', 0.95)
+      addMsg('user', text)
+      respond(L(detectResponseLang(text),
+        `Got it. "${fact.slice(0, 60)}" saved to my knowledge base.`,
+        `याद कर लिया: "${fact.slice(0, 60)}"।`,
+        `Yaad kar liya: "${fact.slice(0, 60)}".`
+      ))
+      return
+    }
+  }
+
+  // 17d. KB lookup before CMDS — serve from personal knowledge base if high confidence
+  {
+    const kbHit = kbLookup(text)
+    if (kbHit && kbHit.confidence >= 0.75) {
+      addMsg('user', text)
+      respond(kbHit.answer)
+      return
+    }
+  }
+
+  // 18. CMDS — fast pattern-action table (900+ patterns)
   for (const cmd of CMDS) {
     if (cmd.re.test(tl)) {
       addMsg('user', text)
@@ -2036,6 +2295,18 @@ async function executeIntent(transcript: string): Promise<void> {
     }
 
     if (result.intent === 'qa.answer') {
+      // ── Tier 0: Personal KB lookup (self-learned answers) ────────────────────
+      const kbHit = kbLookup(transcript)
+      if (kbHit && kbHit.confidence >= 0.65) {
+        // Serve from KB — update usage counter
+        kbHit.uses++
+        const kb = _loadKB()
+        const idx = kb.findIndex(e => e.id === kbHit.id)
+        if (idx >= 0) { kb[idx].uses++; _saveKB(kb) }
+        respond(kbHit.answer)
+        return
+      }
+
       // ── Tier 3: UPSC knowledge question → Groq llama-3.3-70b tutor mode ────
       const cacheKey = `${detectedLang}:${transcript.toLowerCase().trim().slice(0, 120)}`
       const cached   = getCached(cacheKey)
@@ -2044,15 +2315,21 @@ async function executeIntent(transcript: string): Promise<void> {
       setStatus(detectedLang === 'hi' ? 'जवाब खोज रहा हूँ…' : detectedLang === 'hinglish' ? 'Jawab dhundh raha hoon…' : 'Searching knowledge base…')
       const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
       const answer   = qaResult.answer?.trim()
-      if (answer) { setCached(cacheKey, answer); respond(answer) }
-      else {
-        // Groq returned empty — retry with a simpler direct prompt before local fallback
+      if (answer) {
+        setCached(cacheKey, answer)
+        kbStore(transcript, answer, 'groq', 0.7)   // learn this answer
+        respond(answer)
+      } else {
+        kbTrackFail(transcript)   // track as a failed query for future improvement
+        // Retry with a simpler direct prompt before local fallback
         const retryLang2 = detectResponseLang(transcript)
         const retry2 = await llmRoute(
           buildQATranscript(`Answer in 2 spoken sentences: ${transcript}`, retryLang2), 'qa'
         ).catch(() => ({ answer: null }))
         if ((retry2 as { answer?: string | null }).answer?.trim()) {
-          respond((retry2 as { answer: string }).answer.trim())
+          const a2 = (retry2 as { answer: string }).answer.trim()
+          kbStore(transcript, a2, 'groq', 0.5)
+          respond(a2)
         } else {
           respond(offlineAnswer(transcript))
         }
@@ -2100,13 +2377,15 @@ function detectResponseLang(transcript: string): 'en' | 'hi' | 'hinglish' {
   return detectLang(transcript)
 }
 
-/** Prepend a language instruction to the transcript so Groq responds correctly. */
+/** Build enriched QA transcript: language instruction + personal context + query.
+ *  This is what makes every Groq response personalised to Om's preparation level. */
 function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): string {
   const langInstr =
     lang === 'hi'       ? '[RESPOND STRICTLY IN HINDI — Devanagari script]\n' :
     lang === 'hinglish' ? '[RESPOND IN HINGLISH — mix of Hindi words in Roman script]\n' :
                           '[RESPOND IN ENGLISH]\n'
-  return langInstr + transcript
+  const ctx = buildPersonalContext()
+  return `${langInstr}${ctx}\n\nQUESTION: ${transcript}`
 }
 
 // ── Language-aware response helpers ──────────────────────────────────────────
@@ -3943,6 +4222,36 @@ const CMDS: Cmd[] = [
   { re: /what.*jarvis.*cannot.*do|jarvis.*limitation|jarvis.*cant.*do/i,                     action: () => respond('JARVIS limitations: cannot access external websites or real-time news (no browser). Cannot store data to Supabase directly — routes through the app. Cannot guarantee 100% accuracy on UPSC knowledge — verify critical facts. Vision requires camera permission. Quiz requires Groq API key.'), reply: '' },
 
   // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v10 — Self-Learning & Full Website Control
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── SELF-LEARNING: Remember / Teach / Correct ─────────────────────────────
+  { re: /^(?:jarvis[,\s]+)?remember(?:\s+that)?[:\s]+(.+)/i,                                action: () => { const m=_lastUserQuery.match(/remember(?:\s+that)?[:\s]+(.+)/i); if(m?.length){kbStore(m[1].trim(),m[1].trim(),'user',0.95); respond(L(detectResponseLang(''),'Remembered. I will use this in future answers.','याद रख लिया। अगली बार इस्तेमाल करूंगा।','Yaad kar liya.')); } }, reply: '' },
+  { re: /jarvis.*learn.*this|save.*this.*answer|remember.*this.*fact/i,                      action: () => { if(_lastReply&&_lastUserQuery){kbStore(_lastUserQuery,_lastReply,'user',0.9); respond(L(detectResponseLang(''),'Saved to my knowledge base. I will use this in future.','Knowledge base में save हो गया।','Save ho gaya knowledge base mein.')) } else respond('Nothing to save yet.') }, reply: '' },
+  { re: /that.*was.*wrong|wrong.*answer.*jarvis|jarvis.*incorrect|fix.*that|correct.*yourself/i, action: () => { kbTrackFail(_lastUserQuery); respond(L(detectResponseLang(''),'Noted. Please provide the correct answer and I will update my knowledge. Say: "The correct answer is [answer]"','ठीक है। सही जवाब बताओ — "सही जवाब है [answer]" कहो।','Theek hai. Sahi jawab batao.')) }, reply: '' },
+  { re: /the correct answer is[:\s]+(.+)|sahi jawab hai[:\s]+(.+)/i,                         action: () => { const m=_lastUserQuery.match(/(?:the correct answer is|sahi jawab hai)[:\s]+(.+)/i); if(m&&_lastUserQuery){kbCorrect(_lastUserQuery,m[1].trim()); respond(L(detectResponseLang(''),'Correction saved. My knowledge base is now updated.','Correction save हो गई। Knowledge base update हो गया।','Correction save ho gayi.')) } }, reply: '' },
+  { re: /that was right|correct jarvis|yes that.*right|bilkul sahi|jarvis.*sahi.*tha/i,      action: () => { if(_lastUserQuery&&_lastReply){kbLike(_lastUserQuery); respond(L(detectResponseLang(''),'Noted — answer marked as correct in my knowledge base.','सही जवाब mark हो गया knowledge base में।','Sahi mark ho gaya.')) } }, reply: '' },
+
+  // ── SELF-LEARNING: Stats & Insights ─────────────────────────────────────────
+  { re: /what.*did.*you.*learn|how.*much.*learned|jarvis.*kb.*stats|knowledge.*base.*stats/i, action: () => { const s=kbStats(); respond(L(detectResponseLang(''),`I have learned ${s.total} answers (${s.highConf} with high confidence). ${s.topFails.length?'Gaps I still need to fill: '+s.topFails.join('; '):''}`,'मैंने '+s.total+' जवाब सीखे हैं। '+s.topFails.length?'अभी भी सीखना है: '+s.topFails.join(', '):'','Maine '+s.total+' answers seekhe hain.')) }, reply: '' },
+  { re: /what.*gaps.*jarvis|jarvis.*dont.*know|what.*cant.*answer|unanswered.*queries/i,     action: () => { const f=_loadFails().slice(0,5); respond(f.length?`Top unanswered queries: ${f.map(x=>'"'+x.query.slice(0,40)+'"').join(', ')}. Ask me these to trigger a Groq learning session.`:'No failed queries logged yet. Ask away!') }, reply: '' },
+  { re: /clear.*knowledge.*base|reset.*kb|forget.*all.*learning/i,                           action: () => { localStorage.removeItem(_LEARN_KEY); localStorage.removeItem(_FAIL_KEY); respond(L(detectResponseLang(''),'Knowledge base cleared. Starting fresh.','Knowledge base साफ हो गई।','KB clear ho gayi.')) }, reply: '' },
+  { re: /how.*many.*things.*learned|jarvis.*total.*knowledge|kb.*size/i,                     action: () => respond(`Knowledge base: ${_loadKB().length} entries, ${_loadFails().length} unanswered queries tracked. Ask anything to grow it.`), reply: '' },
+  { re: /personal.*context|what.*context.*have|jarvis.*knows.*what/i,                        action: () => respond(buildPersonalContext().replace(/\[.*?\]/g,'').trim() || 'No context built yet — log routine data and scores to personalise me.'), reply: '' },
+
+  // ── FULL WEBSITE CONTROL: Open all features ──────────────────────────────
+  { re: /open.*mistake.*notebook|mistake.*notebook.*open|show.*mistakes|galti.*dikhao/i,     action: () => { void import('./mistake-notebook').then(m=>m.showMistakeNotebook()) }, reply: '' },
+  { re: /add.*mistake.*open|open.*add.*mistake|log.*galti.*karo/i,                           action: () => { void import('./mistake-notebook').then(m=>m.showAddMistake()) }, reply: '' },
+  { re: /open.*notes|show.*notes|notes.*dikhao|quick.*notes.*open/i,                         action: () => { void import('./quick-notes').then(m=>m.showNotes()) }, reply: '' },
+  { re: /add.*note.*open|open.*add.*note|quick.*note.*open/i,                                action: () => { void import('./quick-notes').then(m=>m.showAddNote()) }, reply: '' },
+  { re: /open.*goals|show.*goals|goals.*open|target.*dikhao/i,                               action: () => { void import('./goals').then(m=>m.showGoals()) }, reply: '' },
+  { re: /open.*calendar|calendar.*open|show.*calendar|agenda.*open/i,                        action: () => { void import('./calendar-view').then(m=>m.showCalendar()) }, reply: '' },
+  { re: /open.*weekly.*review|weekly.*review.*open|weekly.*reflection.*open/i,               action: () => { void import('./weekly-review').then(m=>m.showWeeklyReview()) }, reply: '' },
+  { re: /open.*ca.*log|ca.*log.*open|log.*current.*affairs.*open/i,                          action: () => { void import('./ca-log').then(m=>m.showCALog(()=>{})) }, reply: '' },
+  { re: /open.*answer.*log|answer.*log.*open|mains.*log.*open/i,                             action: () => { void import('./answer-log').then(m=>m.showAnswerLog(()=>{})) }, reply: '' },
+  { re: /open.*settings|settings.*open|settings.*kholao/i,                                   action: () => { void import('./settings').then(m=>m.showSettings(()=>{})) }, reply: '' },
+
+  // ════════════════════════════════════════════════════════════════════════════
   // COMMAND BANK v7 — 200+ Integration, Sync & Advanced Commands
   // ════════════════════════════════════════════════════════════════════════════
 
@@ -5204,11 +5513,25 @@ function addMsg(role: 'user'|'assistant', content: string): void {
 
 function renderChat(): void {
   const el = document.getElementById('jp-chat'); if (!el) return
-  el.innerHTML = _history.map(m => `
-    <div class="jmsg ${m.role}">
-      <div class="jbubble">${esc(m.content)}</div>
-    </div>`).join('')
+  el.innerHTML = _history.map((m, i) => {
+    const isLast = m.role === 'assistant' && i === _history.length - 1
+    return `
+      <div class="jmsg ${m.role}" data-idx="${i}">
+        <div class="jbubble">${esc(m.content)}</div>
+        ${isLast && m.role === 'assistant' ? '<div class="jv-fb-slot"></div>' : ''}
+      </div>`
+  }).join('')
   el.scrollTop = el.scrollHeight
+
+  // Attach feedback buttons to the last assistant message
+  if (_lastUserQuery && _lastReply) {
+    const slot = el.querySelector<HTMLElement>('.jv-fb-slot')
+    const bubble = slot?.previousElementSibling as HTMLElement | null
+    if (slot && bubble) {
+      slot.remove()
+      addFeedbackButtons(bubble.parentElement as HTMLElement, _lastUserQuery, _lastReply)
+    }
+  }
 }
 
 function respond(text: string): void {
@@ -5217,6 +5540,8 @@ function respond(text: string): void {
   _lastReply = clean
   addMsg('assistant', clean)
   speak(clean)
+  // VA overlay transcript
+  VA.setTranscript(clean, true)
 }
 
 function esc(s: string): string {

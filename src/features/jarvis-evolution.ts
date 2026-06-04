@@ -91,7 +91,7 @@ const BLOCKED_PATTERNS = [
   /setTimeout\s*\([^,]+,\s*0\s*\)/,  // prevent 0-delay loops
 ]
 
-function isSafeCode(code: string): { safe: boolean; reason: string } {
+export function isSafeCode(code: string): { safe: boolean; reason: string } {
   for (const pat of BLOCKED_PATTERNS) {
     if (pat.test(code)) return { safe: false, reason: `Blocked pattern: ${pat}` }
   }

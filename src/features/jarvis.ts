@@ -14,11 +14,22 @@ import {
   loadGaps, loadCaps,
 } from './jarvis-evolution'
 import {
+  clusterGaps, startEvolutionLoopV2, getV2Report, generateCapabilityV2,
+  appendQueryHistory, loadQueryHistory, assessCapabilityAreas,
+} from './jarvis-evolution-v2'
+import {
   findElement, clickElement as domClick, fillElement as domFill, readElement,
   readSection, readAllSections, mapAllInteractiveElements,
   scrollToAndHighlight, fillRoutineFromVoice, getTimerState, setTimerDuration,
   startDOMMonitor, onDOMEvent,
 } from './jarvis-dom-control'
+import {
+  isSocraticActive, startSocraticMode, continueSocratic, endSocratic,
+  buildConceptWeb, buildMemoryPalace, updateAdaptiveProfile, getAdaptiveLevel,
+  adaptiveExplain, minePYQPatterns, optimizeStudySession,
+  isDebateActive, startDebateSession, continueDebate, endDebate,
+  buildCitation, architectAnswer, buildUPSCRadar, renderUPSCRadar,
+} from './jarvis-intelligence'
 // VA overlay lives in index.html as inline script — access via window.VA
 type _VAGlobal = { setState(s:string):void; setAmplitude(v:number):void; setTranscript(t:string,f:boolean):void; readonly state:string }
 const _w = window as Window & { VA?: _VAGlobal }
@@ -575,9 +586,10 @@ export function initJarvis(): void {
     startAppSync()
     void requestNotifPermission()  // ask once for browser notifications
 
-    // Self-evolution + DOM control systems
-    startEvolutionLoop(respond)    // background capability generation
-    startDOMMonitor()              // watch DOM for state changes
+    // Self-evolution V1 + V2 + DOM control systems
+    startEvolutionLoop(respond)     // v1: reactive gap resolution
+    startEvolutionLoopV2(respond)   // v2: proactive, clustered, validated
+    startDOMMonitor()               // watch DOM for state changes
 
     // React to DOM events for smarter awareness
     onDOMEvent((evt, detail) => {
@@ -928,23 +940,144 @@ function openPanel(greet = true): void {
 
   const p = document.createElement('div')
   p.id = 'jarvis-panel'
+
+  const cs = getCurrentState()
+  const v2r = getV2Report()
+  const kbCount = _loadKB().length
+  const streamIcon = _streamingEnabled ? '⚡' : '💬'
+
   p.innerHTML = `
     <div class="jp-head">
-      <div class="jp-title">⬡ JARVIS</div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <button id="jp-calibrate" class="jp-pill" title="Calibrate clap detection">👏 Calibrate</button>
+      <div class="jp-title">⬡ JARVIS <span style="font-size:9px;color:var(--muted);font-family:var(--font-mono);">vULTIMATE</span></div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <span id="jp-mode-badge" style="font-size:9px;font-family:var(--font-mono);padding:2px 6px;border-radius:10px;
+          background:${_streamingEnabled?'rgba(240,181,74,.2)':'rgba(120,168,255,.15)'};
+          color:${_streamingEnabled?'var(--accent)':'#78a8ff'};border:1px solid currentColor;">${streamIcon} ${_streamingEnabled?'STREAM':'CHAT'}</span>
+        <button id="jp-calibrate" class="jp-pill" title="Calibrate clap">👏</button>
         <button id="jp-close" class="jp-close">✕</button>
       </div>
     </div>
-    <div class="jp-status" id="jp-status">Listening…</div>
-    <div class="jp-chat" id="jp-chat"></div>
-    <div class="jp-input-row">
-      <button id="jp-mic" class="jp-mic-btn" title="Tap to speak">🎙</button>
-      <input id="jp-text" type="text" placeholder="Ask anything…" autocomplete="off" />
-      <button id="jp-send" class="jp-send-btn">➤</button>
+
+    <!-- Tab bar -->
+    <div id="jp-tabs" style="display:flex;gap:0;border-bottom:1px solid var(--line);flex-shrink:0;">
+      ${[['chat','💬 Chat'],['skills','⚡ Skills'],['evolution','🧬 Evolve'],['kb','🧠 KB']].map(([id,label])=>`
+        <button class="jp-tab${id==='chat'?' active':''}" data-tab="${id}"
+          style="flex:1;padding:7px 4px;font-size:10px;font-family:var(--font-mono);letter-spacing:.06em;
+          background:none;border:none;color:${id==='chat'?'var(--accent)':'var(--muted)'};cursor:pointer;
+          border-bottom:2px solid ${id==='chat'?'var(--accent)':'transparent'};transition:all .15s;">${label}</button>
+      `).join('')}
+    </div>
+
+    <!-- Status bar -->
+    <div class="jp-status" id="jp-status" style="flex-shrink:0;">Ready — say Jarvis or double clap</div>
+
+    <!-- Tab panels -->
+    <div id="jp-tab-chat" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+      <div class="jp-chat" id="jp-chat" style="flex:1;overflow-y:auto;"></div>
+      <div class="jp-input-row">
+        <button id="jp-mic" class="jp-mic-btn" title="Tap to speak">🎙</button>
+        <input id="jp-text" type="text" placeholder="Ask anything…" autocomplete="off" />
+        <button id="jp-send" class="jp-send-btn">➤</button>
+      </div>
+    </div>
+
+    <div id="jp-tab-skills" style="display:none;flex:1;overflow-y:auto;padding:10px 12px;">
+      <p style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.12em;margin:0 0 10px;">QUICK ACTIONS</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        ${[
+          ['🎯 Quiz', 'quiz me on '+( cs?.today?.subject||'Polity')],
+          ['🕸 Concept Web', 'concept web for '+(cs?.today?.subject||'Polity')],
+          ['📡 Radar', 'show upsc radar'],
+          ['🏛 Socratic', 'socratic mode '+(cs?.today?.subject||'Polity')],
+          ['⚔ Debate', 'debate session '+(cs?.today?.subject||'Polity')],
+          ['🏺 Memory Palace', 'memory palace for '+(cs?.today?.subject||'articles')],
+          ['📊 Status', 'full status'],
+          ['📋 Review', 'open weekly review'],
+          ['🎯 Goals', 'open goals'],
+          ['📅 Calendar', 'open calendar'],
+          ['✗ Mistakes', 'open mistake notebook'],
+          ['📝 Notes', 'open notes'],
+        ].map(([label, cmd]) => `
+          <button class="jp-skill-btn" data-cmd="${cmd}"
+            style="padding:8px 6px;font-size:11px;font-family:var(--font-mono);text-align:left;
+            background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r-sm);
+            color:var(--ink-soft);cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</button>
+        `).join('')}
+      </div>
+    </div>
+
+    <div id="jp-tab-evolution" style="display:none;flex:1;overflow-y:auto;padding:10px 12px;">
+      <p style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.12em;margin:0 0 10px;">EVOLUTION ENGINE V2</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          ${[
+            ['Capabilities', v2r.capsTotal+' total / '+v2r.capsValidated+' valid'],
+            ['Versions', v2r.capVersions+' tracked'],
+            ['Gap Clusters', v2r.gapsClustered+' active'],
+            ['KB Entries', kbCount+' learned'],
+          ].map(([k,v])=>`
+            <div style="background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;">
+              <div style="font-size:9px;font-family:var(--font-mono);color:var(--muted);">${k.toUpperCase()}</div>
+              <div style="font-size:14px;font-weight:700;color:var(--accent-ink);">${v}</div>
+            </div>`).join('')}
+        </div>
+        ${v2r.assessments.slice(0,4).map(a=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;
+            background:var(--panel-2);border-radius:var(--r-sm);border:1px solid var(--line-2);">
+            <span style="font-size:11px;color:var(--ink-soft);">${a.area}</span>
+            <span style="font-size:10px;font-family:var(--font-mono);color:${a.verdict==='strong'?'#45e0a8':a.verdict==='developing'?'var(--accent)':'#e05555'};">${a.verdict}</span>
+          </div>`).join('')}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+          <button class="jp-skill-btn" data-cmd="evolve v2" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:rgba(240,181,74,.15);border:1px solid var(--accent);border-radius:20px;color:var(--accent);cursor:pointer;">⚡ Evolve Now</button>
+          <button class="jp-skill-btn" data-cmd="evolution v2 report" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--ink-soft);cursor:pointer;">📊 Full Report</button>
+          <button class="jp-skill-btn" data-cmd="cluster gaps" style="padding:7px 12px;font-size:11px;font-family:var(--font-mono);background:var(--panel-2);border:1px solid var(--line-2);border-radius:20px;color:var(--ink-soft);cursor:pointer;">🔬 Cluster Gaps</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="jp-tab-kb" style="display:none;flex:1;overflow-y:auto;padding:10px 12px;">
+      <p style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.12em;margin:0 0 10px;">KNOWLEDGE BASE (${kbCount} entries)</p>
+      <div style="display:flex;flex-direction:column;gap:6px;" id="jp-kb-list">
+        ${_loadKB().slice(0,8).map(e=>`
+          <div style="background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;">
+            <div style="font-size:10px;color:var(--accent);font-family:var(--font-mono);margin-bottom:2px;">
+              ${e.source==='user'?'👤':'🤖'} ${(e.confidence*100).toFixed(0)}% conf · used ${e.uses}x
+            </div>
+            <div style="font-size:12px;color:var(--ink-soft);line-height:1.4;">${e.query.slice(0,60)}</div>
+          </div>`).join('')}
+        ${kbCount > 8 ? `<p style="font-size:11px;color:var(--muted);font-family:var(--font-mono);text-align:center;">+${kbCount-8} more entries</p>` : ''}
+      </div>
     </div>
   `
   document.body.appendChild(p)
+
+  // Tab switching
+  p.querySelectorAll<HTMLButtonElement>('.jp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab!
+      p.querySelectorAll<HTMLButtonElement>('.jp-tab').forEach(b => {
+        b.style.color = 'var(--muted)'; b.style.borderBottom = '2px solid transparent'
+      })
+      btn.style.color = 'var(--accent)'; btn.style.borderBottom = '2px solid var(--accent)'
+      p.querySelectorAll<HTMLElement>('[id^="jp-tab-"]').forEach(el => { el.style.display = 'none' })
+      const panel = document.getElementById(`jp-tab-${tab}`)
+      if (panel) panel.style.display = tab === 'chat' ? 'flex' : 'block'
+      if (tab === 'chat') panel!.style.flexDirection = 'column'
+    })
+  })
+
+  // Quick skill buttons
+  p.querySelectorAll<HTMLButtonElement>('.jp-skill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cmd = btn.dataset.cmd!
+      // Switch to chat tab
+      const chatTab = p.querySelector<HTMLButtonElement>('[data-tab="chat"]')
+      chatTab?.click()
+      void processQuery(cmd)
+    })
+    btn.addEventListener('mouseenter', () => { btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)' })
+    btn.addEventListener('mouseleave', () => { btn.style.borderColor = 'var(--line-2)'; btn.style.color = 'var(--ink-soft)' })
+  })
 
   document.getElementById('jp-close')?.addEventListener('click', closePanel)
   document.getElementById('jp-calibrate')?.addEventListener('click', runCalibration)
@@ -1195,7 +1328,10 @@ function sendText(inp: HTMLInputElement): void {
 
 // ── Query Processing — the intelligence core ──────────────────────────────────
 async function processQuery(text: string): Promise<void> {
-  if (!text.trim()) return   // ignore empty (mic sometimes returns blank result)
+  if (!text.trim()) return
+
+  // Track query for evolution V2 proactive learning
+  appendQueryHistory(text)
 
   // 0. Vision
   if (isVisionTrigger(text)) { addMsg('user', text); openVisionCapture(text, respond); return }
@@ -1228,6 +1364,20 @@ async function processQuery(text: string): Promise<void> {
     stopListening(); _synth.cancel()
     addMsg('user', text)
     respond('Sleeping. Double-clap or tap me to wake up.')
+    return
+  }
+
+  // 0a. Socratic mode — route user answer to Socratic engine
+  if (isSocraticActive()) {
+    addMsg('user', text)
+    await continueSocratic(text, respond)
+    return
+  }
+
+  // 0b. Debate mode — route user argument to debate engine
+  if (isDebateActive()) {
+    addMsg('user', text)
+    await continueDebate(text, respond)
     return
   }
 
@@ -2399,13 +2549,37 @@ async function executeIntent(transcript: string): Promise<void> {
       setStatus(detectedLang === 'hi' ? 'जवाब खोज रहा हूँ…' : detectedLang === 'hinglish' ? 'Jawab dhundh raha hoon…' : 'Searching knowledge base…')
       const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
       const answer   = qaResult.answer?.trim()
-      if (answer) {
+      if (_streamingEnabled) {
+        // ── STREAMING PATH: tokens appear in real-time ───────────────────────
+        const enrichedPrompt = buildQATranscript(transcript, detectedLang)
+        await streamGroqResponse(
+          enrichedPrompt,
+          (_token, full) => {
+            _lastReply = full
+            VA.setTranscript(full, false)
+          },
+          (full) => {
+            if (full) {
+              setCached(cacheKey, full)
+              kbStore(transcript, full, 'groq', 0.7)
+              _lastReply = full
+              VA.setTranscript(full, true)
+              setState('speaking')
+              VA.setState('speaking')
+              // Speak only the streamed text (already shown visually)
+              speak(full)
+            } else {
+              kbTrackFail(transcript)
+              respond(offlineAnswer(transcript))
+            }
+          }
+        )
+      } else if (answer) {
         setCached(cacheKey, answer)
-        kbStore(transcript, answer, 'groq', 0.7)   // learn this answer
+        kbStore(transcript, answer, 'groq', 0.7)
         respond(answer)
       } else {
-        kbTrackFail(transcript)   // track as a failed query for future improvement
-        // Retry with a simpler direct prompt before local fallback
+        kbTrackFail(transcript)
         const retryLang2 = detectResponseLang(transcript)
         const retry2 = await llmRoute(
           buildQATranscript(`Answer in 2 spoken sentences: ${transcript}`, retryLang2), 'qa'
@@ -2471,6 +2645,96 @@ function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): stri
   const ctx = buildPersonalContext()
   return `${langInstr}${ctx}\n\nQUESTION: ${transcript}`
 }
+
+// ── Streaming Groq response — tokens appear in real-time ─────────────────────
+// Shows text as it generates, just like ChatGPT.
+// Updates the chat bubble AND the VA transcript live.
+
+async function streamGroqResponse(
+  prompt: string,
+  onToken: (token: string, full: string) => void,
+  onDone:  (full: string) => void,
+): Promise<void> {
+  const key = GROQ_KEY; if (!key) { onDone(''); return }
+
+  let accumulated = ''
+  let chatBubble: HTMLElement | null = null
+
+  // Find or create the streaming bubble in the chat
+  const chat = document.getElementById('jp-chat')
+  if (chat) {
+    const bubble = document.createElement('div')
+    bubble.className = 'jmsg assistant'
+    bubble.innerHTML = '<div class="jbubble" id="stream-bubble">▋</div>'
+    chat.appendChild(bubble)
+    chat.scrollTop = chat.scrollHeight
+    chatBubble = document.getElementById('stream-bubble')
+  }
+
+  try {
+    const res = await fetch(GROQ_URL, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        model:       GROQ_MODEL,
+        messages:    [{ role: 'user', content: prompt }],
+        max_tokens:  600,
+        temperature: 0.6,
+        stream:      true,
+      }),
+    })
+
+    if (!res.ok || !res.body) { onDone(''); return }
+
+    const reader  = res.body.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value, { stream: true })
+      for (const line of chunk.split('\n')) {
+        const clean = line.replace(/^data:\s*/, '').trim()
+        if (!clean || clean === '[DONE]') continue
+        try {
+          const delta = (JSON.parse(clean) as { choices: { delta: { content?: string } }[] })
+            .choices[0]?.delta?.content ?? ''
+          if (!delta) continue
+
+          accumulated += delta
+          onToken(delta, accumulated)
+
+          // Live update the bubble
+          if (chatBubble) {
+            const esc = accumulated.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            chatBubble.innerHTML = esc + '<span style="opacity:.5">▋</span>'
+            const chat2 = document.getElementById('jp-chat')
+            if (chat2) chat2.scrollTop = chat2.scrollHeight
+          }
+
+          // Update VA overlay transcript live
+          VA.setTranscript(accumulated, false)
+        } catch { /* malformed SSE chunk — skip */ }
+      }
+    }
+
+    // Finalise bubble
+    if (chatBubble) {
+      chatBubble.id = ''  // detach from stream ID
+      const esc = accumulated.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      chatBubble.innerHTML = esc
+    }
+    onDone(accumulated)
+  } catch (e) {
+    console.error('[stream]', e)
+    if (chatBubble) chatBubble.innerHTML = '<span style="color:var(--bad);">Stream interrupted.</span>'
+    onDone(accumulated || '')
+  }
+}
+
+// Flag to enable/disable streaming (user can toggle)
+let _streamingEnabled = localStorage.getItem('jarvis_streaming') !== 'false'
 
 // ── Language-aware response helpers ──────────────────────────────────────────
 
@@ -4363,6 +4627,66 @@ const CMDS: Cmd[] = [
   { re: /clear.*knowledge.*base|reset.*kb|forget.*all.*learning/i,                           action: () => { localStorage.removeItem(_LEARN_KEY); localStorage.removeItem(_FAIL_KEY); respond(L(detectResponseLang(''),'Knowledge base cleared. Starting fresh.','Knowledge base साफ हो गई।','KB clear ho gayi.')) }, reply: '' },
   { re: /how.*many.*things.*learned|jarvis.*total.*knowledge|kb.*size/i,                     action: () => respond(`Knowledge base: ${_loadKB().length} entries, ${_loadFails().length} unanswered queries tracked. Ask anything to grow it.`), reply: '' },
   { re: /personal.*context|what.*context.*have|jarvis.*knows.*what/i,                        action: () => respond(buildPersonalContext().replace(/\[.*?\]/g,'').trim() || 'No context built yet — log routine data and scores to personalise me.'), reply: '' },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v12 — Evolution V2 + Intelligence Modules + Streaming + 200+
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── STREAMING CONTROL ─────────────────────────────────────────────────────
+  { re: /streaming.*on|enable.*streaming|live.*response.*on|real.*time.*response/i,          action: () => { _streamingEnabled=true; localStorage.setItem('jarvis_streaming','true'); respond(L(detectResponseLang(''),'Streaming on. Responses will appear in real-time as I generate them.','Streaming चालू। जवाब real-time में आएंगे।','Streaming on. Real-time response shuru.')) }, reply: '' },
+  { re: /streaming.*off|disable.*streaming|live.*response.*off/i,                            action: () => { _streamingEnabled=false; localStorage.setItem('jarvis_streaming','false'); respond(L(detectResponseLang(''),'Streaming off. Full responses at once.','Streaming बंद।','Streaming off.')) }, reply: '' },
+  { re: /streaming.*status|is.*streaming.*on|stream.*mode/i,                                 action: () => respond(`Streaming is ${_streamingEnabled?'ON — responses appear token by token in real-time':'OFF — full response shown at once'}.`), reply: '' },
+
+  // ── EVOLUTION V2 ──────────────────────────────────────────────────────────
+  { re: /evolution.*v2.*report|v2.*evolution.*status|deep.*evolution.*report/i,              action: () => { const r=getV2Report(); respond(`Evolution V2: ${r.capsTotal} caps (${r.capsValidated} validated), ${r.capVersions} versions tracked, ${r.gapsClustered} gap clusters active. Top areas: ${r.assessments.slice(0,3).map(a=>`${a.area}(${a.verdict})`).join(', ')}. Top caps: ${r.topCaps.slice(0,2).join(', ')}.`) }, reply: '' },
+  { re: /capability.*assessment|area.*assessment|strength.*weakness.*jarvis/i,               action: () => { const a=assessCapabilityAreas(); respond(`JARVIS capability map: Strong: ${a.filter(x=>x.verdict==='strong').map(x=>x.area).join(', ')||'none yet'}. Developing: ${a.filter(x=>x.verdict==='developing').map(x=>x.area).join(', ')||'none'}. Weak: ${a.filter(x=>x.verdict==='weak').map(x=>x.area).join(', ')||'none'}.`) }, reply: '' },
+  { re: /cluster.*gaps|group.*failures|batch.*evolve/i,                                      action: () => { const g=loadGaps().filter(x=>!x.attempted); const c=clusterGaps(g); respond(`${g.length} gaps clustered into ${c.length} groups. Top cluster: "${c[0]?.centroid.slice(0,50)}" (${c[0]?.totalCount||0} hits). Say "evolve v2" to generate capabilities for all clusters.`) }, reply: '' },
+  { re: /evolve.*v2|force.*v2.*evolution|v2.*generate.*now/i,                                action: () => { const g=loadGaps().filter(x=>!x.attempted); const c=clusterGaps(g).slice(0,3); if(!c.length){respond('No gap clusters to evolve. Keep using JARVIS to create learning opportunities.');return;} respond(`Generating V2 capabilities for ${c.length} clusters…`); c.forEach((cl,i)=>setTimeout(async()=>{const cap=await generateCapabilityV2(cl,respond); if(cap)respond(`✓ V2 cap: "${cap.description}"`)},i*4000)) }, reply: '' },
+  { re: /query.*history|what.*asked.*before|recent.*queries/i,                               action: () => { const h=loadQueryHistory().slice(0,8); respond(h.length?`Recent queries: ${h.map((q,i)=>`${i+1}. "${q.slice(0,35)}"`).join('; ')}. Used for proactive evolution.`:'No query history yet.') }, reply: '' },
+
+  // ── SOCRATIC MODE ─────────────────────────────────────────────────────────
+  { re: /socratic.*mode.*(.+)|teach.*me.*socratic.*(.+)|question.*me.*about.*(.+)/i,         action: () => { const m=_lastUserQuery.match(/(?:socratic mode|teach me.*socratic|question me about)\s+(.+)/i); const topic=m?.[1]?.trim()||getCurrentState()?.today?.subject||'Polity'; void startSocraticMode(topic,respond) }, reply: '' },
+  { re: /stop.*socratic|end.*socratic|socratic.*stop|exit.*socratic/i,                       action: () => { endSocratic(); respond('Socratic session ended. Great practice!') }, reply: '' },
+
+  // ── CONCEPT WEB ───────────────────────────────────────────────────────────
+  { re: /concept.*web.*(.+)|mind.*map.*(.+)|concept.*map.*(.+)|connections.*for.*(.+)/i,     action: () => { const m=_lastUserQuery.match(/(?:concept web|mind map|concept map|connections for)\s+(.+)/i); if(m) void buildConceptWeb(m[1].trim(),respond); else respond('Tell me a topic: "concept web for Polity"') }, reply: '' },
+  { re: /show.*upsc.*radar|upsc.*readiness.*map|subject.*radar|readiness.*chart/i,           action: () => { const areas=buildUPSCRadar(getCurrentState()); renderUPSCRadar(areas); respond(`UPSC Readiness Radar opened. ${areas.filter(a=>a.accuracy>=70).length} strong areas, ${areas.filter(a=>a.accuracy<50).length} need attention.`) }, reply: '' },
+
+  // ── MEMORY PALACE ─────────────────────────────────────────────────────────
+  { re: /memory.*palace.*for.*(.+)|palace.*for.*(.+)|spatial.*memory.*(.+)/i,               action: () => { const m=_lastUserQuery.match(/(?:memory palace for|palace for|spatial memory)\s+(.+)/i); if(!m){respond('Say: "memory palace for [topic]: item1, item2, item3"');return;} const parts=m[1].split(':'); const topic=parts[0].trim(); const items=parts[1]?.split(',').map(s=>s.trim())??[]; void buildMemoryPalace(topic,items,respond) }, reply: '' },
+  { re: /remember.*list.*(.+)|memorize.*(.+)\s+list/i,                                       action: () => { const m=_lastUserQuery.match(/(?:remember list|memorize)\s+(.+)/i); if(m) void buildMemoryPalace(m[1].trim(),[],respond) }, reply: '' },
+
+  // ── ADAPTIVE INTELLIGENCE ─────────────────────────────────────────────────
+  { re: /my.*level.*in.*(.+)|what.*level.*(.+)|how.*advanced.*in.*(.+)/i,                    action: () => { const m=_lastUserQuery.match(/(?:my level in|what level|how advanced in)\s+(.+)/i); if(m){const t=m[1].trim(); respond(`Your adaptive level in ${t}: ${getAdaptiveLevel(t)}. JARVIS calibrates explanation depth to this.`)} }, reply: '' },
+  { re: /explain.*adaptive.*(.+)|deep.*explain.*(.+)|calibrated.*explain/i,                  action: () => { const m=_lastUserQuery.match(/(?:explain adaptive|deep explain|calibrated explain)\s+(.+)/i); if(m){const topic=m[1].trim(); void adaptiveExplain(topic,`Explain ${topic} for UPSC`,respond)} }, reply: '' },
+  { re: /update.*level.*(.+).*to.*(\w+)|set.*level.*(.+).*(\w+)/i,                          action: () => { const m=_lastUserQuery.match(/(?:update level|set level)\s+(.+?)\s+(?:to|as)\s+(\w+)/i); if(m){updateAdaptiveProfile(m[1].trim(),parseInt(m[2])*25||50); respond(`Level for ${m[1].trim()} updated.`)} }, reply: '' },
+
+  // ── PYQ PATTERN MINING ────────────────────────────────────────────────────
+  { re: /pyq.*pattern.*(.+)|pattern.*mine.*(.+)|predict.*questions.*(.+)/i,                  action: () => { const m=_lastUserQuery.match(/(?:pyq pattern|pattern mine|predict questions)\s+(.+)/i); if(m) void minePYQPatterns(m[1].trim(),respond); else void minePYQPatterns(getCurrentState()?.today?.subject||'Polity',respond) }, reply: '' },
+  { re: /upsc.*prediction.*(.+)|likely.*question.*(.+)|exam.*prediction/i,                   action: () => { const sub=getCurrentState()?.today?.subject||'Polity'; void minePYQPatterns(sub,respond) }, reply: '' },
+
+  // ── STUDY OPTIMIZER ───────────────────────────────────────────────────────
+  { re: /optimize.*study.*session|study.*optimization|best.*schedule.*today/i,               action: () => { const m=getTodayFocusMins(); const remaining=Math.max(1,Math.min(12,8-m/60)); const subs=[getCurrentState()?.today?.subject||'GS',_mem.weakTopics[0]||'Economy']; respond(optimizeStudySession(remaining,subs)) }, reply: '' },
+  { re: /cognitive.*schedule|ultradian.*study|peak.*study.*time/i,                           action: () => respond('Peak cognitive times: 8-11 AM (highest focus, tackle hardest subject), 4-7 PM (second peak, revision & practice), after 9 PM (light reading only, consolidation). Your worst time: 2-4 PM (post-lunch dip). Schedule accordingly.'), reply: '' },
+
+  // ── DEBATE ENGINE ────────────────────────────────────────────────────────
+  { re: /debate.*session.*(.+)|structured.*debate.*(.+)|argue.*topic.*(.+)/i,                action: () => { const m=_lastUserQuery.match(/(?:debate session|structured debate|argue topic)\s+(.+)/i); if(m) void startDebateSession(m[1].trim(),respond); else respond('Say "debate session [topic]"') }, reply: '' },
+  { re: /end.*debate.*session|stop.*debate.*session|debate.*complete/i,                       action: () => { endDebate(); respond('Debate ended.') }, reply: '' },
+
+  // ── CITATION + ANSWER ARCHITECT ────────────────────────────────────────
+  { re: /citation.*for.*(.+)|source.*for.*(.+)|reference.*for.*(.+)|cite.*(.+)/i,            action: () => { const m=_lastUserQuery.match(/(?:citation for|source for|reference for|cite)\s+(.+)/i); if(m) void buildCitation(m[1].trim(),respond) }, reply: '' },
+  { re: /build.*answer.*for.*(.+)|architect.*answer.*(.+)|structure.*answer.*(.+)/i,         action: () => { const m=_lastUserQuery.match(/(?:build answer for|architect answer|structure answer)\s+(.+)/i); if(m) void architectAnswer(m[1].trim(),[],respond) }, reply: '' },
+
+  // ── ENHANCED WEBSITE CONTROL ─────────────────────────────────────────────
+  { re: /refresh.*all.*charts|reload.*charts|update.*analytics/i,                            action: () => { void import('./core-engine').then(m=>{m.recompute(); respond('All charts and analytics refreshed.')}) }, reply: '' },
+  { re: /open.*upsc.*radar|show.*radar|readiness.*radar/i,                                   action: () => { const a=buildUPSCRadar(getCurrentState()); renderUPSCRadar(a); respond('UPSC Radar opened.') }, reply: '' },
+  { re: /save.*routine.*now|force.*routine.*save|routine.*save.*now/i,                        action: () => { domClick('#rtn-save'); respond('Routine saved.') }, reply: '' },
+  { re: /complete.*first.*lecture|done.*first.*lecture|first.*lecture.*complete/i,            action: () => { const t=checkCurrentTopic(); respond(t?`"${t}" done! ${celebrationLine()}`:'No pending lectures.') }, reply: '' },
+  { re: /complete.*all.*lectures.*in.*plan|mark.*all.*done.*today/i,                          action: () => { const rows=document.querySelectorAll<HTMLElement>('#plan .plan-row:not(.done)'); let n=0; rows.forEach(r=>{r.querySelector<HTMLElement>('.check')?.click(); n++}); respond(n?`${n} lectures marked done. ${celebrationLine()}`:'No pending lectures.') }, reply: '' },
+
+  // ── JARVIS PANEL CONTROLS ────────────────────────────────────────────────
+  { re: /open.*jarvis.*full|jarvis.*full.*panel|show.*full.*jarvis/i,                        action: () => { if(!_open) openPanel(); respond('JARVIS panel open.') }, reply: '' },
+  { re: /stream.*test|test.*streaming|demo.*stream/i,                                         action: () => { if(!_streamingEnabled){respond('Enable streaming first: say "streaming on"');return;} respond('Testing stream…'); void streamGroqResponse('Say "JARVIS streaming test successful" and nothing else.',()=>{},()=>{}) }, reply: '' },
 
   // ── FULL WEBSITE CONTROL: Open all features ──────────────────────────────
   { re: /open.*mistake.*notebook|mistake.*notebook.*open|show.*mistakes|galti.*dikhao/i,     action: () => { void import('./mistake-notebook').then(m=>m.showMistakeNotebook()) }, reply: '' },

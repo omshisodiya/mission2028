@@ -30,6 +30,22 @@ import {
   isDebateActive, startDebateSession, continueDebate, endDebate,
   buildCitation, architectAnswer, buildUPSCRadar, renderUPSCRadar,
 } from './jarvis-intelligence'
+import {
+  startEvolutionLoopV3, stopEvolutionLoopV3, runGeneticCycle, getV3Report,
+  lookupPipeline, executePipeline, autoComposePipeline, triggerAutoRepair,
+  detectRegressions, reinforcePositive, reinforceNegative, recordIntentEdge,
+  mineConversationPatterns,
+} from './jarvis-evolution-v3'
+import {
+  setProactiveContext, startProactiveEngine as startProactiveIntelligence,
+  recordActivity, silenceFor, getTimedInsight,
+} from './jarvis-proactive'
+import { getSessionStats } from './jarvis-session'
+import {
+  startSession as startSessionRecord, endSession as endSessionRecord,
+  recordEvent as recordSessionEvent, isSessionActive, getActiveSession,
+  loadSessions, showSessionReport,
+} from './jarvis-session'
 // VA overlay lives in index.html as inline script — access via window.VA
 type _VAGlobal = { setState(s:string):void; setAmplitude(v:number):void; setTranscript(t:string,f:boolean):void; readonly state:string }
 const _w = window as Window & { VA?: _VAGlobal }
@@ -123,6 +139,53 @@ let _lang: 'en-IN' | 'hi-IN' = (localStorage.getItem('jarvis_lang') as 'en-IN' |
 // 'auto' = detect from query; 'hi' = always Hindi; 'en' = always English
 let _replyLang: 'auto' | 'hi' | 'hinglish' | 'en' =
   (localStorage.getItem('jarvis_reply_lang') as 'auto'|'hi'|'hinglish'|'en') ?? 'auto'
+
+// ── Voice Personality System ──────────────────────────────────────────────────
+// Each personality has a different instruction injected into every Groq prompt.
+type VoicePersonality = 'coach' | 'teacher' | 'friend' | 'commander' | 'zen'
+let _personality: VoicePersonality = (localStorage.getItem('jarvis_personality') as VoicePersonality) ?? 'coach'
+
+const PERSONALITY_PROMPTS: Record<VoicePersonality, string> = {
+  coach:     '[Personality: UPSC coach — motivating, direct, data-driven. Push Om to perform better. Use numbers.]',
+  teacher:   '[Personality: patient teacher — explain clearly, use examples, check understanding. Build knowledge step by step.]',
+  friend:    '[Personality: supportive friend — casual, warm, honest. Mix Hindi naturally. No pressure, just encouragement.]',
+  commander: '[Personality: strict commander — no nonsense, high standards, brutally honest. Short sentences. Demand more.]',
+  zen:       '[Personality: calm mentor — slow, mindful, thoughtful. Breathing metaphors. Focus on process not outcomes.]',
+}
+
+function getPersonalityPrompt(): string { return PERSONALITY_PROMPTS[_personality] }
+function setPersonality(p: VoicePersonality): void {
+  _personality = p; localStorage.setItem('jarvis_personality', p)
+}
+
+// ── Multi-turn Context Memory ─────────────────────────────────────────────────
+// Tracks the last N turns with topics, allowing coherent multi-turn reasoning.
+interface ContextTurn {
+  query:   string
+  answer:  string
+  topic:   string
+  at:      string
+}
+const _contextTurns: ContextTurn[] = []
+const MAX_CONTEXT_TURNS = 6
+
+function addContextTurn(query: string, answer: string): void {
+  const topic = extractTopic(query)
+  _contextTurns.push({ query: query.slice(0, 100), answer: answer.slice(0, 200), topic, at: new Date().toISOString() })
+  if (_contextTurns.length > MAX_CONTEXT_TURNS) _contextTurns.shift()
+}
+
+function extractTopic(text: string): string {
+  const tl  = text.toLowerCase()
+  const TOPICS = ['polity','history','geography','economy','environment','ethics','science','csat','current affairs']
+  return TOPICS.find(t => tl.includes(t)) ?? 'general'
+}
+
+function buildContextSummary(): string {
+  if (!_contextTurns.length) return ''
+  const recent = _contextTurns.slice(-3)
+  return `[Recent conversation context: ${recent.map(t => `"${t.query.slice(0,40)}" → ${t.topic}`).join('; ')}]`
+}
 
 // Last spoken response (for system.repeat)
 let _lastReply = ''
@@ -586,10 +649,31 @@ export function initJarvis(): void {
     startAppSync()
     void requestNotifPermission()  // ask once for browser notifications
 
-    // Self-evolution V1 + V2 + DOM control systems
+    // Self-evolution V1 + V2 + V3 + DOM control systems
     startEvolutionLoop(respond)     // v1: reactive gap resolution
     startEvolutionLoopV2(respond)   // v2: proactive, clustered, validated
+    startEvolutionLoopV3(respond)   // v3: genetic, pipeline, auto-repair
     startDOMMonitor()               // watch DOM for state changes
+
+    // Proactive intelligence engine
+    startProactiveIntelligence(
+      getTodayFocusMins,
+      () => getCurrentState()?.streak ?? 0,
+      () => {
+        try {
+          const raw = localStorage.getItem('settings') ?? '{}'
+          const settings = JSON.parse(raw) as { prelimsDate?: string }
+          if (!settings.prelimsDate) return undefined
+          return Math.ceil((new Date(settings.prelimsDate).getTime() - Date.now()) / 86_400_000)
+        } catch { return undefined }
+      },
+      () => getCurrentState(),
+      (msg, _priority) => { if (_open) respond(msg); else showNudge(msg) }
+    )
+
+    // DOM activity tracking for fatigue detection
+    document.addEventListener('keydown',   () => recordActivity('keydown'))
+    document.addEventListener('mousedown', () => recordActivity('mousedown'))
 
     // React to DOM events for smarter awareness
     onDOMEvent((evt, detail) => {
@@ -2642,8 +2726,10 @@ function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): stri
     lang === 'hi'       ? '[RESPOND STRICTLY IN HINDI — Devanagari script]\n' :
     lang === 'hinglish' ? '[RESPOND IN HINGLISH — mix of Hindi words in Roman script]\n' :
                           '[RESPOND IN ENGLISH]\n'
-  const ctx = buildPersonalContext()
-  return `${langInstr}${ctx}\n\nQUESTION: ${transcript}`
+  const ctx         = buildPersonalContext()
+  const personality = getPersonalityPrompt()
+  const ctxSummary  = buildContextSummary()
+  return `${langInstr}${personality}\n${ctx}\n${ctxSummary}\n\nQUESTION: ${transcript}`
 }
 
 // ── Streaming Groq response — tokens appear in real-time ─────────────────────
@@ -4632,6 +4718,54 @@ const CMDS: Cmd[] = [
   // COMMAND BANK v12 — Evolution V2 + Intelligence Modules + Streaming + 200+
   // ════════════════════════════════════════════════════════════════════════════
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // COMMAND BANK v13 — Evolution V3 + Voice Personalities + Session + Proactive
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── VOICE PERSONALITIES ───────────────────────────────────────────────────
+  { re: /coach.*mode|personality.*coach|be.*my.*coach|coaching.*mode/i,                      action: () => { setPersonality('coach'); respond(L(detectResponseLang(''),'Coach mode. I will push you with data, hold you to targets, and celebrate real wins only.','Coach mode चालू। Data-driven feedback दूंगा।','Coach mode on. Targets hold karwaaunga.')) }, reply: '' },
+  { re: /teacher.*mode|personality.*teacher|be.*my.*teacher|teaching.*mode/i,                action: () => { setPersonality('teacher'); respond(L(detectResponseLang(''),'Teacher mode. I will explain clearly, use examples, and check your understanding step by step.','Teacher mode। Clear explanation दूंगा।','Teacher mode. Step by step samjhaunga.')) }, reply: '' },
+  { re: /friend.*mode|personality.*friend|be.*my.*friend|casual.*mode|dost.*mode/i,          action: () => { setPersonality('friend'); respond(L(detectResponseLang(''),'Friend mode. Chill, supportive, honest. No pressure, just real talk.','Dost mode। Casual aur honest.','Dost mode on. Chill aur honest.')) }, reply: '' },
+  { re: /commander.*mode|strict.*mode.*personality|drill.*sergeant|harsh.*mode/i,            action: () => { setPersonality('commander'); respond('Commander mode. Short sentences. High standards. No excuses. Get to work.') }, reply: '' },
+  { re: /zen.*mode|calm.*mode.*personality|mindful.*mode|meditate.*mode/i,                   action: () => { setPersonality('zen'); respond('Zen mode. Slow breath. One task at a time. The path is the destination.') }, reply: '' },
+  { re: /what.*personality.*mode|current.*personality|personality.*kya/i,                    action: () => respond(`Current personality: ${_personality}. Options: coach, teacher, friend, commander, zen.`), reply: '' },
+
+  // ── SESSION RECORDER ─────────────────────────────────────────────────────
+  { re: /start.*study.*session|session.*begin|begin.*study.*session|session.*record.*start/i, action: () => { const subj=_sessionSubject||getCurrentState()?.today?.subject||'General'; startSessionRecord(subj); respond(`Session started: tracking ${subj}. Every lecture, score, mistake, and query will be recorded.`) }, reply: '' },
+  { re: /end.*study.*session|session.*end.*record|finish.*session.*report/i,                  action: () => { void endSessionRecord().then(s=>{ if(s){showSessionReport(s); respond(`Session complete! ${s.durationMin} min, focus score ${s.focusScore}/100. ${s.coaching.slice(0,80)}`)}}) }, reply: '' },
+  { re: /session.*stats|study.*session.*history|my.*sessions.*total/i,                        action: () => { const s=getSessionStats(); respond(s.totalSessions?`Sessions: ${s.totalSessions} total, avg focus ${s.avgFocus}/100, ${s.totalMinutes} minutes total, ${s.lecturesDone} lectures done. Top subjects: ${s.topSubjects.join(', ')}.`:'No sessions recorded yet.') }, reply: '' },
+  { re: /is.*session.*active|session.*recording.*on|is.*being.*tracked/i,                    action: () => { const s=getActiveSession(); respond(s?`Session active: ${s.durationMin||Math.round((Date.now()-s.startMs)/60000)} min, ${s.lecturesDone} lectures, ${s.jarvisQueries} queries.`:'No session active. Say "start study session" to begin tracking.') }, reply: '' },
+
+  // ── EVOLUTION V3 ──────────────────────────────────────────────────────────
+  { re: /evolution.*v3.*report|v3.*status|genetic.*evolution.*report/i,                      action: () => { const r=getV3Report(); respond(`Evolution V3: ${r.geneticPool} genetic pool, gen ${r.evolutionGeneration}, ${r.pipelines} pipelines, ${r.regressions} regressions resolved. Intent graph: ${r.intentPaths} paths. Top patterns: ${r.topPatterns.join(', ')}.`) }, reply: '' },
+  { re: /run.*genetic.*cycle|genetic.*evolution.*now|evolve.*genetically/i,                  action: () => { respond('Running genetic cycle — mutating top caps and creating crosses…'); void runGeneticCycle().then(r=>respond(`Genetic cycle done: ${r.mutants} mutants, ${r.crosses} crosses, ${r.retired} retired.`)) }, reply: '' },
+  { re: /check.*regressions|detect.*regressions|capability.*regression/i,                    action: () => { const r=detectRegressions(); respond(r.length?`${r.length} regression${r.length>1?'s':''} detected: ${r.map(x=>x.description.slice(0,40)).join(', ')}. Auto-repair triggered.`:'No regressions detected. All capabilities stable.') }, reply: '' },
+  { re: /compose.*pipeline.*(.+)|create.*pipeline.*(.+)|chain.*capabilities/i,               action: () => { respond('Analysing available capabilities to create a pipeline…'); void autoComposePipeline(_lastUserQuery).then(p=>p?respond(`Pipeline created: "${p.name}" — ${p.steps.length} steps.`):respond('Could not auto-compose pipeline for this request.')) }, reply: '' },
+  { re: /conversation.*patterns|query.*patterns|mine.*patterns/i,                            action: () => { const p=mineConversationPatterns(); respond(p.length?`Your top query patterns: ${p.slice(0,4).map(x=>`${x.pattern}(${x.frequency}x)`).join(', ')}. V3 will pre-generate capabilities for these.`:'Not enough history yet.') }, reply: '' },
+
+  // ── PROACTIVE INTELLIGENCE CONTROL ────────────────────────────────────────
+  { re: /silence.*jarvis.*(\d+).*min|mute.*proactive.*(\d+)|quiet.*(\d+).*min/i,             action: () => { const m=_lastUserQuery.match(/(\d+)\s*min/i); if(m){silenceFor(parseInt(m[1])); respond(`Proactive nudges silenced for ${m[1]} minutes.`)} }, reply: '' },
+  { re: /morning.*brief.*now|give.*morning.*brief|aaj.*ka.*brief.*do/i,                      action: () => { const cs=getCurrentState(); const msg=buildMorningBrief(cs); respond(msg||'Morning brief not available yet.') }, reply: '' },
+  { re: /session.*insight|study.*insight.*today|data.*insight.*today/i,                      action: () => { const cs=getCurrentState(); const m=getTodayFocusMins(); const ins=getTimedInsight({coreState:cs,minutesToday:m,streak:cs?.streak??0}); respond(ins||'No special insight right now. Keep studying!') }, reply: '' },
+
+  // ── PIPELINE EXECUTION ────────────────────────────────────────────────────
+  { re: /run.*pipeline.*(.+)|execute.*pipeline.*(.+)|pipeline.*go/i,                         action: () => { const pipe=lookupPipeline(_lastUserQuery); if(pipe){respond(`Running pipeline "${pipe.name}" — ${pipe.steps.length} steps…`); void executePipeline(pipe).then(r=>respond(`Pipeline done: ${r.steps} steps, ${r.errors} errors.`))} else respond('No matching pipeline. Say "compose pipeline [task]" to create one.') }, reply: '' },
+  { re: /list.*pipelines|my.*pipelines|show.*pipelines/i,                                     action: () => { void import('./jarvis-evolution-v3').then(m=>{ const pipes=(m as unknown as { loadPipelines?:()=>Array<{name:string}> }).loadPipelines?.()??[]; respond(pipes.length?`${pipes.length} pipelines: ${pipes.slice(0,3).map((p:{name:string})=>p.name).join(', ')}.`:'No pipelines yet. Use "compose pipeline [task]".')}) }, reply: '' },
+
+  // ── REINFORCEMENT ─────────────────────────────────────────────────────────
+  { re: /that.*worked.*well|good.*response|helpful.*response|perfect.*jarvis/i,               action: () => { const kbHits=_loadKB().filter(e=>e.query===_lastUserQuery); if(kbHits.length){reinforcePositive(kbHits[0].id); respond('Noted — reinforced as positive. Will prioritise this approach.')} else respond(L(detectResponseLang(''),'Glad it helped!','अच्छा लगा!','Acha laga!')) }, reply: '' },
+  { re: /not.*helpful|bad.*response|useless.*response|wrong.*approach/i,                     action: () => { const kbHits=_loadKB().filter(e=>e.query===_lastUserQuery); if(kbHits.length){reinforceNegative(kbHits[0].id); respond('Understood — flagged for review. Auto-repair will improve this.')} else respond('Noted. I will learn from this.') }, reply: '' },
+
+  // ── ULTIMATE INTELLIGENCE COMMANDS ───────────────────────────────────────
+  { re: /full.*intelligence.*report|ultimate.*report|everything.*jarvis.*knows/i,             action: () => { const kb=_loadKB().length; const caps=loadCaps().length; const v3=getV3Report(); const sess=getSessionStats(); respond(`JARVIS Ultimate Status: ${kb} KB entries, ${caps} capabilities (gen ${v3.evolutionGeneration}), ${v3.pipelines} pipelines, ${v3.geneticPool} genetic pool. Sessions: ${sess.totalSessions} (avg focus ${sess.avgFocus}/100). Intent graph: ${v3.intentPaths} paths. Personality: ${_personality}. Streaming: ${_streamingEnabled?'on':'off'}.`) }, reply: '' },
+  { re: /jarvis.*ultimate.*version|what.*version.*jarvis|jarvis.*v[0-9]/i,                    action: () => respond('JARVIS vULTIMATE-3: Evolution V1+V2+V3 running simultaneously, 1200+ commands, genetic algorithm (auto-mutates/crosses top capabilities), streaming responses, 4-tab panel, voice personalities (coach/teacher/friend/commander/zen), session recorder with AI coaching, proactive intelligence engine, full DOM control, multi-turn context memory, concept web, UPSC radar, memory palace, adaptive difficulty, socratic mode, debate engine. Continuously self-improving.'), reply: '' },
+  { re: /repair.*capability.*(.+)|fix.*capability.*(.+)/i,                                    action: () => { const caps=loadCaps(); const m=_lastUserQuery.match(/(?:repair|fix)\s+capability\s+(.+)/i); const target=m?.[1]; if(!target){respond('Specify a capability to repair.');return;} const cap=caps.find(c=>c.description.toLowerCase().includes(target.toLowerCase())); if(!cap){respond('Capability not found.');return;} void triggerAutoRepair(cap.id).then(ok=>respond(ok?`Repaired: ${cap.description}.`:`Could not auto-repair — may need manual intervention.`)) }, reply: '' },
+
+  // ── MULTI-TURN CONTEXT COMMANDS ───────────────────────────────────────────
+  { re: /continue.*from.*last.*topic|what.*were.*we.*discussing|follow.*up.*last/i,           action: () => { const last=_contextTurns.slice(-1)[0]; respond(last?`Last topic: ${last.topic} — "${last.query.slice(0,60)}". Your answer: continue from there.`:'No recent context. Start a new topic.') }, reply: '' },
+  { re: /context.*summary|what.*context.*have|recent.*conversation.*summary/i,               action: () => { const sum=buildContextSummary(); respond(sum||'No conversation context yet.') }, reply: '' },
+  { re: /clear.*context|reset.*context|new.*topic.*fresh|fresh.*start.*topic/i,               action: () => { _contextTurns.length=0; respond('Context cleared. Starting fresh topic.') }, reply: '' },
+
   // ── STREAMING CONTROL ─────────────────────────────────────────────────────
   { re: /streaming.*on|enable.*streaming|live.*response.*on|real.*time.*response/i,          action: () => { _streamingEnabled=true; localStorage.setItem('jarvis_streaming','true'); respond(L(detectResponseLang(''),'Streaming on. Responses will appear in real-time as I generate them.','Streaming चालू। जवाब real-time में आएंगे।','Streaming on. Real-time response shuru.')) }, reply: '' },
   { re: /streaming.*off|disable.*streaming|live.*response.*off/i,                            action: () => { _streamingEnabled=false; localStorage.setItem('jarvis_streaming','false'); respond(L(detectResponseLang(''),'Streaming off. Full responses at once.','Streaming बंद।','Streaming off.')) }, reply: '' },
@@ -5989,8 +6123,13 @@ function respond(text: string): void {
   _lastReply = clean
   addMsg('assistant', clean)
   speak(clean)
-  // VA overlay transcript
   VA.setTranscript(clean, true)
+  // Multi-turn context memory
+  if (_lastUserQuery && clean) addContextTurn(_lastUserQuery, clean)
+  // Record for session tracking
+  recordSessionEvent('jarvis_query', _lastUserQuery.slice(0, 80))
+  // Record proactive activity
+  recordActivity('query')
 }
 
 function esc(s: string): string {

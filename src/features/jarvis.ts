@@ -63,6 +63,7 @@ import {
   buildSystemPrompt, lookupLocalKnowledge, lookupQuickFact,
   cleanGroqAnswer, resolveSectionId,
 } from './jarvis-system-brain'
+import { trySmartAnswer } from './jarvis-smart-answers'
 import { getSessionStats } from './jarvis-session'
 import {
   startSession as startSessionRecord, endSession as endSessionRecord,
@@ -1506,91 +1507,14 @@ function stopListening(): void {
   if (VA.state === 'listening') VA.setState('thinking')
 }
 
-// ── INSTANT ANSWER — zero-latency local computation for date/time/math ──────────
-// Handles ALL date/time variations dynamically. Anything not caught here goes to Groq.
+// ── INSTANT ANSWER — routes to smart engine first, then Groq for everything else ──
 function tryInstantAnswer(text: string): boolean {
-  const t = text.toLowerCase().trim()
-
-  // ── TIME ─────────────────────────────────────────────────────────────────────
-  if (/\btime\b|\bbaje\b|\bclock\b|\bghanta\b|\bsamay\b/i.test(t) &&
-      !/timer|pomodoro|study|focus|remaining|left\s+in|how\s+long|exam\s+time/i.test(t)) {
-    const ts = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
-    addMsg('user', text); respond(`${ts} IST`); return true
+  const smart = trySmartAnswer(text)
+  if (smart) {
+    addMsg('user', text)
+    respond(smart.confidence === 'approximate' ? smart.text + ' (approximate)' : smart.text)
+    return true
   }
-
-  // ── RELATIVE DATE COMPUTATION ─────────────────────────────────────────────────
-  // Helper: offset today by N days and format
-  const fmtDate = (offsetDays: number): string => {
-    const d = new Date()
-    d.setDate(d.getDate() + offsetDays)
-    return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
-  }
-
-  // Tomorrow
-  if (/\btomorrow\b|\bkal\b|\bkl\b|\bnext\s+day\b|\bkal.*date\b|\btomorrow.*date\b|\bdate.*tomorrow\b/i.test(t) &&
-      !/exam|prelims|mains|plan|lecture/i.test(t)) {
-    addMsg('user', text); respond(fmtDate(1)); return true
-  }
-
-  // Yesterday
-  if (/\byesterday\b|\bkal.*wala\b|\bpichle.*din\b|\byesterday.*date\b|\bdate.*yesterday\b/i.test(t) &&
-      !/plan|exam/i.test(t)) {
-    addMsg('user', text); respond(fmtDate(-1)); return true
-  }
-
-  // Day after tomorrow
-  if (/\bday\s+after\s+tomorrow\b|\bparson\b|\bprasson\b|\bpason\b/i.test(t)) {
-    addMsg('user', text); respond(fmtDate(2)); return true
-  }
-
-  // Day before yesterday
-  if (/\bday\s+before\s+yesterday\b|\bparson\s+wala\b/i.test(t)) {
-    addMsg('user', text); respond(fmtDate(-2)); return true
-  }
-
-  // This week's day  e.g. "what date is Monday this week"
-  {
-    const dayM = t.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|somvar|mangalvar|budhvar|guruvar|shukravar|shanivar|ravivar)\b/)
-    const DAYS: Record<string, number> = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6, ravivar:0, somvar:1, mangalvar:2, budhvar:3, guruvar:4, shukravar:5, shanivar:6 }
-    if (dayM && DAYS[dayM[1]] !== undefined && /\bwhat.*date\b|\bdate.*\bday\b|\bkab\b|\bkis.*date\b/i.test(t)) {
-      const now = new Date(); const cur = now.getDay(); const target = DAYS[dayM[1]]
-      let diff = target - cur; if (diff <= 0) diff += 7
-      addMsg('user', text); respond(fmtDate(diff)); return true
-    }
-  }
-
-  // TODAY'S DATE
-  if (/\bdate\b|\btarikh\b|\baaj\b|\btoday\b|\bkaunsa\s+din\b/i.test(t) &&
-      !/plan|exam|prelims|mains|session|lecture|set|change|study|padh/i.test(t)) {
-    addMsg('user', text); respond(fmtDate(0)); return true
-  }
-
-  // ── QUICK MATH ────────────────────────────────────────────────────────────────
-  {
-    const mathM = t.match(/^(?:what\s+is\s+|calculate\s+|compute\s+|solve\s+)?(-?\d[\d.,\s]*(?:[+\-*/×÷^%]\s*-?\d[\d.,\s]*)+)$/)
-    if (mathM) {
-      try {
-        const expr = mathM[1].replace(/×/g,'*').replace(/÷/g,'/').replace(/\s/g,'').replace(/,/g,'')
-        // eslint-disable-next-line no-new-func
-        const result = new Function(`return (${expr})`)() as number
-        if (typeof result === 'number' && isFinite(result)) {
-          addMsg('user', text); respond(`${mathM[1].trim()} = ${parseFloat(result.toFixed(6))}`); return true
-        }
-      } catch { /* not a math expression */ }
-    }
-  }
-
-  // ── PERCENTAGE CALCULATION ────────────────────────────────────────────────────
-  {
-    const pctM = t.match(/(\d+(?:\.\d+)?)\s*%\s+of\s+(\d+(?:\.\d+)?)|what\s+is\s+(\d+(?:\.\d+)?)\s*percent\s+of\s+(\d+(?:\.\d+)?)/)
-    if (pctM) {
-      const a = parseFloat(pctM[1] ?? pctM[3]); const b = parseFloat(pctM[2] ?? pctM[4])
-      if (!isNaN(a) && !isNaN(b)) {
-        addMsg('user', text); respond(`${a}% of ${b} = ${(a * b / 100).toFixed(2)}`); return true
-      }
-    }
-  }
-
   return false
 }
 
@@ -1610,41 +1534,17 @@ async function processQuery(text: string): Promise<void> {
   const tl = text.toLowerCase().trim()
 
   // ════════════════════════════════════════════════════════════════════════════
-  // TIER 0 — INSTANT LOCAL ANSWERS (MUST be first, before ANYTHING else)
-  // These NEVER reach Groq. Period.
+  // TIER 0 — SMART LOCAL ENGINE: date/time/math/timezone — zero network, always correct
+  // Handles: today/tomorrow/yesterday/any weekday/holiday dates/countdowns/math/timezones
   // ════════════════════════════════════════════════════════════════════════════
-
-  // TIME: any phrase with time/clock/baje that isn't about timer/study/session
-  if (/time|baje|clock|ghanta|ghante|baj\s|samay/i.test(tl) &&
-      !/timer|remaining|left|study|focus|session|exam|padhai|padh\b/i.test(tl)) {
-    const _t = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
-    const _l = detectResponseLang(text)
-    addMsg('user', text)
-    respond(L(_l, `It's ${_t} IST.`, `अभी ${_t} बज रहे हैं।`, `Abhi ${_t} baje hain.`))
-    return
+  {
+    const smart = trySmartAnswer(text)
+    if (smart) {
+      addMsg('user', text)
+      respond(smart.confidence === 'approximate' ? smart.text + ' (approximate date)' : smart.text)
+      return
+    }
   }
-
-  // DATE
-  if (/date|din\s+kya|aaj\s+kya|today.*date|what.*date|kya.*tarikh|tarikh/i.test(tl) &&
-      !/exam|prelims|mains|set|change|plan|lecture|session/i.test(tl)) {
-    const _d = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
-    const _l = detectResponseLang(text)
-    addMsg('user', text)
-    respond(L(_l, `Today is ${_d}.`, `आज ${_d} है।`, `Aaj ${_d} hai.`))
-    return
-  }
-
-  // DAY OF WEEK
-  if (/\bday\b.*\btoday\b|\btoday\b.*\bday\b|\bkaunsa.*\bdin\b|\bwhat.*day.*is.*it/i.test(tl) &&
-      !/study|plan|lecture|holiday/i.test(tl)) {
-    const _dy = new Date().toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'Asia/Kolkata' })
-    const _l = detectResponseLang(text)
-    addMsg('user', text)
-    respond(L(_l, `Today is ${_dy}.`, `आज ${_dy} है।`, `Aaj ${_dy} hai.`))
-    return
-  }
-
-  // ════════════════════════════════════════════════════════════════════════════
 
   // Track query for evolution V2 proactive learning
   appendQueryHistory(text)
@@ -1697,13 +1597,45 @@ async function processQuery(text: string): Promise<void> {
   const _nowForQuick = new Date()
   const _timeQuick = _nowForQuick.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
   const _dateQuick = _nowForQuick.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
+  // ── Universal navigation map — catches ALL section aliases ─────────────────
+  const NAV_MAP: Array<[RegExp, string]> = [
+    [/\b(plan|planner|lecture|backlog|schedule|syllabus)\b/i,             'plan'],
+    [/\b(intel|intelligence|analytics|stats|statistics|score|performance|chart|rank|streak)\b/i, 'intel'],
+    [/\b(engine|timer|pomodoro|focus|daily\s*engine|focus\s*timer)\b/i,  'engine'],
+    [/\b(routine|daily\s*routine|log\s*routine|day\s*log|routine\s*log)\b/i, 'routine-section'],
+    [/\b(constitution|article|preamble|fundamental|rights|const)\b/i,    'constitution-section'],
+  ]
+  const navVerb = /^(?:open|show|go\s+to|navigate\s+to|scroll\s+to|take\s+me\s+to|display|launch|see|view|dikhao|kholo|le\s+chalo|jaao)\s+/i
+  if (navVerb.test(tl)) {
+    const target = tl.replace(navVerb, '').trim()
+    for (const [re, sectionId] of NAV_MAP) {
+      if (re.test(target)) {
+        addMsg('user', text)
+        const ok = scr(sectionId)
+        const label = sectionId.replace('-section','')
+        respond(ok ? `Opened ${label}.` : `Could not find ${label} section.`)
+        return
+      }
+    }
+  }
+
+  // ── Command bar / menu — must be first in QUICK ─────────────────────────────
+  if (/command\s*(bar|menu|palette)|open\s*command|show\s*command/i.test(tl)) {
+    addMsg('user', text)
+    openCommandBar(processQuery)
+    respond('Command bar opened.')
+    return
+  }
+
   const QUICK: Record<string, () => void> = {
     'plan': () => scr('plan'),     'planner': () => scr('plan'),
     'stats': () => scr('intel'),   'analytics': () => scr('intel'),   'scores': () => scr('intel'),
-    'timer': clickStart,           'start': clickStart,                'shuru': clickStart,
+    'intelligence': () => scr('intel'),
+    'timer': clickStart,           'engine': () => scr('engine'),
+    'start': clickStart,           'shuru': clickStart,
     'pause': () => q('[data-act="start"]'), 'stop': () => q('[data-act="start"]'),
     'reset': () => q('[data-act="reset"]'),
-    'routine': () => scr('routine'),       'constitution': () => scr('constitution'),
+    'routine': () => scr('routine-section'), 'constitution': () => scr('constitution-section'),
     'settings': () => cl('cm-settings'),
     'backlog': () => { scr('plan'); cl('lp-filter-backlog') },
     'status': () => respond(buildStatusReport()),
@@ -3959,7 +3891,25 @@ const q   = (sel: string): void => {
   el.classList.add('jv-flash')
   setTimeout(() => el.classList.remove('jv-flash'), 500)
 }
-const scr = (id: string): void => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+// Smart scroll: tries multiple ID variants, flashes section, returns true if found
+const scr = (id: string): boolean => {
+  // Try the given ID, then with '-section' suffix, then without it
+  const attempts = [id, `${id}-section`, id.replace(/-section$/, ''), `${id}Section`]
+  for (const attempt of attempts) {
+    const el = document.getElementById(attempt)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // Flash the section border to confirm navigation
+      const prev = el.style.outline
+      el.style.outline = '2px solid var(--accent)'
+      el.style.outlineOffset = '4px'
+      setTimeout(() => { el.style.outline = prev; el.style.outlineOffset = '' }, 1200)
+      return true
+    }
+  }
+  console.warn('[JARVIS] Section not found:', id)
+  return false
+}
 const clickStart = (): void => {
   const btn = document.querySelector<HTMLButtonElement>('[data-act="start"]')
   if (btn && /start|resume/i.test(btn.textContent ?? '')) btn.click()

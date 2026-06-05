@@ -59,6 +59,10 @@ import {
   updateStudyState, recordPomodoroComplete, setSessionSubject, handleCommandBarTrigger,
   buildStudyChain, buildScoreEntryChain, executeChain, getRelevantFacts,
 } from './jarvis-evolution-v6'
+import {
+  buildSystemPrompt, lookupLocalKnowledge, lookupQuickFact,
+  cleanGroqAnswer, resolveSectionId,
+} from './jarvis-system-brain'
 import { getSessionStats } from './jarvis-session'
 import {
   startSession as startSessionRecord, endSession as endSessionRecord,
@@ -751,9 +755,9 @@ export function initJarvis(): void {
       }
     })
 
-    // Heartbeat: restart wake word if it silently dies every 15 seconds
+    // Heartbeat: restart wake word every 15 seconds — runs even while speaking for interrupt capability
     setInterval(() => {
-      if (_jarvisEnabled && !_wakeRunning && !_isSpeaking && !_sleeping) startWakeWord()
+      if (_jarvisEnabled && !_wakeRunning && !_sleeping && _state !== 'listening') startWakeWord()
     }, 15_000)
   }, 2000)
 
@@ -1528,6 +1532,9 @@ function sendText(inp: HTMLInputElement): void {
 async function processQuery(text: string): Promise<void> {
   if (!text.trim()) return
 
+  // ── OFF guard: when JARVIS is disabled, ignore ALL queries ────────────────
+  if (!_jarvisEnabled) return
+
   // Track query for evolution V2 proactive learning
   appendQueryHistory(text)
   // V6: suppress proactive nudges for 90s after any user query
@@ -1537,6 +1544,23 @@ async function processQuery(text: string): Promise<void> {
   if (isVisionTrigger(text)) { addMsg('user', text); openVisionCapture(text, respond); return }
 
   const tl = text.toLowerCase().trim()
+
+  // 0-INSTANT. Local knowledge base — 200+ verified UPSC facts, zero network
+  {
+    const lkLang = detectResponseLang(text)
+    const localKB = lookupLocalKnowledge(text, lkLang)
+    if (localKB) {
+      addMsg('user', text)
+      respond(cleanGroqAnswer(localKB))
+      return
+    }
+    const quickFact = lookupQuickFact(text)
+    if (quickFact) {
+      addMsg('user', text)
+      respond(cleanGroqAnswer(quickFact))
+      return
+    }
+  }
 
   // 0-z. DATE queries — ALWAYS answered locally, NEVER sent to Groq
   // Matches "what is today's date", "what date is it", "aaj kya date hai", etc.
@@ -1560,27 +1584,19 @@ async function processQuery(text: string): Promise<void> {
     return
   }
 
-  // 0-x. TIME OF DAY — ALWAYS local, NEVER Groq (Groq doesn't know real-time clock)
-  // Covers: "what time is it", "time batao", "kitne baje hain", "time", "clock", etc.
+  // 0-x. TIME OF DAY — ALWAYS local, NEVER Groq. Catches every possible phrasing.
+  // Rule: if "time" or "baje" or "clock" appears AND no study/timer context → just say the time.
   {
-    const isTimeQuery =
-      /^time$|^clock$/i.test(tl) ||                                           // standalone word
-      (/\btime\b/.test(tl) && /\bwhat\b|\bcurrent\b|\babhi\b|\bbatao\b|\bcheck\b|\bplease\b|\bhai\b|\bhe\b/i.test(tl)) ||  // "what time", "time batao", etc.
-      /\bkitne\s+baje\b|\bbaje\s+kya\b|\bbaje\s+hain\b|\bbaj\s+rahe\b/i.test(tl) ||  // Hinglish/Hindi
-      /\bwhat.*\bclock\b/i.test(tl)
-    const isTimerQuery = /timer|remaining|left|session.*time|study.*time|focus.*time|exam.*time/i.test(tl)
+    const hasTimeWord  = /\btime\b|\bbaje\b|\bclock\b|\bghanta\b|\bghante\b/i.test(tl)
+    const isTimerCtx  = /\btimer\b|\bremaining\b|\bleft\b|\bstud(y|ied)\b|\bfocus\b|\bsession\b|\bexam\b|\bpadh/i.test(tl)
+    const isTimeIntent = hasTimeWord && !isTimerCtx
 
-    if (isTimeQuery && !isTimerQuery) {
+    if (isTimeIntent) {
       addMsg('user', text)
       const nowT    = new Date()
       const timeStr = nowT.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
-      const dateStr = nowT.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
       const lang    = detectResponseLang(text)
-      respond(L(lang,
-        `It's ${timeStr} IST — ${dateStr}.`,
-        `अभी ${timeStr} बज रहे हैं (IST) — ${dateStr}।`,
-        `Abhi ${timeStr} baje hain IST — ${dateStr}.`
-      ))
+      respond(L(lang, `It's ${timeStr} IST.`, `अभी ${timeStr} बज रहे हैं।`, `Abhi ${timeStr} baje hain.`))
       return
     }
   }
@@ -3020,6 +3036,33 @@ async function executeIntent(transcript: string): Promise<void> {
   }, 18_000)  // 18s safety net — gives Groq plenty of time
 
   try {
+    // ── PRE-ROUTE: bypass the 8B classifier for obvious knowledge questions ────
+    // The 8B router sometimes misclassifies science/health/law questions as app actions.
+    // Detect these early and go directly to 70B Groq with a clean prompt.
+    const _isObviousKnowledge = (
+      /\b(what is|what are|what was|what were|who is|who was|who invented|why is|why did|how does|how did|explain|define|describe|what causes|main cause|cause of|difference between|compare|types of|examples of|meaning of|tell me about|what do you know about)\b/i.test(transcript) &&
+      /\b(disease|virus|bacteria|infection|tuberculosis|malaria|diabetes|cancer|covid|medicine|health|science|chemistry|physics|biology|history|geography|economy|environment|constitution|article|law|court|scheme|policy|treaty|country|capital|river|mountain|award|prize|organization|committee|commission|report)\b/i.test(transcript)
+    )
+
+    if (_isObviousKnowledge && isGroqOnline()) {
+      clearTimeout(safetyTimer)
+      const _kLang   = detectResponseLang(transcript)
+      const _kMsgs   = buildGroqMessages(transcript, _kLang)
+      const _isDeep2 = /explain|describe|in detail|elaborate/i.test(transcript)
+      if (_streamingEnabled) {
+        await streamGroqResponse(_kMsgs, (_t, full) => { _lastReply = full; VA.setTranscript(full, false) }, (full) => {
+          if (full) { setCached(`${_kLang}:${transcript.slice(0,120)}`, full); kbStore(transcript, full, 'groq', 0.7); respond(full) }
+          else respond(offlineAnswer(transcript))
+        }, _isDeep2 ? 400 : 220)
+      } else {
+        const _kr = await llmRoute(buildQATranscript(transcript, _kLang), 'qa')
+        if (_kr.answer?.trim()) { const a = cleanGroqAnswer(_kr.answer.trim()); setCached(`${_kLang}:${transcript.slice(0,120)}`, a); kbStore(transcript, a, 'groq', 0.7); respond(a) }
+        else respond(offlineAnswer(transcript))
+      }
+      setState('idle'); VA.setState('idle')
+      return
+    }
+
     // ── Tier 1 + 2: route() tries local first, falls to Groq classification ──
     const result: RouterResult & { answer?: string } = await route(transcript)
     clearTimeout(safetyTimer)
@@ -3074,7 +3117,7 @@ async function executeIntent(transcript: string): Promise<void> {
 
       if (_streamingEnabled) {
         // ── STREAMING PATH: tokens appear in real-time ───────────────────────
-        const enrichedPrompt = buildQATranscript(transcript, detectedLang)
+        const enrichedPrompt = buildGroqMessages(transcript, detectedLang)
         await streamGroqResponse(
           enrichedPrompt,
           (_token, full) => {
@@ -3083,13 +3126,14 @@ async function executeIntent(transcript: string): Promise<void> {
           },
           (full) => {
             if (full) {
-              setCached(cacheKey, full)
-              kbStore(transcript, full, 'groq', 0.7)
-              _lastReply = full
-              VA.setTranscript(full, true)
+              const cleaned = cleanGroqAnswer(full)
+              setCached(cacheKey, cleaned)
+              kbStore(transcript, cleaned, 'groq', 0.7)
+              _lastReply = cleaned
+              VA.setTranscript(cleaned, true)
               setState('speaking')
               VA.setState('speaking')
-              speak(full)
+              speak(cleaned)
             } else {
               kbTrackFail(transcript)
               respond(offlineAnswer(transcript))
@@ -3098,9 +3142,10 @@ async function executeIntent(transcript: string): Promise<void> {
           _streamMaxTok,
         )
       } else if (answer) {
-        setCached(cacheKey, answer)
-        kbStore(transcript, answer, 'groq', 0.7)
-        respond(answer)
+        const cleaned2 = cleanGroqAnswer(answer)
+        setCached(cacheKey, cleaned2)
+        kbStore(transcript, cleaned2, 'groq', 0.7)
+        respond(cleaned2)
       } else {
         kbTrackFail(transcript)
         const retryLang2 = detectResponseLang(transcript)
@@ -3158,26 +3203,38 @@ function detectResponseLang(transcript: string): 'en' | 'hi' | 'hinglish' {
   return detectLang(transcript)
 }
 
-/** Build enriched QA transcript: language instruction + personal context + query.
- *  This is what makes every Groq response personalised to Om's preparation level. */
-function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): string {
-  const langInstr =
-    lang === 'hi'       ? '[RESPOND STRICTLY IN HINDI — Devanagari script]\n' :
-    lang === 'hinglish' ? '[RESPOND IN HINGLISH — mix of Hindi words in Roman script]\n' :
-                          '[RESPOND IN ENGLISH]\n'
-  const ctx         = buildPersonalContext()
-  const personality = getPersonalityPrompt()
-  const ctxSummary  = buildContextSummary()
-  const kgCtx       = kgContextFor(transcript)
-  const kgLine      = kgCtx ? `\n${kgCtx}` : ''
+/**
+ * Build the Groq messages array using system+user format.
+ * System role = instruction set (language, brevity, expertise).
+ * User role   = the actual question.
+ * This is far more reliable than stuffing everything into one user message.
+ */
+function buildGroqMessages(
+  transcript: string,
+  lang: 'en'|'hi'|'hinglish',
+): Array<{ role: 'system'|'user'; content: string }> {
+  const ctx       = buildPersonalContext()
+  const ctxSummary = buildContextSummary()
+  const kgCtx     = kgContextFor(transcript)
+  const isDeepQ   = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(transcript)
 
-  // Determine brevity level based on query type
-  const isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|evaluate.*answer|walk.*through|step.*by.*step/i.test(transcript)
+  const systemPrompt = buildSystemPrompt(lang, getPersonalityPrompt(), ctx + (ctxSummary ? '\n' + ctxSummary : '') + (kgCtx ? '\n' + kgCtx : ''))
+
   const brevity = isDeepQ
-    ? '[LENGTH: Medium — 4-6 sentences. Cover the key points clearly.]'
-    : '[LENGTH: Short — 2-3 sentences maximum. Be direct and specific. No preamble, no "Great question!", no bullet lists unless asked.]'
+    ? 'Answer in 4-6 sentences covering key dimensions.'
+    : 'Answer in 2-3 sentences maximum. Direct. No filler.'
 
-  return `${langInstr}${brevity}\n${personality}\n${ctx}\n${ctxSummary}${kgLine}\n\nQUESTION: ${transcript}`
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user',   content: `[${brevity}]\n\n${transcript}` },
+  ]
+}
+
+/** Legacy string format — kept for llmRoute compatibility */
+function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): string {
+  const msgs = buildGroqMessages(transcript, lang)
+  // Flatten to string for llmRoute (which uses its own Groq call)
+  return msgs.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join('\n\n')
 }
 
 // ── Streaming Groq response — tokens appear in real-time ─────────────────────
@@ -3185,12 +3242,15 @@ function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): stri
 // Updates the chat bubble AND the VA transcript live.
 
 async function streamGroqResponse(
-  prompt: string,
+  promptOrMessages: string | Array<{ role: 'system'|'user'; content: string }>,
   onToken: (token: string, full: string) => void,
   onDone:  (full: string) => void,
-  maxTokens = 250,   // default short — callers pass higher value when depth is needed
+  maxTokens = 250,
 ): Promise<void> {
   const key = GROQ_KEY; if (!key) { onDone(''); return }
+  const messages = Array.isArray(promptOrMessages)
+    ? promptOrMessages
+    : [{ role: 'user' as const, content: promptOrMessages }]
 
   let accumulated = ''
   let chatBubble: HTMLElement | null = null
@@ -3212,7 +3272,7 @@ async function streamGroqResponse(
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         model:       GROQ_MODEL,
-        messages:    [{ role: 'user', content: prompt }],
+        messages,
         max_tokens:  maxTokens,
         temperature: 0.6,
         stream:      true,
@@ -6222,7 +6282,8 @@ function speak(text: string): void {
 let _lastWakeFireMs = 0   // global debounce: prevents re-firing within 2 s
 
 function startWakeWord(): void {
-  if (!_jarvisEnabled || _wakeRunning || _state === 'listening' || _isSpeaking || _sleeping) return
+  // Allow wake-word even while speaking — so user can interrupt JARVIS mid-speech
+  if (!_jarvisEnabled || _wakeRunning || _state === 'listening' || _sleeping) return
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   if (!SR) return
@@ -6241,7 +6302,22 @@ function startWakeWord(): void {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onresult = (e: any) => {
-    if (_isSpeaking) return
+    // If JARVIS is speaking and wake word heard → INTERRUPT immediately
+    if (_isSpeaking) {
+      const primaryText = (e.results[0]?.[0]?.transcript ?? '').trim()
+      if (/\bjarvis\b|\bजार्विस\b/i.test(primaryText)) {
+        _synth.cancel()
+        _isSpeaking = false
+        VA.setState('idle')
+        setState('idle')
+        setStatus('🎙 Listening…')
+        if (!_open) openPanel(false)
+        // Brief pause then listen
+        setTimeout(() => { void startListening() }, 300)
+        _wakeRec?.stop(); _wakeRec = null; _wakeRunning = false
+      }
+      return
+    }
 
     // Global inter-wake debounce: 2 seconds minimum between fires
     const now = Date.now()

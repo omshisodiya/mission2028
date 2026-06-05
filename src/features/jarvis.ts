@@ -6370,12 +6370,11 @@ function startWakeWord(): void {
     setTimeout(() => btn?.classList.remove('listening'), 500)
 
     if (command) {
-      // Inline command: "start timer, Jarvis" / "Jarvis explain Article 21"
+      // Inline command: "Jarvis what's the time" / "Jarvis start timer"
       _everActivated = true
-      if (!_open) openPanel()
-      VA.setState('thinking')
-      addMsg('user', command)
-      void executeIntent(command)
+      if (!_open) openPanel(false)
+      // Route through processQuery so ALL handlers (time, date, local KB, etc.) fire correctly
+      void processQuery(command)
     } else {
       // Bare "Jarvis" → open panel + greet + listen
       _everActivated = true

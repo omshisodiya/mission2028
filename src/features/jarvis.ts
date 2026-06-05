@@ -193,8 +193,8 @@ function addContextTurn(query: string, answer: string): void {
   const topic = extractTopic(query)
   _contextTurns.push({ query: query.slice(0, 100), answer: answer.slice(0, 200), topic, at: new Date().toISOString() })
   if (_contextTurns.length > MAX_CONTEXT_TURNS) _contextTurns.shift()
-  // V6: update form autocomplete context from conversation
-  updateFormContext(query, answer)
+  // V6: update form context from user query ONLY (not JARVIS answers — they pollute the form context)
+  updateFormContext(query)
 }
 
 function extractTopic(text: string): string {
@@ -1533,31 +1533,41 @@ async function processQuery(text: string): Promise<void> {
 
   const tl = text.toLowerCase().trim()
 
-  // 0-z. DATE / TIME queries — must fire BEFORE any study-related pattern matching
-  if (/what.*date|today.*date|date.*today|aaj.*kya.*date|kya.*date.*hai|what.*day.*today|today.*is.*what|what.*today|date.*kya.*hai|current.*date|today.*date.*kya/i.test(tl) &&
-      !/study|padh|session|plan|lecture|routine/i.test(tl)) {
+  // 0-z. DATE queries — ALWAYS answered locally, NEVER sent to Groq
+  // Matches "what is today's date", "what date is it", "aaj kya date hai", etc.
+  if (/\bdate\b.*\btoday\b|\btoday\b.*\bdate\b|\bwhat.*\bdate\b|\bkya.*date\b|\bdate.*kya\b|\bcurrent.*date\b|\baaj.*kaun.*si.*date\b|\baaj.*date\b|\bdate.*aaj\b/i.test(tl) &&
+      !/study|padh|session|plan|lecture|routine|exam.*date|prelims.*date|mains.*date|set.*date|change.*date/i.test(tl)) {
     addMsg('user', text)
-    const now  = new Date()
-    const opts: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' }
-    const dateStr = now.toLocaleDateString('en-IN', opts)
+    const nowD  = new Date()
+    const dateStr = nowD.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })
     const lang = detectResponseLang(text)
-    respond(L(lang,
-      `Today is ${dateStr}.`,
-      `आज ${dateStr} है।`,
-      `Aaj ${dateStr} hai.`
-    )); return
+    respond(L(lang, `Today is ${dateStr}.`, `आज ${dateStr} है।`, `Aaj ${dateStr} hai.`))
+    return
   }
 
-  // 0-y. TIME query
-  if (/what.*time|current.*time|time.*kya.*hai|abhi.*kitne.*baje|kitne.*baje.*hain|time.*batao|time.*check/i.test(tl)) {
+  // 0-y. DAY OF WEEK query
+  if (/\bwhat.*\bday\b|\btoday.*\bday\b|\bkaunsa.*\bdin\b|\bkya\s+din\b|\bdin\s+kya\b|\btoday.*\bweekday\b/i.test(tl) &&
+      !/study|padh|session|plan|lecture|holiday/i.test(tl)) {
     addMsg('user', text)
-    const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+    const day = new Date().toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'Asia/Kolkata' })
+    const lang = detectResponseLang(text)
+    respond(L(lang, `Today is ${day}.`, `आज ${day} है।`, `Aaj ${day} hai.`))
+    return
+  }
+
+  // 0-x. TIME OF DAY query — ALWAYS answered locally, NEVER sent to Groq
+  // Matches "what time is it", "what is the time", "time batao", "kitne baje hain", etc.
+  if (/\bwhat.*\btime\b|\bcurrent.*\btime\b|\btime.*\bkya\b|\babhi.*\btime\b|\bkitne.*\bbaje\b|\bbaje.*\bhain\b|\btime.*\bbatao\b|\btime.*\bcheck\b|\bwhat.*clock\b|\btime\s+please\b/i.test(tl) &&
+      !/study.*time|focus.*time|session.*time|timer.*left|timer.*remaining|time.*left|time.*remaining|exam.*time/i.test(tl)) {
+    addMsg('user', text)
+    const timeStr = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
     const lang = detectResponseLang(text)
     respond(L(lang,
-      `Current time is ${timeStr} IST.`,
-      `अभी ${timeStr} बज रहे हैं।`,
-      `Abhi ${timeStr} baje hain.`
-    )); return
+      `The time is ${timeStr} IST.`,
+      `अभी ${timeStr} बज रहे हैं (IST)।`,
+      `Abhi ${timeStr} baje hain IST mein.`
+    ))
+    return
   }
 
   // 0a. Single-keyword shortcuts — respond instantly, no router needed
@@ -1742,8 +1752,9 @@ async function processQuery(text: string): Promise<void> {
     addMsg('user', text); respond(buildExamCountdown()); return
   }
 
-  // 10b. Study hours query — query.hours intent
-  if (/kitna.*padha|how.*much.*study|study.*time.*today|aaj.*kitne.*ghante|padhai.*kitni|how.*long.*study|study.*hours|focus.*time.*today|aaj.*study.*kiya/i.test(tl)) {
+  // 10b. Study hours query — query.hours intent (NOT triggered by plain time/date queries)
+  if (/kitna.*padha|how.*much.*study|study.*time.*today|aaj.*kitne.*ghante|padhai.*kitni|how.*long.*study|study.*hours|focus.*time.*today|aaj.*study.*kiya/i.test(tl) &&
+      !/^what.*time\b|^time.*kya\b|^kitne.*baje\b|^current.*time\b/i.test(tl)) {
     addMsg('user', text)
     const m = getTodayFocusMins()
     respond(m ? `${m} minutes studied today.` : 'No sessions logged yet today. Start a focus session!')

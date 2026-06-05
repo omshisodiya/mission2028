@@ -154,6 +154,35 @@ function saveLoadRecords(r: CognitiveLoadRecord[]): void {
 
 // ── 1. PARALLEL MULTI-AGENT BRAIN ─────────────────────────────────────────────
 
+/** Safe fetch with manual timeout — works in all browsers */
+async function fetchGroq(
+  k: string, model: string, prompt: string,
+  maxTokens = 500, temperature = 0.6,
+): Promise<string | null> {
+  let timedOut = false
+  const controller = new AbortController()
+  const timer = setTimeout(() => { timedOut = true; controller.abort() }, 12000)
+  try {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model, temperature, max_tokens: maxTokens, stream: false,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (!res.ok) return null
+    const d = await res.json() as { choices: { message: { content: string } }[] }
+    return d.choices[0]?.message?.content?.trim() ?? null
+  } catch {
+    clearTimeout(timer)
+    if (timedOut) console.warn('[v6] Groq request timed out')
+    return null
+  }
+}
+
 /** Fire two Groq agents in parallel and return the best answer. */
 export async function v6ParallelThink(
   query:          string,
@@ -164,79 +193,32 @@ export async function v6ParallelThink(
   const k = groqKey()
   if (!k) return null
 
-  const liveCtx  = buildLiveContext()
-  const kgCtx    = kgContextFor(query)
-
+  const kgCtx = kgContextFor(query)
   const langInstr =
     lang === 'hi'       ? '[RESPOND IN HINDI — Devanagari script]\n' :
-    lang === 'hinglish' ? '[RESPOND IN HINGLISH — Hindi words in Roman script]\n' :
+    lang === 'hinglish' ? '[RESPOND IN HINGLISH — Roman script Hindi]\n' :
                           '[RESPOND IN ENGLISH]\n'
 
-  // Action agent: fast 8B — tries to classify if this is an action command
-  const actionPrompt = `${langInstr}${personalCtx}\n${liveCtx}\nQUESTION: ${query}\n\nAnswer in 1–2 spoken sentences. If this is a navigation/action command, say what you will do. Otherwise answer the factual question briefly.`
+  // Knowledge agent: clean, focused prompt — NO DOM context to prevent confusion
+  const knowledgePrompt = `${langInstr}${personalCtx}${kgCtx ? '\n' + kgCtx : ''}\n\nQUESTION: ${query}`
 
-  // Knowledge agent: smart 70B — deep UPSC tutor
-  const knowledgePrompt = `${langInstr}${personalCtx}\n${liveCtx}${kgCtx ? '\n' + kgCtx : ''}\n\nYou are JARVIS, Om's personal UPSC AI mentor. Give a comprehensive but concise answer.\n\nQUESTION: ${query}`
-
-  const makeCall = async (model: string, prompt: string): Promise<string | null> => {
-    try {
-      const res = await fetch(GROQ_URL, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model, temperature: 0.55, max_tokens: 450, stream: false,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-        signal: AbortSignal.timeout(8000),
-      })
-      if (!res.ok) return null
-      const d = await res.json() as { choices: { message: { content: string } }[] }
-      return d.choices[0]?.message?.content?.trim() ?? null
-    } catch { return null }
-  }
-
-  // Race: show action answer immediately when ready, then enrich if knowledge answer is better
-  let actionDone = false
-  let knowledgeDone = false
-
-  const actionPromise = makeCall(ACTION_MODEL, actionPrompt).then(ans => {
-    actionDone = true
-    return ans
-  })
-  const knowledgePromise = makeCall(SMART_MODEL, knowledgePrompt).then(ans => {
-    knowledgeDone = true
-    return ans
-  })
-
-  // Show action answer as soon as it arrives (fast)
-  const actionAns = await Promise.race([actionPromise, new Promise<null>(r => setTimeout(() => r(null), 5000))])
-
-  if (actionAns && isActionAnswer(actionAns)) {
-    respond(actionAns)
-    // Still wait for knowledge if it has more depth
-    if (!knowledgeDone) {
-      knowledgePromise.then(kAns => {
-        if (kAns && kAns.length > actionAns.length + 40 && !isActionAnswer(kAns)) {
-          respond(kAns)
-        }
-        extractAndStoreFacts(kAns ?? actionAns, query)
-      }).catch(() => { /* ignore */ })
-    } else {
-      extractAndStoreFacts(actionAns, query)
-    }
+  const ans = await fetchGroq(k, SMART_MODEL, knowledgePrompt, 500, 0.6)
+  if (ans) {
+    respond(ans)
+    extractAndStoreFacts(ans, query)
     recordCogLoad(query, 'parallel', 300)
-    return actionAns
+    return ans
   }
 
-  // No action answer — wait for knowledge answer
-  const knowledgeAns = await knowledgePromise
-  const finalAns = knowledgeAns ?? actionAns ?? null
-  if (finalAns) {
-    extractAndStoreFacts(finalAns, query)
+  // Fallback to fast model
+  const fastAns = await fetchGroq(k, ACTION_MODEL, knowledgePrompt, 300, 0.5)
+  if (fastAns) {
+    respond(fastAns)
+    extractAndStoreFacts(fastAns, query)
     recordCogLoad(query, 'knowledge', 1500)
+    return fastAns
   }
-  void actionDone  // suppress unused warning
-  return finalAns
+  return null
 }
 
 function isActionAnswer(text: string): boolean {
@@ -476,35 +458,43 @@ export function stopWorkflow(respond: (t: string) => void): void {
 
 let _formCtx: AutoCompleteContext = {}
 
-/** Update autocomplete context from conversation (call after each user turn). */
-export function updateFormContext(query: string, answer: string): void {
-  const combined = (query + ' ' + answer).toLowerCase()
+/**
+ * Update autocomplete context ONLY from user-initiated score queries.
+ * Call with the USER's query only (not JARVIS responses) to prevent
+ * JARVIS answers (which mention "quiz", "prelims", etc.) from polluting the form context.
+ */
+export function updateFormContext(userQuery: string): void {
+  // Only update if this looks like a score entry intent
+  const isScoreIntent = /\b(?:score|scored|marks|result|mock|dpp|test|prelims|csat|mains|sectional)\b/i.test(userQuery)
+  if (!isScoreIntent) return
 
-  // Score fields
-  const scoreM = combined.match(/(\d+(?:\.\d+)?)\s*(?:out of|\/)\s*(\d+(?:\.\d+)?)/)
+  const q = userQuery.toLowerCase()
+
+  // Score fields — only from user's direct utterance
+  const scoreM = q.match(/(\d+(?:\.\d+)?)\s*(?:out of|\/)\s*(\d+(?:\.\d+)?)/)
   if (scoreM) {
     _formCtx.score    = parseFloat(scoreM[1])
     _formCtx.maxScore = parseFloat(scoreM[2])
   }
 
-  // Label
-  const labelM = combined.match(/(?:mock|prelims|csat|mains|optional|dpp|sectional|quiz)\s*[\w\s#\-]*\d+/i)
+  // Label from user query
+  const labelM = userQuery.match(/(?:mock|prelims|csat|mains|optional|dpp|sectional|quiz)\s*[\w\s#\-]*\d+/i)
   if (labelM) _formCtx.label = labelM[0].trim().slice(0, 60)
 
-  // Category
+  // Category from user query
   for (const cat of ['prelims', 'csat', 'mains', 'optional', 'dpp', 'sectional', 'quiz', 'mock']) {
-    if (combined.includes(cat)) { _formCtx.category = cat; break }
+    if (q.includes(cat)) { _formCtx.category = cat; break }
   }
 
-  // Subject
+  // Subject from user query
   for (const subj of ['polity', 'history', 'geography', 'economy', 'environment', 'ethics', 'science', 'gs1', 'gs2', 'gs3', 'gs4']) {
-    if (combined.includes(subj)) { _formCtx.subject = subj; break }
+    if (q.includes(subj)) { _formCtx.subject = subj; break }
   }
 
-  // Date — "today", "yesterday"
+  // Date
   const today = new Date().toISOString().split('T')[0]
-  if (/today|aaj/.test(combined)) _formCtx.date = today
-  if (/yesterday|kal/.test(combined)) {
+  if (/\btoday\b|\baaj\b/.test(q)) _formCtx.date = today
+  if (/\byesterday\b|\bkal\b/.test(q)) {
     const d = new Date(); d.setDate(d.getDate() - 1)
     _formCtx.date = d.toISOString().split('T')[0]
   }
@@ -850,45 +840,31 @@ export async function v6CognitivePipeline(
   // 5. No key — signal caller to use offline fallback
   if (!groqKey()) return false
 
-  // 6. Classify and route
+  // 6. Classify and route — only handle KNOWLEDGE queries here.
+  //    Action/atom queries that reach this point couldn't be matched locally;
+  //    let the existing executeIntentWithEvolution handle them via its own Groq pipeline.
   const complexity = classifyQueryComplexity(query)
   recordCogLoad(query, complexity, 0)
 
-  // Enrich context with stored facts
-  const factCtx = getRelevantFacts(query, 2)
-  const enrichedCtx = factCtx ? personalCtx + '\n' + factCtx : personalCtx
+  // Only intercept genuine knowledge questions.
+  // Action/parallel queries fall through so the existing proven pipeline handles them.
+  if (complexity !== 'knowledge' && complexity !== 'parallel') return false
 
-  if (complexity === 'parallel') {
-    const ans = await v6ParallelThink(query, enrichedCtx, lang, respond)
-    return !!ans
-  }
-
-  // Knowledge or action — single targeted call
-  const model = complexity === 'knowledge' ? SMART_MODEL : ACTION_MODEL
-  const style = getResponseStyle()
-  const liveCtx = buildLiveContext()
-  const kgCtx   = kgContextFor(query)
+  const k = groqKey()!
+  const kgCtx    = kgContextFor(query)
   const langInstr =
     lang === 'hi'       ? '[RESPOND IN HINDI — Devanagari script]\n' :
     lang === 'hinglish' ? '[RESPOND IN HINGLISH — Roman script Hindi]\n' :
                           '[RESPOND IN ENGLISH]\n'
 
-  const prompt = `${langInstr}${enrichedCtx}\n${liveCtx}${kgCtx ? '\n' + kgCtx : ''}${style.suffix}\n\nQUESTION: ${query}`
+  // CLEAN prompt: personal context + KG context + question
+  // NO live DOM context — it would confuse Groq for pure knowledge questions
+  const prompt = `${langInstr}${personalCtx}${kgCtx ? '\n' + kgCtx : ''}\n\nQUESTION: ${query}`
+  const style  = getResponseStyle()
+  const model  = SMART_MODEL  // always 70B for knowledge questions
 
   try {
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${groqKey()!}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model, temperature: style.temperature, max_tokens: style.maxTokens, stream: false,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: AbortSignal.timeout(10000),
-    })
-
-    if (!res.ok) return false
-    const d   = await res.json() as { choices: { message: { content: string } }[] }
-    const ans = d.choices[0]?.message?.content?.trim()
+    const ans = await fetchGroq(k, model, prompt, style.maxTokens, style.temperature)
     if (ans) {
       respond(ans)
       extractAndStoreFacts(ans, query)

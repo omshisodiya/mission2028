@@ -234,4 +234,39 @@ No `routine`, `ca`, `notes`, or `mistakes` sections found at top level.
 
 ---
 
-_Recon complete. No production code written. Waiting for Om's go-ahead to begin Phase 1._
+---
+
+## WHAT SHIPPED
+
+### Phase 1 (commit 73d41ea)
+- **1.1** `scr()` now speaks an L()-aware error when section not found (only when panel is open). CMDS map: `routine` → `scr('routine')`, `constitution` → `scr('constitution')` (explicit, not via fallback).
+- **1.2** `executeIntent()` qa.answer: `llmRoute()` only called when `_streamingEnabled === false`. Streaming path goes straight to `streamGroqResponse()` — one Groq call per query, not two.
+- **1.3** `buildPersonalContext(forUpsc)`: general/time/math queries get user name only. UPSC queries get streak + current subject. `_isUpscQuery()` classifier uses keyword list.
+- **1.4** V5 loop (15 min) and V6 loop (10 min): early-return when `studyState === 'in-session'`.
+
+### Phase 2 (commit 09cb054)
+- **Clap v4**: EMA_ALPHA 0.04→0.03, warmup 32→80 frames, debounce 60→120 ms, double-clap window 80–800 ms, SIMILARITY 0.40→0.55, G4 gate adds `_state!=='listening'`, REARM 2500 ms, EMA persisted across reloads, amber hue pulse on fire.
+- **Wake word**: maxAlternatives 3→5, secondary confidence 0.40→0.30, added `harvey`/`charvis` variants.
+- **SW**: `mission2028-v7` → `mission2028-v8`
+
+### ⚠ NEEDS YOUR MIC TEST (Phase 2)
+See mic-test checklist below. Claude cannot test audio.
+
+---
+
+## MIC-TEST CHECKLIST — Phase 2 (you must do this)
+
+**Clap tests (do all in your normal study room):**
+1. Double-clap 20× with normal hand clap speed. JARVIS must wake at least 16/20.
+2. Double-clap 10× with a fan/AC running. Must still wake.
+3. Talk continuously for 1 min, clap loudly once mid-sentence. Must NOT wake (single clap should not fire).
+4. After JARVIS wakes, wait 2.5 s, then double-clap again. Should wake again (REARM check).
+5. Start the focus timer manually. While timer is running (focus session active), double-clap. **Timer must NEVER start as a side-effect** — JARVIS panel should open but timer state must be unchanged.
+6. Open JARVIS panel, while it shows "Listening…" state, double-clap. Should NOT re-trigger (G4 gate).
+
+**Wake word tests:**
+7. Say "Jarvis" 10× with background music. Should catch most.
+8. Try saying "Harvey" and "Charvis" — confirm they now wake JARVIS.
+9. While JARVIS is speaking, say "Jarvis" — it must interrupt and start listening.
+
+**After testing, give me go-ahead for Phase 3 (KB similarity, tab-pause, conversation history, SRS on wrong quiz answer).**

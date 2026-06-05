@@ -2990,15 +2990,25 @@ async function executeIntent(transcript: string): Promise<void> {
       setState('idle'); VA.setState('idle')
       setStatus('Ready — say Jarvis or double clap')
       const localAns = offlineAnswer(transcript)
-      // If the local answer is the generic fallback AND Groq is available,
-      // fire one more async Groq attempt and update the response.
-      const isGenericFallback = /I handle timer|Main timer|handle timer, plan|sambhalta hoon/i.test(localAns)
-      if (isGenericFallback && GROQ_AVAILABLE) {
+
+      // If offline → show offline message immediately, no retry
+      if (!navigator.onLine) {
+        respond(localAns); return
+      }
+
+      // If the local answer is generic AND Groq is available, fire one more async attempt
+      const isGenericFallback = /offline|internet|api key|reconnect/i.test(localAns) ||
+        /ready for timer|timer, plan|sambhalta hoon/i.test(localAns)
+
+      if (!isGenericFallback && GROQ_AVAILABLE) {
+        // Answer was specific (backlog, streak etc.) — just show it
+        respond(localAns)
+      } else if (GROQ_AVAILABLE) {
         const retryLang = detectResponseLang(transcript)
         respond(L(retryLang,
-          'Taking a little longer — switching to online AI…',
-          'थोड़ा समय लग रहा है — online AI से try कर रहा हूँ…',
-          'Thoda time lag raha hai — online AI se try kar raha hoon…'
+          'Still thinking — retrying with AI…',
+          'अभी सोच रहा हूँ — AI से retry…',
+          'Soch raha hoon — AI se retry kar raha hoon…'
         ))
         void llmRoute(buildQATranscript(transcript, retryLang), 'qa')
           .then(r => { if (r.answer?.trim()) respond(r.answer.trim()) })
@@ -3007,7 +3017,7 @@ async function executeIntent(transcript: string): Promise<void> {
         respond(localAns)
       }
     }
-  }, 18_000)  // 18s safety net — gives Groq ~2s before timeout
+  }, 18_000)  // 18s safety net — gives Groq plenty of time
 
   try {
     // ── Tier 1 + 2: route() tries local first, falls to Groq classification ──
@@ -5946,11 +5956,31 @@ function offlineAnswer(t: string): string {
                                  'Timer is not running.'
   }
 
+  // For knowledge / AI questions when offline or no key — be honest, not generic
+  const isKnowledgeQ = /\b(what|why|how|explain|describe|tell|define|article|act|chapter|upsc|ias|gs|polity|history|geography|economy|environment|ethics|science|preamble|fundamental|directive|amendment|parliament|president|election|constitution|law|court|policy|scheme|bill|committee|commission|report|treaty|organization|country|river|mountain|state|capital|currency|author|book|event|year|date|who|when|where|which)\b/i.test(tl)
+
+  if (isKnowledgeQ) {
+    if (!navigator.onLine) {
+      return lang === 'hi'
+        ? "Abhi offline hoon — Groq AI se connect nahi ho sakta. Internet connect karo phir poochho."
+        : lang === 'hinglish'
+        ? "Main offline hoon — Groq AI tak nahi pahunch sakta. Internet reconnect karo."
+        : "I'm offline right now — can't reach the Groq AI to answer this. Please reconnect to the internet."
+    }
+    if (!GROQ_AVAILABLE) {
+      return lang === 'hi'
+        ? "Groq API key set nahi hai — UPSC knowledge questions ke liye AI zaroorat hai. .env mein VITE_GROQ_API_KEY set karo."
+        : lang === 'hinglish'
+        ? "Groq key nahi hai. VITE_GROQ_API_KEY set karo .env mein AI answers ke liye."
+        : "Groq API key not configured. Set VITE_GROQ_API_KEY in .env to enable AI answers for knowledge questions."
+    }
+  }
+
   return lang === 'hi'
-    ? "Main timer, plan, scores, notes, quiz aur sabhi UPSC topics handle karta hoon. Batao kya chahiye?"
+    ? "Timer, plan, scores, notes aur local commands ke liye ready hoon. Knowledge questions ke liye internet chahiye."
     : lang === 'hinglish'
-    ? "Main timer, plan, scores, notes, quiz aur UPSC topics sambhalta hoon. Kya chahiye?"
-    : "I handle timer, plan, scores, notes, quiz, and all UPSC topics. What do you need?"
+    ? "Timer, plan, scores, notes ke liye ready. Knowledge questions ke liye internet chahiye."
+    : "Ready for timer, plan, scores, notes and local commands. Knowledge questions need an internet connection."
 }
 
 // ── Full Website Control Helpers ──────────────────────────────────────────────

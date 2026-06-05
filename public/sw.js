@@ -1,6 +1,6 @@
-// Mission 2028 Service Worker v3
+// Mission 2028 Service Worker v6
 // Strategy: cache-first for assets, network-first for HTML/API, push notifications
-const CACHE = 'mission2028-v3'
+const CACHE = 'mission2028-v6'
 const ASSET_EXTS = ['.js', '.css', '.svg', '.webp', '.png', '.woff2', '.json']
 
 // ── Install — skip waiting for instant activation ───────────────────────────

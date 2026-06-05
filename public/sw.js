@@ -1,6 +1,6 @@
-// Mission 2028 Service Worker v7
+// Mission 2028 Service Worker v8
 // STRATEGY: Always fetch JS/CSS fresh from network. Only cache fonts+images.
-const CACHE = 'mission2028-v7'
+const CACHE = 'mission2028-v8'
 const FONT_EXTS = ['.woff2', '.woff', '.ttf', '.svg', '.webp', '.png', '.ico']
 
 // ── Install — take over immediately ────────────────────────────────────────

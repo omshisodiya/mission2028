@@ -1535,6 +1535,45 @@ async function processQuery(text: string): Promise<void> {
   // ── OFF guard: when JARVIS is disabled, ignore ALL queries ────────────────
   if (!_jarvisEnabled) return
 
+  const tl = text.toLowerCase().trim()
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // TIER 0 — INSTANT LOCAL ANSWERS (MUST be first, before ANYTHING else)
+  // These NEVER reach Groq. Period.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // TIME: any phrase with time/clock/baje that isn't about timer/study/session
+  if (/time|baje|clock|ghanta|ghante|baj\s|samay/i.test(tl) &&
+      !/timer|remaining|left|study|focus|session|exam|padhai|padh\b/i.test(tl)) {
+    const _t = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+    const _l = detectResponseLang(text)
+    addMsg('user', text)
+    respond(L(_l, `It's ${_t} IST.`, `अभी ${_t} बज रहे हैं।`, `Abhi ${_t} baje hain.`))
+    return
+  }
+
+  // DATE
+  if (/date|din\s+kya|aaj\s+kya|today.*date|what.*date|kya.*tarikh|tarikh/i.test(tl) &&
+      !/exam|prelims|mains|set|change|plan|lecture|session/i.test(tl)) {
+    const _d = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
+    const _l = detectResponseLang(text)
+    addMsg('user', text)
+    respond(L(_l, `Today is ${_d}.`, `आज ${_d} है।`, `Aaj ${_d} hai.`))
+    return
+  }
+
+  // DAY OF WEEK
+  if (/\bday\b.*\btoday\b|\btoday\b.*\bday\b|\bkaunsa.*\bdin\b|\bwhat.*day.*is.*it/i.test(tl) &&
+      !/study|plan|lecture|holiday/i.test(tl)) {
+    const _dy = new Date().toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'Asia/Kolkata' })
+    const _l = detectResponseLang(text)
+    addMsg('user', text)
+    respond(L(_l, `Today is ${_dy}.`, `आज ${_dy} है।`, `Aaj ${_dy} hai.`))
+    return
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+
   // Track query for evolution V2 proactive learning
   appendQueryHistory(text)
   // V6: suppress proactive nudges for 90s after any user query
@@ -1543,61 +1582,16 @@ async function processQuery(text: string): Promise<void> {
   // 0. Vision
   if (isVisionTrigger(text)) { addMsg('user', text); openVisionCapture(text, respond); return }
 
-  const tl = text.toLowerCase().trim()
-
   // 0-INSTANT. Local knowledge base — 200+ verified UPSC facts, zero network
   {
     const lkLang = detectResponseLang(text)
     const localKB = lookupLocalKnowledge(text, lkLang)
     if (localKB) {
-      addMsg('user', text)
-      respond(cleanGroqAnswer(localKB))
-      return
+      addMsg('user', text); respond(cleanGroqAnswer(localKB)); return
     }
     const quickFact = lookupQuickFact(text)
     if (quickFact) {
-      addMsg('user', text)
-      respond(cleanGroqAnswer(quickFact))
-      return
-    }
-  }
-
-  // 0-z. DATE queries — ALWAYS answered locally, NEVER sent to Groq
-  // Matches "what is today's date", "what date is it", "aaj kya date hai", etc.
-  if (/\bdate\b.*\btoday\b|\btoday\b.*\bdate\b|\bwhat.*\bdate\b|\bkya.*date\b|\bdate.*kya\b|\bcurrent.*date\b|\baaj.*kaun.*si.*date\b|\baaj.*date\b|\bdate.*aaj\b/i.test(tl) &&
-      !/study|padh|session|plan|lecture|routine|exam.*date|prelims.*date|mains.*date|set.*date|change.*date/i.test(tl)) {
-    addMsg('user', text)
-    const nowD  = new Date()
-    const dateStr = nowD.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })
-    const lang = detectResponseLang(text)
-    respond(L(lang, `Today is ${dateStr}.`, `आज ${dateStr} है।`, `Aaj ${dateStr} hai.`))
-    return
-  }
-
-  // 0-y. DAY OF WEEK query
-  if (/\bwhat.*\bday\b|\btoday.*\bday\b|\bkaunsa.*\bdin\b|\bkya\s+din\b|\bdin\s+kya\b|\btoday.*\bweekday\b/i.test(tl) &&
-      !/study|padh|session|plan|lecture|holiday/i.test(tl)) {
-    addMsg('user', text)
-    const day = new Date().toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'Asia/Kolkata' })
-    const lang = detectResponseLang(text)
-    respond(L(lang, `Today is ${day}.`, `आज ${day} है।`, `Aaj ${day} hai.`))
-    return
-  }
-
-  // 0-x. TIME OF DAY — ALWAYS local, NEVER Groq. Catches every possible phrasing.
-  // Rule: if "time" or "baje" or "clock" appears AND no study/timer context → just say the time.
-  {
-    const hasTimeWord  = /\btime\b|\bbaje\b|\bclock\b|\bghanta\b|\bghante\b/i.test(tl)
-    const isTimerCtx  = /\btimer\b|\bremaining\b|\bleft\b|\bstud(y|ied)\b|\bfocus\b|\bsession\b|\bexam\b|\bpadh/i.test(tl)
-    const isTimeIntent = hasTimeWord && !isTimerCtx
-
-    if (isTimeIntent) {
-      addMsg('user', text)
-      const nowT    = new Date()
-      const timeStr = nowT.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
-      const lang    = detectResponseLang(text)
-      respond(L(lang, `It's ${timeStr} IST.`, `अभी ${timeStr} बज रहे हैं।`, `Abhi ${timeStr} baje hain.`))
-      return
+      addMsg('user', text); respond(cleanGroqAnswer(quickFact)); return
     }
   }
 

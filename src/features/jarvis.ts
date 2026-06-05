@@ -456,36 +456,18 @@ function kbTrackFail(query: string): void {
   _saveFails(fails.sort((a, b) => b.count - a.count))
 }
 
-/** Build a personal context string prepended to every Groq prompt */
+/** Build minimal personal context for Groq. Only include what's directly relevant.
+ *  Does NOT force UPSC/backlog/lecture framing into every answer. */
 function buildPersonalContext(): string {
-  const cs      = getCurrentState()
-  const streak  = cs?.streak ?? 0
-  const avg     = cs?.performance?.prelimsAvg
-  const sp      = cs?.selectionProbabilityPct
-  const subj    = cs?.today?.subject ?? ''
-  const backlog = cs?.backlogRemaining ?? 0
-  const weak    = _mem.weakTopics.slice(-4).join(', ') || 'none flagged'
-  const strong  = _mem.strongTopics.slice(-4).join(', ') || 'none flagged'
-
-  const confLines = Object.entries((_mem as { confidence?: Record<string,number> }).confidence ?? {})
-    .sort((a, b) => a[1] - b[1])
-    .slice(0, 4)
-    .map(([t, v]) => `${t} ${v}/5`)
-    .join(', ')
-
+  const cs     = getCurrentState()
+  const streak = cs?.streak ?? 0
+  // Minimal — just enough for JARVIS to know who it's talking to.
+  // Backlog/lectures/prelims date NOT included here (they cause Groq to lecture about them).
   return [
-    `[PERSONAL CONTEXT — Om Shisodiya, UPSC CSE 2028 aspirant, PW IAS Prarambh 2027]`,
-    streak  > 0          ? `Streak: ${streak} days` : '',
-    subj                 ? `Today's subject: ${subj}` : '',
-    avg    != null       ? `Prelims avg: ${avg.toFixed(1)}%` : '',
-    sp     != null       ? `Selection probability: ${sp.toFixed(1)}%` : '',
-    backlog > 0          ? `Backlog: ${backlog} lectures` : '',
-    weak !== 'none flagged' ? `Weak topics: ${weak}` : '',
-    strong !== 'none flagged' ? `Strong topics: ${strong}` : '',
-    confLines            ? `Confidence scores: ${confLines}` : '',
-    `Session subject: ${_sessionSubject || subj || 'General'}`,
-    `[Respond as JARVIS — Om's personal UPSC AI. Be specific, warm, and concise.]`,
-  ].filter(Boolean).join('\n')
+    `User: Om Shisodiya.`,
+    streak > 0 ? `Study streak: ${streak} days.` : '',
+    _sessionSubject ? `Currently studying: ${_sessionSubject}.` : '',
+  ].filter(Boolean).join(' ')
 }
 
 /** Statistics about the KB */
@@ -1445,6 +1427,7 @@ async function startListening(): Promise<void> {
     clearTimeout(silenceTimer)
     stopListening()
     VA.setTranscript(normalized, false)
+    if (tryInstantAnswer(normalized)) return
     void processQuery(normalized)
   }
 
@@ -1523,8 +1506,35 @@ function stopListening(): void {
   if (VA.state === 'listening') VA.setState('thinking')
 }
 
+// ── INSTANT ANSWER — runs before processQuery for zero-latency guaranteed responses ──
+// This is the last line of defence. Even if processQuery has issues, these fire.
+function tryInstantAnswer(text: string): boolean {
+  const t = text.toLowerCase().trim()
+
+  // TIME: anything with time/baje/clock — no study/timer context
+  if (/\btime\b|\bbaje\b|\bclock\b|\bghanta\b|\bsamay\b/i.test(t) &&
+      !/timer|pomodoro|session|study|focus|remaining|left|exam/i.test(t)) {
+    const ts = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+    addMsg('user', text)
+    respond(`${ts} IST`)
+    return true
+  }
+
+  // DATE: anything with date/tarikh/aaj — no plan/exam context
+  if (/\bdate\b|\btarikh\b|\baaj\b|\bkaunsa\s+din\b|\btoday.*date\b|\bwhat.*date\b/i.test(t) &&
+      !/plan|exam|prelims|mains|session|lecture/i.test(t)) {
+    const ds = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
+    addMsg('user', text)
+    respond(ds)
+    return true
+  }
+
+  return false
+}
+
 function sendText(inp: HTMLInputElement): void {
   const txt = inp.value.trim(); if (!txt) return; inp.value = ''
+  if (tryInstantAnswer(txt)) return
   void processQuery(txt)
 }
 
@@ -3207,20 +3217,14 @@ function buildGroqMessages(
   transcript: string,
   lang: 'en'|'hi'|'hinglish',
 ): Array<{ role: 'system'|'user'; content: string }> {
-  const ctx       = buildPersonalContext()
-  const ctxSummary = buildContextSummary()
-  const kgCtx     = kgContextFor(transcript)
-  const isDeepQ   = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(transcript)
-
-  const systemPrompt = buildSystemPrompt(lang, getPersonalityPrompt(), ctx + (ctxSummary ? '\n' + ctxSummary : '') + (kgCtx ? '\n' + kgCtx : ''))
-
-  const brevity = isDeepQ
-    ? 'Answer in 4-6 sentences covering key dimensions.'
-    : 'Answer in 2-3 sentences maximum. Direct. No filler.'
+  const ctx     = buildPersonalContext()
+  const isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(transcript)
+  const brevity = isDeepQ ? '4-6 sentences.' : '2-3 sentences max. No filler.'
+  const systemPrompt = buildSystemPrompt(lang, '', ctx)
 
   return [
     { role: 'system', content: systemPrompt },
-    { role: 'user',   content: `[${brevity}]\n\n${transcript}` },
+    { role: 'user',   content: `[${brevity}] ${transcript}` },
   ]
 }
 

@@ -81,6 +81,11 @@ const GROQ_MODEL    = 'llama-3.3-70b-versatile'
 const GROQ_KEY      = import.meta.env.VITE_GROQ_API_KEY as string | undefined
 const GROQ_AVAILABLE = !!(import.meta.env.VITE_GROQ_API_KEY as string | undefined)
 
+// Dynamic Groq availability — checks both key presence and online status
+function isGroqOnline(): boolean {
+  return GROQ_AVAILABLE && navigator.onLine
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 type JState    = 'idle' | 'listening' | 'thinking' | 'speaking'
 type QuizPhase = 'off' | 'asking' | 'revealed'
@@ -1555,22 +1560,61 @@ async function processQuery(text: string): Promise<void> {
     return
   }
 
-  // 0-x. TIME OF DAY query — ALWAYS answered locally, NEVER sent to Groq
-  // Matches "what time is it", "what is the time", "time batao", "kitne baje hain", etc.
-  if (/\bwhat.*\btime\b|\bcurrent.*\btime\b|\btime.*\bkya\b|\babhi.*\btime\b|\bkitne.*\bbaje\b|\bbaje.*\bhain\b|\btime.*\bbatao\b|\btime.*\bcheck\b|\bwhat.*clock\b|\btime\s+please\b/i.test(tl) &&
-      !/study.*time|focus.*time|session.*time|timer.*left|timer.*remaining|time.*left|time.*remaining|exam.*time/i.test(tl)) {
+  // 0-x. TIME OF DAY — ALWAYS local, NEVER Groq (Groq doesn't know real-time clock)
+  // Covers: "what time is it", "time batao", "kitne baje hain", "time", "clock", etc.
+  {
+    const isTimeQuery =
+      /^time$|^clock$/i.test(tl) ||                                           // standalone word
+      (/\btime\b/.test(tl) && /\bwhat\b|\bcurrent\b|\babhi\b|\bbatao\b|\bcheck\b|\bplease\b|\bhai\b|\bhe\b/i.test(tl)) ||  // "what time", "time batao", etc.
+      /\bkitne\s+baje\b|\bbaje\s+kya\b|\bbaje\s+hain\b|\bbaj\s+rahe\b/i.test(tl) ||  // Hinglish/Hindi
+      /\bwhat.*\bclock\b/i.test(tl)
+    const isTimerQuery = /timer|remaining|left|session.*time|study.*time|focus.*time|exam.*time/i.test(tl)
+
+    if (isTimeQuery && !isTimerQuery) {
+      addMsg('user', text)
+      const nowT    = new Date()
+      const timeStr = nowT.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+      const dateStr = nowT.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+      const lang    = detectResponseLang(text)
+      respond(L(lang,
+        `It's ${timeStr} IST — ${dateStr}.`,
+        `अभी ${timeStr} बज रहे हैं (IST) — ${dateStr}।`,
+        `Abhi ${timeStr} baje hain IST — ${dateStr}.`
+      ))
+      return
+    }
+  }
+
+  // 0-w. GROQ / AI STATUS — tell user if Groq is connected and working
+  if (/groq.*status|groq.*working|groq.*connected|is.*groq.*on|ai.*online|jarvis.*online|are.*you.*online|ai.*status|groq.*kaam.*kar/i.test(tl)) {
     addMsg('user', text)
-    const timeStr = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
     const lang = detectResponseLang(text)
-    respond(L(lang,
-      `The time is ${timeStr} IST.`,
-      `अभी ${timeStr} बज रहे हैं (IST)।`,
-      `Abhi ${timeStr} baje hain IST mein.`
-    ))
+    if (!GROQ_AVAILABLE) {
+      respond(L(lang,
+        'Groq API key not configured. Set VITE_GROQ_API_KEY in your .env file and rebuild to enable AI responses.',
+        'Groq API key set नहीं है। .env file में VITE_GROQ_API_KEY set करो।',
+        'Groq API key nahi hai. .env mein VITE_GROQ_API_KEY set karo.'
+      ))
+    } else if (!navigator.onLine) {
+      respond(L(lang,
+        'Groq key is configured but you are offline. Groq needs internet. Reconnect to enable AI responses.',
+        'Groq key है लेकिन internet नहीं। Reconnect करो।',
+        'Groq key hai lekin offline ho. Internet chahiye.'
+      ))
+    } else {
+      respond(L(lang,
+        'Groq AI is active and online — using llama-3.3-70b for knowledge questions. All systems go.',
+        'Groq AI active है — llama-3.3-70b use हो रहा है knowledge questions के लिए।',
+        'Groq AI active hai — llama-3.3-70b chal raha hai.'
+      ))
+    }
     return
   }
 
   // 0a. Single-keyword shortcuts — respond instantly, no router needed
+  const _nowForQuick = new Date()
+  const _timeQuick = _nowForQuick.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+  const _dateQuick = _nowForQuick.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
   const QUICK: Record<string, () => void> = {
     'plan': () => scr('plan'),     'planner': () => scr('plan'),
     'stats': () => scr('intel'),   'analytics': () => scr('intel'),   'scores': () => scr('intel'),
@@ -1583,6 +1627,10 @@ async function processQuery(text: string): Promise<void> {
     'status': () => respond(buildStatusReport()),
     'briefing': () => respond(buildStatusReport()),
     'motivate': () => respond(motivationLine()),  'motivation': () => respond(motivationLine()),
+    'time':    () => respond(`It's ${_timeQuick} IST.`),
+    'clock':   () => respond(`It's ${_timeQuick} IST.`),
+    'date':    () => respond(`Today is ${_dateQuick}.`),
+    'aaj':     () => respond(`Aaj ${_dateQuick} hai.`),
     'help': () => respond("Say 'Jarvis' or double-clap to wake me. Then say any command. Try: 'start timer', 'what's my plan', 'add score', 'quiz me on Polity'."),
   }
   if (QUICK[tl]) { addMsg('user', text); QUICK[tl](); if (!['status','briefing','motivate','motivation','help'].includes(tl)) respond(tl + '.'); return }

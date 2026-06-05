@@ -837,8 +837,8 @@ export async function v6CognitivePipeline(
     }
   }
 
-  // 5. No key — signal caller to use offline fallback
-  if (!groqKey()) return false
+  // 5. No key or offline — signal caller to use its own Groq pipeline
+  if (!groqKey() || !navigator.onLine) return false
 
   // 6. Classify and route — only handle KNOWLEDGE queries here.
   //    Action/atom queries that reach this point couldn't be matched locally;

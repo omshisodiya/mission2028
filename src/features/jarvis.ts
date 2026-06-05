@@ -6296,7 +6296,8 @@ function startWakeWord(): void {
   // ── Strict WAKE_RE: ONLY "jarvis" or Hindi equivalent ────────────────────
   // Removed: jarbi, jarwis, jar vis — these cause false positives on common words.
   // Adding: "hey jarvis", "ok jarvis", common Hindi prefix/suffix patterns.
-  const WAKE_STRICT = /\bjarvis\b|\bजार्विस\b/i
+  // Includes common STT mishears: jarvis, jarbs, jarves, jarbi, jarwis, jarvis
+  const WAKE_STRICT = /\bjarvis\b|\bjarviz\b|\bjarves\b|\bjarbs\b|\bजार्विस\b|\bjar\s*vis\b/i
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onresult = (e: any) => {
@@ -6346,7 +6347,7 @@ function startWakeWord(): void {
     // Secondaries — only if confidence threshold met
     if (!matched) {
       for (let i = 1; i < alts.length; i++) {
-        if (alts[i].conf >= 0.55 && WAKE_STRICT.test(alts[i].text)) {
+        if (alts[i].conf >= 0.40 && WAKE_STRICT.test(alts[i].text)) {
           matched = alts[i].text
           break
         }
@@ -6416,15 +6417,15 @@ async function startClapWatch(): Promise<void> {
   ac.createMediaStreamSource(stream).connect(an)
   const data = new Uint8Array(an.frequencyBinCount)
 
-  // ── Core constants ────────────────────────────────────────────────────────
-  const EMA_ALPHA   = 0.04   // slow EMA for ambient floor (~2 s convergence)
-  const SPIKE_RATIO = 2.8    // raised from 2.1 — clap must be 2.8× ambient (harder to fake)
-  const MIN_ABS     = 42     // raised from 35 — absolute RMS floor
-  const MAX_GAP     = 700    // ms — double-clap window
-  const MIN_GAP     = 80     // ms — debounce
-  const MAX_STREAK  = 3      // lowered from 4 — stricter: clap must be ≤135ms
-  const RISE_MIN    = 18     // minimum amplitude rise from prev sample (transient sharpness)
-  const SIMILARITY  = 0.55   // both claps must be within 55% amplitude ratio
+  // ── Core constants — balanced for reliable detection in typical rooms ────────
+  const EMA_ALPHA   = 0.04   // slow EMA for ambient floor
+  const SPIKE_RATIO = 2.2    // 2.2× ambient — sensitive enough for normal hand claps
+  const MIN_ABS     = 28     // lower absolute floor — works in quieter rooms too
+  const MAX_GAP     = 900    // ms — wider double-clap window (easier to trigger)
+  const MIN_GAP     = 60     // ms — debounce between claps
+  const MAX_STREAK  = 4      // clap must be short (≤180ms)
+  const RISE_MIN    = 10     // lower transient threshold — catches softer claps
+  const SIMILARITY  = 0.40   // more lenient amplitude matching (40% ratio is enough)
 
   let warmup    = 0
   let lastClap  = 0

@@ -102,7 +102,13 @@ export function openCommandBar(
   executeVoiceCmd: (cmd: string) => void,
   prefill = '',
 ): void {
+  // Reset flag if overlay was removed externally (e.g. page navigation / DOM clear)
+  if (_barOpen && !document.getElementById('jcb-overlay')) {
+    _barOpen = false
+  }
+
   if (_barOpen) {
+    // Already open — just focus and pre-fill
     const inp = document.getElementById('jcb-input') as HTMLInputElement | null
     if (inp) { inp.value = prefill; inp.dispatchEvent(new Event('input')); inp.focus() }
     return
@@ -112,9 +118,9 @@ export function openCommandBar(
   const overlay = document.createElement('div')
   overlay.id = 'jcb-overlay'
   overlay.style.cssText = [
-    'position:fixed;inset:0;z-index:9500;display:flex;justify-content:center;',
-    'align-items:flex-start;padding-top:15vh;background:rgba(5,7,15,.75);',
-    'backdrop-filter:blur(12px);',
+    'position:fixed;inset:0;z-index:99999;display:flex;justify-content:center;',
+    'align-items:flex-start;padding-top:12vh;background:rgba(5,7,15,.82);',
+    'backdrop-filter:blur(16px);',
   ].join('')
 
   overlay.innerHTML = `
@@ -237,10 +243,14 @@ export function initCommandBar(executeVoiceCmd: (cmd: string) => void): void {
     const tag = (e.target as HTMLElement).tagName
     const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)
 
-    // Ctrl+Space or Ctrl+/ — open command bar
-    if ((e.ctrlKey || e.metaKey) && (e.code === 'Space' || e.key === '/') && !inInput) {
+    // Ctrl+K or Ctrl+Space or Ctrl+/ — open command bar
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K' || e.code === 'Space' || e.key === '/') && !inInput) {
       e.preventDefault()
       openCommandBar(executeVoiceCmd)
+    }
+    // Escape — close command bar
+    if (e.key === 'Escape' && _barOpen) {
+      closeCommandBar()
     }
   })
 

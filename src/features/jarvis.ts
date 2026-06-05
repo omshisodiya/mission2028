@@ -457,18 +457,23 @@ function kbTrackFail(query: string): void {
   _saveFails(fails.sort((a, b) => b.count - a.count))
 }
 
-/** Build minimal personal context for Groq. Only include what's directly relevant.
- *  Does NOT force UPSC/backlog/lecture framing into every answer. */
-function buildPersonalContext(): string {
+/** Build personal context for Groq.
+ *  Pass forUpsc=true only for UPSC/study-domain queries — keeps general
+ *  queries (time, math, weather) free of subject/streak noise. */
+function buildPersonalContext(forUpsc = false): string {
+  if (!forUpsc) return `User: Om Shisodiya.`
   const cs     = getCurrentState()
   const streak = cs?.streak ?? 0
-  // Minimal — just enough for JARVIS to know who it's talking to.
-  // Backlog/lectures/prelims date NOT included here (they cause Groq to lecture about them).
   return [
     `User: Om Shisodiya.`,
     streak > 0 ? `Study streak: ${streak} days.` : '',
     _sessionSubject ? `Currently studying: ${_sessionSubject}.` : '',
   ].filter(Boolean).join(' ')
+}
+
+/** Detect whether a transcript is likely a UPSC/study-domain query. */
+function _isUpscQuery(transcript: string): boolean {
+  return /\b(polity|constitution|article\s*\d+|history|geography|economy|environment|science|governance|ethics|mains|prelims|gk|ias|ips|upsc|ncert|preamble|fundamental|directive|amendment|schedule|parliament|president|cabinet|judiciary|federalism|rights|duties|act\s*\d|current affairs|biodiversity|climate|poverty|inflation|monetary|fiscal|budget|committee|commission|tribunal|article\s*[a-z0-9])\b/i.test(transcript)
 }
 
 /** Statistics about the KB */
@@ -1635,7 +1640,7 @@ async function processQuery(text: string): Promise<void> {
     'start': clickStart,           'shuru': clickStart,
     'pause': () => q('[data-act="start"]'), 'stop': () => q('[data-act="start"]'),
     'reset': () => q('[data-act="reset"]'),
-    'routine': () => scr('routine-section'), 'constitution': () => scr('constitution-section'),
+    'routine': () => scr('routine'), 'constitution': () => scr('constitution'),
     'settings': () => cl('cm-settings'),
     'backlog': () => { scr('plan'); cl('lp-filter-backlog') },
     'status': () => respond(buildStatusReport()),
@@ -3110,14 +3115,12 @@ async function executeIntent(transcript: string): Promise<void> {
       if (cached) { kgMineFromText(transcript); respond(cached); return }
 
       setStatus(detectedLang === 'hi' ? 'जवाब खोज रहा हूँ…' : detectedLang === 'hinglish' ? 'Jawab dhundh raha hoon…' : 'Searching knowledge base…')
-      const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
-      const answer   = qaResult.answer?.trim()
       // Determine how much text we need based on query depth
       const _isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(transcript)
       const _streamMaxTok = _isDeepQ ? 400 : 220
 
       if (_streamingEnabled) {
-        // ── STREAMING PATH: tokens appear in real-time ───────────────────────
+        // ── STREAMING PATH: tokens appear in real-time (no llmRoute call) ───
         const enrichedPrompt = buildGroqMessages(transcript, detectedLang)
         await streamGroqResponse(
           enrichedPrompt,
@@ -3142,23 +3145,28 @@ async function executeIntent(transcript: string): Promise<void> {
           },
           _streamMaxTok,
         )
-      } else if (answer) {
-        const cleaned2 = cleanGroqAnswer(answer)
-        setCached(cacheKey, cleaned2)
-        kbStore(transcript, cleaned2, 'groq', 0.7)
-        respond(cleaned2)
       } else {
-        kbTrackFail(transcript)
-        const retryLang2 = detectResponseLang(transcript)
-        const retry2 = await llmRoute(
-          buildQATranscript(`Answer in 2 spoken sentences: ${transcript}`, retryLang2), 'qa'
-        ).catch(() => ({ answer: null }))
-        if ((retry2 as { answer?: string | null }).answer?.trim()) {
-          const a2 = (retry2 as { answer: string }).answer.trim()
-          kbStore(transcript, a2, 'groq', 0.5)
-          respond(a2)
+        // ── NON-STREAMING PATH: single llmRoute call ─────────────────────────
+        const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
+        const answer   = qaResult.answer?.trim()
+        if (answer) {
+          const cleaned2 = cleanGroqAnswer(answer)
+          setCached(cacheKey, cleaned2)
+          kbStore(transcript, cleaned2, 'groq', 0.7)
+          respond(cleaned2)
         } else {
-          respond(offlineAnswer(transcript))
+          kbTrackFail(transcript)
+          const retryLang2 = detectResponseLang(transcript)
+          const retry2 = await llmRoute(
+            buildQATranscript(`Answer in 2 spoken sentences: ${transcript}`, retryLang2), 'qa'
+          ).catch(() => ({ answer: null }))
+          if ((retry2 as { answer?: string | null }).answer?.trim()) {
+            const a2 = (retry2 as { answer: string }).answer.trim()
+            kbStore(transcript, a2, 'groq', 0.5)
+            respond(a2)
+          } else {
+            respond(offlineAnswer(transcript))
+          }
         }
       }
       return
@@ -3214,7 +3222,7 @@ function buildGroqMessages(
   transcript: string,
   lang: 'en'|'hi'|'hinglish',
 ): Array<{ role: 'system'|'user'; content: string }> {
-  const ctx     = buildPersonalContext()
+  const ctx     = buildPersonalContext(_isUpscQuery(transcript))
   const isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(transcript)
   const brevity = isDeepQ ? '4-6 sentences.' : '2-3 sentences max. No filler.'
   const systemPrompt = buildSystemPrompt(lang, '', ctx)
@@ -3893,13 +3901,11 @@ const q   = (sel: string): void => {
 }
 // Smart scroll: tries multiple ID variants, flashes section, returns true if found
 const scr = (id: string): boolean => {
-  // Try the given ID, then with '-section' suffix, then without it
   const attempts = [id, `${id}-section`, id.replace(/-section$/, ''), `${id}Section`]
   for (const attempt of attempts) {
     const el = document.getElementById(attempt)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      // Flash the section border to confirm navigation
       const prev = el.style.outline
       el.style.outline = '2px solid var(--accent)'
       el.style.outlineOffset = '4px'
@@ -3908,6 +3914,11 @@ const scr = (id: string): boolean => {
     }
   }
   console.warn('[JARVIS] Section not found:', id)
+  // Speak an honest error when JARVIS panel is open so user knows navigation failed
+  if (_jarvisEnabled && _open) {
+    const _scrLang = detectResponseLang('')
+    respond(L(_scrLang, `I couldn't find that section.`, `वह section नहीं मिला।`, `Woh section nahi mila.`))
+  }
   return false
 }
 const clickStart = (): void => {
@@ -6306,13 +6317,12 @@ function startWakeWord(): void {
   r.continuous      = false
   r.lang            = _lang
   r.interimResults  = false
-  r.maxAlternatives = 3   // still collect alts for confidence comparison
+  r.maxAlternatives = 5   // more alts → catches more STT mishear variants
 
-  // ── Strict WAKE_RE: ONLY "jarvis" or Hindi equivalent ────────────────────
-  // Removed: jarbi, jarwis, jar vis — these cause false positives on common words.
-  // Adding: "hey jarvis", "ok jarvis", common Hindi prefix/suffix patterns.
-  // Includes common STT mishears: jarvis, jarbs, jarves, jarbi, jarwis, jarvis
-  const WAKE_STRICT = /\bjarvis\b|\bjarviz\b|\bjarves\b|\bjarbs\b|\bजार्विस\b|\bjar\s*vis\b/i
+  // ── WAKE_STRICT: "jarvis" + common STT mishears + new variants ───────────
+  // Added: harvey, charvis (confirmed STT mishears in Indian-accent English).
+  // jar vis retained — still appears in Indian-accent STT output.
+  const WAKE_STRICT = /\bjarvis\b|\bjarviz\b|\bjarves\b|\bjarbs\b|\bजार्विस\b|\bjar\s*vis\b|\bharvey\b|\bcharvis\b/i
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   r.onresult = (e: any) => {
@@ -6362,7 +6372,7 @@ function startWakeWord(): void {
     // Secondaries — only if confidence threshold met
     if (!matched) {
       for (let i = 1; i < alts.length; i++) {
-        if (alts[i].conf >= 0.40 && WAKE_STRICT.test(alts[i].text)) {
+        if (alts[i].conf >= 0.30 && WAKE_STRICT.test(alts[i].text)) {
           matched = alts[i].text
           break
         }
@@ -6417,10 +6427,13 @@ function startWakeWord(): void {
   try { r.start() } catch { _wakeRunning = false; setTimeout(startWakeWord, 3000) }
 }
 
-// ── Clap detection — HARDENED v3: transient classifier + amplitude matching ───
-// Algorithm: EMA noise floor (adaptive) + high-freq energy + transient sharpness
-// (rate of amplitude rise) + clap-shape verification (fast attack, fast decay) +
-// amplitude similarity between both claps. Rejects: voice, music, AC noise, taps.
+// ── Clap detection — HARDENED v4: 5-gate classifier, EMA persistence, REARM ──
+// G1: hfRms > max(EMA*2.4, absFloor)  — loud vs calibrated ambient
+// G2: sharp frame-to-frame rise       — transient onset (not sustained sound)
+// G3: streak < 4 frames               — short burst (rejects speech, music, AC)
+// G4: not speaking AND not listening  — JARVIS truly idle
+// G5: debounce 120 ms                 — enforced by `suppress`
+// EMA persists across reloads so the detector starts calibrated, not cold.
 // ─────────────────────────────────────────────────────────────────────────────
 async function startClapWatch(): Promise<void> {
   let stream: MediaStream
@@ -6432,94 +6445,95 @@ async function startClapWatch(): Promise<void> {
   ac.createMediaStreamSource(stream).connect(an)
   const data = new Uint8Array(an.frequencyBinCount)
 
-  // ── Core constants — balanced for reliable detection in typical rooms ────────
-  const EMA_ALPHA   = 0.04   // slow EMA for ambient floor
-  const SPIKE_RATIO = 2.2    // 2.2× ambient — sensitive enough for normal hand claps
-  const MIN_ABS     = 28     // lower absolute floor — works in quieter rooms too
-  const MAX_GAP     = 900    // ms — wider double-clap window (easier to trigger)
-  const MIN_GAP     = 60     // ms — debounce between claps
-  const MAX_STREAK  = 4      // clap must be short (≤180ms)
-  const RISE_MIN    = 10     // lower transient threshold — catches softer claps
-  const SIMILARITY  = 0.40   // more lenient amplitude matching (40% ratio is enough)
+  // ── Constants ─────────────────────────────────────────────────────────────
+  const EMA_ALPHA     = 0.03   // slow ambient adaptation (~0.03 new / 0.97 old)
+  const SPIKE_RATIO   = 2.4    // clap must be 2.4× above calibrated EMA floor
+  const MIN_ABS       = 22     // absolute floor — handles very quiet rooms
+  const TRANSIENT_MIN = 12     // minimum frame-to-frame rise for a valid clap onset
+  const MAX_STREAK    = 4      // max consecutive frames above threshold (rejects sustained)
+  const SIMILARITY    = 0.55   // both claps must be within ~45% amplitude
+  const CLAP_MIN_GAP  = 80     // ms — minimum inter-clap gap (prevents echo triggering)
+  const CLAP_MAX_GAP  = 800    // ms — double-clap window
+  const DEBOUNCE_MS   = 120    // ms — refractory after any clap candidate
+  const WARMUP_FRAMES = 80     // ~4 s calibration before any fire is possible
+  const REARM_MS      = 2500   // ms — clap disabled after confirmed fire
 
-  let warmup    = 0
-  let lastClap  = 0
-  let lastClapAmp = 0        // amplitude of first clap (for similarity check)
-  let suppress  = 0
-  let streak    = 0
-  let prevHf    = 0          // previous frame's hfRms (for transient detection)
+  // Restore EMA from last session so warm rooms don't cold-start at 40
+  const _savedEma = parseFloat(localStorage.getItem('jarvis_ema_amb') ?? '')
+  if (!isNaN(_savedEma) && _savedEma > 5) _emaAmb = _savedEma
+
+  // Persist EMA when tab goes to background or user navigates away
+  const _persistEma = (): void => { localStorage.setItem('jarvis_ema_amb', String(+_emaAmb.toFixed(2))) }
+  window.addEventListener('pagehide', _persistEma)
+  document.addEventListener('visibilitychange', () => { if (document.hidden) _persistEma() })
+
+  let warmup      = 0
+  let lastClap    = 0
+  let lastClapAmp = 0
+  let suppress    = 0
+  let streak      = 0
+  let prevHf      = 0
 
   setInterval(() => {
     if (!_jarvisEnabled) return
     an.getByteFrequencyData(data)
 
-    // ── High-frequency RMS (upper half of FFT bins) ───────────────────────
-    // Claps are wideband percussive events with strong high-freq content.
-    // Speech, music, and AC are low-to-mid frequency dominant.
+    // ── High-frequency RMS (upper half of FFT bins — clap is wideband) ──────
     const half    = data.length >> 1
     const hfRms   = Math.sqrt(data.slice(half).reduce((s, v) => s + v * v, 0) / half)
     const fullRms = Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length)
 
-    // Feed ambient to aurora animation (idle breathing effect)
-    if (VA.state === 'idle' && !_isSpeaking) {
-      VA.setAmplitude(Math.min(1, fullRms / 90) * 0.28)
-    }
+    if (VA.state === 'idle' && !_isSpeaking) VA.setAmplitude(Math.min(1, fullRms / 90) * 0.28)
 
-    // EMA always updates (adapts to room changes)
-    _emaAmb = _emaAmb + EMA_ALPHA * (hfRms - _emaAmb)
-    warmup++
+    // Capture previous frame BEFORE updating EMA (so EMA never chases the spike)
     const prevHfLocal = prevHf
-    prevHf = hfRms   // store for next frame
-    if (warmup < 32) return
+    prevHf = hfRms
+    _emaAmb = _emaAmb * (1 - EMA_ALPHA) + hfRms * EMA_ALPHA
 
-    if (!_everActivated || _isSpeaking || !_clapEnabled) return
+    warmup++
+    if (warmup < WARMUP_FRAMES) return   // ~4 s calibration window
+
+    if (!_everActivated || !_clapEnabled) return
 
     const now = Date.now()
     if (now < suppress) return
 
-    // ── Adaptive threshold ────────────────────────────────────────────────
-    const dynThresh = _emaAmb * SPIKE_RATIO
-    const threshold = _clapThreshold > 0 ? _clapThreshold : dynThresh
+    // ── 5-gate clap classifier ────────────────────────────────────────────────
+    const dynThresh = _clapThreshold > 0 ? _clapThreshold : Math.max(_emaAmb * SPIKE_RATIO, MIN_ABS)
+    const G1 = hfRms > dynThresh                         // loud vs ambient
+    const G2 = (hfRms - prevHfLocal) >= TRANSIENT_MIN   // sharp rise (onset)
+    if (G1) { streak++ } else { streak = 0 }
+    const G3 = streak <= MAX_STREAK                      // short burst, not sustained
+    const G4 = !_isSpeaking && _state !== 'listening'   // JARVIS idle
 
-    // ── Three-gate clap classifier ─────────────────────────────────────────
-    // Gate 1: absolute amplitude (loud enough to be a real clap)
-    // Gate 2: transient sharpness (amplitude rose sharply from previous frame)
-    // Gate 3: duration limit (must drop back down within MAX_STREAK samples)
-    const aboveThreshold  = hfRms > threshold && hfRms > MIN_ABS
-    const isTransient     = (hfRms - prevHfLocal) >= RISE_MIN  // sharp rise
+    if (G1 && G2 && G3 && G4) {
+      suppress = now + DEBOUNCE_MS
 
-    if (aboveThreshold && isTransient) {
-      streak++
-      if (streak > MAX_STREAK) {
-        // Sustained sound — definitely not a clap (voice, music)
-        lastClap = 0; lastClapAmp = 0; return
-      }
-      suppress = now + MIN_GAP
-
-      if (lastClap && now - lastClap < MAX_GAP) {
-        // Gate 4: amplitude similarity — both claps must be reasonably similar.
-        // Prevents: one real clap + one echo/room-bounce triggering.
+      if (lastClap && (now - lastClap) >= CLAP_MIN_GAP && (now - lastClap) < CLAP_MAX_GAP) {
+        // Second clap — verify amplitude similarity
         const ratio = Math.min(hfRms, lastClapAmp) / Math.max(hfRms, lastClapAmp)
         if (ratio < SIMILARITY) {
-          // Dissimilar amplitudes — likely echo/reverb, not a real second clap
+          // Dissimilar (echo/reverb) — treat as new first clap
           lastClap = now; lastClapAmp = hfRms; return
         }
 
-        // ✅ All gates passed — confirmed double-clap
+        // ✅ All gates passed — confirmed double-clap, wake JARVIS
         lastClap = 0; lastClapAmp = 0; streak = 0
-        if (_isSpeaking) return
         _sleeping = false; _everActivated = true
+        _clapEnabled = false
+        setTimeout(() => { _clapEnabled = true }, REARM_MS)
 
+        // Amber pulse — visual confirmation only; NEVER touches timer or any DOM button
         const btn = document.getElementById('jarvis-btn')
-        btn?.classList.add('listening')
-        setTimeout(() => btn?.classList.remove('listening'), 700)
-
-        // Visual ripple feedback
-        btn?.style.setProperty('--clap-scale', '1.15')
-        setTimeout(() => btn?.style.removeProperty('--clap-scale'), 200)
+        if (btn) {
+          btn.style.setProperty('--clap-scale', '1.15')
+          btn.style.filter = 'hue-rotate(30deg) brightness(1.4)'
+          setTimeout(() => { btn.style.removeProperty('--clap-scale'); btn.style.removeProperty('filter') }, 400)
+        }
 
         if (!_open) { openPanel(); setTimeout(() => void startListening(), 700) }
         else void startListening()
+
       } else {
         // First clap of potential pair
         lastClap    = now
@@ -6529,10 +6543,10 @@ async function startClapWatch(): Promise<void> {
         setTimeout(() => btn?.style.removeProperty('opacity'), 120)
       }
     } else {
-      streak = 0   // below threshold or not transient — reset
-      if (lastClap && now - lastClap > MAX_GAP) { lastClap = 0; lastClapAmp = 0 }
+      if (!G1) streak = 0
+      if (lastClap && now - lastClap > CLAP_MAX_GAP) { lastClap = 0; lastClapAmp = 0 }
     }
-  }, 45)
+  }, 50)
 }
 
 // ── Calibration ───────────────────────────────────────────────────────────────

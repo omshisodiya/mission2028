@@ -902,6 +902,8 @@ export function startEvolutionLoopV6(respond: (t: string) => void): void {
   }, 5000)
 
   _v6LoopId = window.setInterval(async () => {
+    if (loadSession().studyState === 'in-session') return  // pause during active focus sessions
+
     // Rebuild semantic index to pick up any newly generated caps
     invalidateSemanticIndex()
     buildSemanticIndex()

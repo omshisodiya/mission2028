@@ -38,6 +38,11 @@
 import { loadCaps, isSafeCode, type GeneratedCapability, executeCapability, logGap } from './jarvis-evolution'
 import { neuralLookup } from './jarvis-evolution-v4'
 
+// Read session state directly from localStorage to avoid circular import with v6
+function _isInFocusSession(): boolean {
+  try { return (JSON.parse(localStorage.getItem('jarvis_v6_session') ?? '{}') as { studyState?: string }).studyState === 'in-session' } catch { return false }
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const GROQ_URL    = 'https://api.groq.com/openai/v1/chat/completions'
@@ -679,6 +684,8 @@ export function startEvolutionLoopV5(respond: (t: string) => void): void {
   }, 8000)
 
   _v5LoopId = window.setInterval(async () => {
+    if (_isInFocusSession()) return   // pause evolution during active focus sessions
+
     const k = groqKey()
 
     // Self-benchmark every cycle

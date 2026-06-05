@@ -1506,27 +1506,89 @@ function stopListening(): void {
   if (VA.state === 'listening') VA.setState('thinking')
 }
 
-// ── INSTANT ANSWER — runs before processQuery for zero-latency guaranteed responses ──
-// This is the last line of defence. Even if processQuery has issues, these fire.
+// ── INSTANT ANSWER — zero-latency local computation for date/time/math ──────────
+// Handles ALL date/time variations dynamically. Anything not caught here goes to Groq.
 function tryInstantAnswer(text: string): boolean {
   const t = text.toLowerCase().trim()
 
-  // TIME: anything with time/baje/clock — no study/timer context
+  // ── TIME ─────────────────────────────────────────────────────────────────────
   if (/\btime\b|\bbaje\b|\bclock\b|\bghanta\b|\bsamay\b/i.test(t) &&
-      !/timer|pomodoro|session|study|focus|remaining|left|exam/i.test(t)) {
+      !/timer|pomodoro|study|focus|remaining|left\s+in|how\s+long|exam\s+time/i.test(t)) {
     const ts = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
-    addMsg('user', text)
-    respond(`${ts} IST`)
-    return true
+    addMsg('user', text); respond(`${ts} IST`); return true
   }
 
-  // DATE: anything with date/tarikh/aaj — no plan/exam context
-  if (/\bdate\b|\btarikh\b|\baaj\b|\bkaunsa\s+din\b|\btoday.*date\b|\bwhat.*date\b/i.test(t) &&
-      !/plan|exam|prelims|mains|session|lecture/i.test(t)) {
-    const ds = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
-    addMsg('user', text)
-    respond(ds)
-    return true
+  // ── RELATIVE DATE COMPUTATION ─────────────────────────────────────────────────
+  // Helper: offset today by N days and format
+  const fmtDate = (offsetDays: number): string => {
+    const d = new Date()
+    d.setDate(d.getDate() + offsetDays)
+    return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
+  }
+
+  // Tomorrow
+  if (/\btomorrow\b|\bkal\b|\bkl\b|\bnext\s+day\b|\bkal.*date\b|\btomorrow.*date\b|\bdate.*tomorrow\b/i.test(t) &&
+      !/exam|prelims|mains|plan|lecture/i.test(t)) {
+    addMsg('user', text); respond(fmtDate(1)); return true
+  }
+
+  // Yesterday
+  if (/\byesterday\b|\bkal.*wala\b|\bpichle.*din\b|\byesterday.*date\b|\bdate.*yesterday\b/i.test(t) &&
+      !/plan|exam/i.test(t)) {
+    addMsg('user', text); respond(fmtDate(-1)); return true
+  }
+
+  // Day after tomorrow
+  if (/\bday\s+after\s+tomorrow\b|\bparson\b|\bprasson\b|\bpason\b/i.test(t)) {
+    addMsg('user', text); respond(fmtDate(2)); return true
+  }
+
+  // Day before yesterday
+  if (/\bday\s+before\s+yesterday\b|\bparson\s+wala\b/i.test(t)) {
+    addMsg('user', text); respond(fmtDate(-2)); return true
+  }
+
+  // This week's day  e.g. "what date is Monday this week"
+  {
+    const dayM = t.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|somvar|mangalvar|budhvar|guruvar|shukravar|shanivar|ravivar)\b/)
+    const DAYS: Record<string, number> = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6, ravivar:0, somvar:1, mangalvar:2, budhvar:3, guruvar:4, shukravar:5, shanivar:6 }
+    if (dayM && DAYS[dayM[1]] !== undefined && /\bwhat.*date\b|\bdate.*\bday\b|\bkab\b|\bkis.*date\b/i.test(t)) {
+      const now = new Date(); const cur = now.getDay(); const target = DAYS[dayM[1]]
+      let diff = target - cur; if (diff <= 0) diff += 7
+      addMsg('user', text); respond(fmtDate(diff)); return true
+    }
+  }
+
+  // TODAY'S DATE
+  if (/\bdate\b|\btarikh\b|\baaj\b|\btoday\b|\bkaunsa\s+din\b/i.test(t) &&
+      !/plan|exam|prelims|mains|session|lecture|set|change|study|padh/i.test(t)) {
+    addMsg('user', text); respond(fmtDate(0)); return true
+  }
+
+  // ── QUICK MATH ────────────────────────────────────────────────────────────────
+  {
+    const mathM = t.match(/^(?:what\s+is\s+|calculate\s+|compute\s+|solve\s+)?(-?\d[\d.,\s]*(?:[+\-*/×÷^%]\s*-?\d[\d.,\s]*)+)$/)
+    if (mathM) {
+      try {
+        const expr = mathM[1].replace(/×/g,'*').replace(/÷/g,'/').replace(/\s/g,'').replace(/,/g,'')
+        // eslint-disable-next-line no-new-func
+        const result = new Function(`return (${expr})`)() as number
+        if (typeof result === 'number' && isFinite(result)) {
+          addMsg('user', text); respond(`${mathM[1].trim()} = ${parseFloat(result.toFixed(6))}`); return true
+        }
+      } catch { /* not a math expression */ }
+    }
+  }
+
+  // ── PERCENTAGE CALCULATION ────────────────────────────────────────────────────
+  {
+    const pctM = t.match(/(\d+(?:\.\d+)?)\s*%\s+of\s+(\d+(?:\.\d+)?)|what\s+is\s+(\d+(?:\.\d+)?)\s*percent\s+of\s+(\d+(?:\.\d+)?)/)
+    if (pctM) {
+      const a = parseFloat(pctM[1] ?? pctM[3]); const b = parseFloat(pctM[2] ?? pctM[4])
+      if (!isNaN(a) && !isNaN(b)) {
+        addMsg('user', text); respond(`${a}% of ${b} = ${(a * b / 100).toFixed(2)}`); return true
+      }
+    }
   }
 
   return false
@@ -3043,9 +3105,12 @@ async function executeIntent(transcript: string): Promise<void> {
     // ── PRE-ROUTE: bypass the 8B classifier for obvious knowledge questions ────
     // The 8B router sometimes misclassifies science/health/law questions as app actions.
     // Detect these early and go directly to 70B Groq with a clean prompt.
+    // Bypass the 8B intent classifier for ANY question-type query.
+    // The 8B router often misclassifies open questions as app actions.
+    // Route anything that looks like a genuine question directly to 70B Groq.
     const _isObviousKnowledge = (
-      /\b(what is|what are|what was|what were|who is|who was|who invented|why is|why did|how does|how did|explain|define|describe|what causes|main cause|cause of|difference between|compare|types of|examples of|meaning of|tell me about|what do you know about)\b/i.test(transcript) &&
-      /\b(disease|virus|bacteria|infection|tuberculosis|malaria|diabetes|cancer|covid|medicine|health|science|chemistry|physics|biology|history|geography|economy|environment|constitution|article|law|court|scheme|policy|treaty|country|capital|river|mountain|award|prize|organization|committee|commission|report)\b/i.test(transcript)
+      /\b(what|who|why|how|when|where|which|explain|define|describe|tell me|is it|are there|can you|do you know|what is|what are|what was|how does|how did|why did|what causes|difference between|meaning of|full form|examples of|types of|history of|tell me about)\b/i.test(transcript) &&
+      transcript.trim().length > 4  // at least a real question, not a single word
     )
 
     if (_isObviousKnowledge && isGroqOnline()) {

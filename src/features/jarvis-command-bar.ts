@@ -214,18 +214,22 @@ export function openCommandBar(
     }
   }
 
+  // Block Enter for 400ms after open to prevent accidental immediate execution
+  let _openedAt = Date.now()
+
   input.addEventListener('input', () => renderResults(input.value))
   input.addEventListener('keydown', e => {
     const items = results.querySelectorAll<HTMLElement>('.jcb-item')
     if (e.key === 'ArrowDown') { e.preventDefault(); updateSelection(Math.min(_selectedIdx + 1, items.length - 1)) }
     if (e.key === 'ArrowUp')   { e.preventDefault(); updateSelection(Math.max(_selectedIdx - 1, 0)) }
-    if (e.key === 'Enter')     { e.preventDefault(); executeSelected() }
+    if (e.key === 'Enter' && Date.now() - _openedAt > 400) { e.preventDefault(); executeSelected() }
     if (e.key === 'Escape')    { close() }
   })
 
   overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+  // Show empty search initially — no pre-selected item
   renderResults(prefill)
-  input.focus()
+  setTimeout(() => { input.focus(); _openedAt = Date.now() }, 50)
   if (prefill) input.select()
 }
 
@@ -239,6 +243,14 @@ export function isCommandBarOpen(): boolean { return _barOpen }
 // ── Global keyboard shortcut ───────────────────────────────────────────────────
 
 export function initCommandBar(executeVoiceCmd: (cmd: string) => void): void {
+  // Clear stale recent commands that might auto-execute on open
+  try {
+    const recent: string[] = JSON.parse(localStorage.getItem(_RECENT_KEY) ?? '[]')
+    // Remove any recent commands that look like natural language (not IDs)
+    const cleaned = recent.filter(id => /^[a-z]+\.[a-z]/.test(id))
+    localStorage.setItem(_RECENT_KEY, JSON.stringify(cleaned))
+  } catch { /* ignore */ }
+
   document.addEventListener('keydown', e => {
     const tag = (e.target as HTMLElement).tagName
     const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)

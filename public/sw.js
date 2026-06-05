@@ -1,46 +1,45 @@
-// Mission 2028 Service Worker v6
-// Strategy: cache-first for assets, network-first for HTML/API, push notifications
-const CACHE = 'mission2028-v6'
-const ASSET_EXTS = ['.js', '.css', '.svg', '.webp', '.png', '.woff2', '.json']
+// Mission 2028 Service Worker v7
+// STRATEGY: Always fetch JS/CSS fresh from network. Only cache fonts+images.
+const CACHE = 'mission2028-v7'
+const FONT_EXTS = ['.woff2', '.woff', '.ttf', '.svg', '.webp', '.png', '.ico']
 
-// ── Install — skip waiting for instant activation ───────────────────────────
+// ── Install — take over immediately ────────────────────────────────────────
 self.addEventListener('install', e => {
   e.waitUntil(self.skipWaiting())
 })
 
-// ── Activate — clear ALL old caches ─────────────────────────────────────────
+// ── Activate — delete ALL old caches so users always get fresh JS/CSS ──────
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   )
 })
 
-// ── Fetch — tiered caching strategy ─────────────────────────────────────────
+// ── Fetch — NETWORK FIRST for all app files, cache only fonts/images ─────
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return
   const url = new URL(e.request.url)
 
-  // Never cache: HTML, Supabase, Groq API, auth
+  // Always bypass cache for HTML, JS, CSS, API calls
   if (
     url.pathname.endsWith('/') ||
     url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
     url.hostname.includes('supabase.co') ||
-    url.hostname.includes('groq.com') ||
-    url.pathname.includes('/auth/')
+    url.hostname.includes('groq.com')
   ) {
     e.respondWith(
-      fetch(e.request).catch(() =>
-        caches.match('/index.html') ?? new Response('Offline', { status: 503 })
-      )
+      fetch(e.request).catch(() => caches.match(e.request) ?? new Response('Offline', { status: 503 }))
     )
     return
   }
 
-  // Cache-first for hashed assets in /assets/ (Vite output)
+  // Cache-first only for fonts and images (they don't change)
   const ext = url.pathname.slice(url.pathname.lastIndexOf('.'))
-  if (ASSET_EXTS.includes(ext) && url.pathname.startsWith('/assets/')) {
+  if (FONT_EXTS.includes(ext)) {
     e.respondWith(
       caches.open(CACHE).then(cache =>
         cache.match(e.request).then(cached =>

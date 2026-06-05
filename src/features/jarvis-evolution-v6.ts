@@ -857,14 +857,20 @@ export async function v6CognitivePipeline(
     lang === 'hinglish' ? '[RESPOND IN HINGLISH — Roman script Hindi]\n' :
                           '[RESPOND IN ENGLISH]\n'
 
-  // CLEAN prompt: personal context + KG context + question
-  // NO live DOM context — it would confuse Groq for pure knowledge questions
-  const prompt = `${langInstr}${personalCtx}${kgCtx ? '\n' + kgCtx : ''}\n\nQUESTION: ${query}`
+  // Brevity instruction — default short, longer only when user explicitly asks for detail
+  const isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(query)
+  const brevity = isDeepQ
+    ? '[LENGTH: 4-6 sentences. Cover key points clearly.]'
+    : '[LENGTH: 2-3 sentences only. Be direct. No preamble, no lists unless asked.]'
+
+  // CLEAN prompt: language + brevity + personal context + KG context + question
+  const prompt = `${langInstr}${brevity}\n${personalCtx}${kgCtx ? '\n' + kgCtx : ''}\n\nQUESTION: ${query}`
   const style  = getResponseStyle()
   const model  = SMART_MODEL  // always 70B for knowledge questions
+  const maxTok = isDeepQ ? Math.min(style.maxTokens, 400) : Math.min(style.maxTokens, 200)
 
   try {
-    const ans = await fetchGroq(k, model, prompt, style.maxTokens, style.temperature)
+    const ans = await fetchGroq(k, model, prompt, maxTok, style.temperature)
     if (ans) {
       respond(ans)
       extractAndStoreFacts(ans, query)

@@ -3068,6 +3068,10 @@ async function executeIntent(transcript: string): Promise<void> {
       setStatus(detectedLang === 'hi' ? 'जवाब खोज रहा हूँ…' : detectedLang === 'hinglish' ? 'Jawab dhundh raha hoon…' : 'Searching knowledge base…')
       const qaResult = await llmRoute(buildQATranscript(transcript, detectedLang), 'qa')
       const answer   = qaResult.answer?.trim()
+      // Determine how much text we need based on query depth
+      const _isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(transcript)
+      const _streamMaxTok = _isDeepQ ? 400 : 220
+
       if (_streamingEnabled) {
         // ── STREAMING PATH: tokens appear in real-time ───────────────────────
         const enrichedPrompt = buildQATranscript(transcript, detectedLang)
@@ -3085,13 +3089,13 @@ async function executeIntent(transcript: string): Promise<void> {
               VA.setTranscript(full, true)
               setState('speaking')
               VA.setState('speaking')
-              // Speak only the streamed text (already shown visually)
               speak(full)
             } else {
               kbTrackFail(transcript)
               respond(offlineAnswer(transcript))
             }
-          }
+          },
+          _streamMaxTok,
         )
       } else if (answer) {
         setCached(cacheKey, answer)
@@ -3164,10 +3168,16 @@ function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): stri
   const ctx         = buildPersonalContext()
   const personality = getPersonalityPrompt()
   const ctxSummary  = buildContextSummary()
-  // V5: inject knowledge graph context if available
   const kgCtx       = kgContextFor(transcript)
   const kgLine      = kgCtx ? `\n${kgCtx}` : ''
-  return `${langInstr}${personality}\n${ctx}\n${ctxSummary}${kgLine}\n\nQUESTION: ${transcript}`
+
+  // Determine brevity level based on query type
+  const isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|evaluate.*answer|walk.*through|step.*by.*step/i.test(transcript)
+  const brevity = isDeepQ
+    ? '[LENGTH: Medium — 4-6 sentences. Cover the key points clearly.]'
+    : '[LENGTH: Short — 2-3 sentences maximum. Be direct and specific. No preamble, no "Great question!", no bullet lists unless asked.]'
+
+  return `${langInstr}${brevity}\n${personality}\n${ctx}\n${ctxSummary}${kgLine}\n\nQUESTION: ${transcript}`
 }
 
 // ── Streaming Groq response — tokens appear in real-time ─────────────────────
@@ -3178,6 +3188,7 @@ async function streamGroqResponse(
   prompt: string,
   onToken: (token: string, full: string) => void,
   onDone:  (full: string) => void,
+  maxTokens = 250,   // default short — callers pass higher value when depth is needed
 ): Promise<void> {
   const key = GROQ_KEY; if (!key) { onDone(''); return }
 
@@ -3202,7 +3213,7 @@ async function streamGroqResponse(
       body:    JSON.stringify({
         model:       GROQ_MODEL,
         messages:    [{ role: 'user', content: prompt }],
-        max_tokens:  600,
+        max_tokens:  maxTokens,
         temperature: 0.6,
         stream:      true,
       }),

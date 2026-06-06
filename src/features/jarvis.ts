@@ -341,7 +341,7 @@ const _LEARN_KEY  = 'jarvis_kb_v2'
 const _FAIL_KEY   = 'jarvis_fail_v1'
 const KB_MAX      = 500      // max entries to keep
 const KB_TTL_DAYS = 90       // forget after 90 days of no use
-const SIM_THRESH  = 0.55     // Jaccard similarity to consider a match
+const SIM_THRESH  = 0.40     // Jaccard + bigram similarity threshold (lowered from 0.55)
 
 function _loadKB(): LearnedEntry[] {
   try { return JSON.parse(localStorage.getItem(_LEARN_KEY) ?? '[]') as LearnedEntry[] }
@@ -795,25 +795,39 @@ export function initJarvis(): void {
 
 // ── Proactive Engine ──────────────────────────────────────────────────────────
 function startProactiveEngine(): void {
+  let _reminderTickId = 0
+  let _nudgeId = 0
 
-  // Reminder tick — every 10 seconds, precise firing
-  setInterval(() => {
+  function _fireReminders(): void {
     if (_isSpeaking) return
     const now = Date.now()
     for (let i = _reminders.length - 1; i >= 0; i--) {
       if (now >= _reminders[i].at) {
         const r = _reminders.splice(i, 1)[0]
         const msg = `Reminder: ${r.msg}`
-        // Browser notification (even if tab is in background)
         browserNotify('⏰ JARVIS Reminder', r.msg, `reminder-${r.id}`)
-        if (_open) respond(msg)
-        else showNudge(msg)
+        if (_open) respond(msg); else showNudge(msg)
       }
     }
-  }, 10_000)
+  }
 
-  // Intelligence nudges — every 3 minutes
-  setInterval(() => {
+  function _startIntervals(): void {
+    if (!_reminderTickId) _reminderTickId = window.setInterval(_fireReminders, 10_000)
+    if (!_nudgeId) _nudgeId = window.setInterval(_nudgeTick, 3 * 60_000)
+  }
+
+  function _pauseIntervals(): void {
+    if (_reminderTickId) { clearInterval(_reminderTickId); _reminderTickId = 0 }
+    if (_nudgeId)        { clearInterval(_nudgeId);        _nudgeId = 0 }
+  }
+
+  // Pause intervals while tab is hidden; re-check reminders immediately on return
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { _pauseIntervals() }
+    else { _fireReminders(); _startIntervals() }   // catch any reminders due while hidden
+  })
+
+  function _nudgeTick(): void {
     if (_isSpeaking || _state !== 'idle') return
     const now = Date.now()
     if (now - _lastNudgeMs < 5 * 60_000) return
@@ -855,7 +869,9 @@ function startProactiveEngine(): void {
                               `${cs.backlogRemaining} lectures still pending. Say "generate plan" for an optimized schedule.`
       )
     }
-  }, 3 * 60_000)
+  }
+
+  _startIntervals()
 }
 
 function buildMorningBrief(cs: ReturnType<typeof getCurrentState>): string {
@@ -864,12 +880,19 @@ function buildMorningBrief(cs: ReturnType<typeof getCurrentState>): string {
   if (cs.streak) parts.push(`${cs.streak}-day streak — protect it today.`)
   if (cs.today?.subject) parts.push(`Subject for today: ${cs.today.subject}.`)
   if (cs.backlogRemaining) parts.push(`${cs.backlogRemaining} lectures in backlog.`)
-  // Resume context from last session
   if (_mem.lastSubject && _mem.lastDate !== todayIST())
     parts.push(`Last session: ${_mem.lastSubject}.`)
-  // Due revisions
   const revDue = document.querySelectorAll('#plan .plan-row[data-type="revision"]:not(.done)').length
   if (revDue) parts.push(`${revDue} revision${revDue > 1 ? 's' : ''} due today.`)
+  // Exam countdown — inject when ≤ 100 days so urgency is real
+  try {
+    const raw = localStorage.getItem('settings') ?? '{}'
+    const settings = JSON.parse(raw) as { prelimsDate?: string }
+    if (settings.prelimsDate) {
+      const daysLeft = Math.ceil((new Date(settings.prelimsDate).getTime() - Date.now()) / 86_400_000)
+      if (daysLeft > 0 && daysLeft <= 100) parts.push(`${daysLeft} days to Prelims.`)
+    }
+  } catch { /* ignore */ }
   parts.push('What are we starting with?')
   return parts.join(' ')
 }
@@ -3221,14 +3244,27 @@ function detectResponseLang(transcript: string): 'en' | 'hi' | 'hinglish' {
 function buildGroqMessages(
   transcript: string,
   lang: 'en'|'hi'|'hinglish',
-): Array<{ role: 'system'|'user'; content: string }> {
+): Array<{ role: 'system'|'user'|'assistant'; content: string }> {
   const ctx     = buildPersonalContext(_isUpscQuery(transcript))
   const isDeepQ = /explain.*detail|in.*depth|elaborate|full.*answer|comprehensive|essay|outline|walk.*through|step.*by.*step/i.test(transcript)
   const brevity = isDeepQ ? '4-6 sentences.' : '2-3 sentences max. No filler.'
   const systemPrompt = buildSystemPrompt(lang, '', ctx)
 
+  // Inject last 6 history turns (3 pairs) as context — skip during quiz to avoid state leakage
+  const historyMsgs: Array<{ role: 'user'|'assistant'; content: string }> = []
+  if (_quizPhase === 'off' && _history.length > 1) {
+    const recent = _history.slice(-6)
+    // Don't include the very last entry if it's the current user turn (not yet answered)
+    const turns = recent[recent.length - 1]?.role === 'user' ? recent.slice(0, -1) : recent
+    for (const m of turns) {
+      // Cap each turn at 300 chars to keep token budget manageable
+      historyMsgs.push({ role: m.role, content: m.content.slice(0, 300) })
+    }
+  }
+
   return [
     { role: 'system', content: systemPrompt },
+    ...historyMsgs,
     { role: 'user',   content: `[${brevity}] ${transcript}` },
   ]
 }
@@ -3245,7 +3281,7 @@ function buildQATranscript(transcript: string, lang: 'en'|'hi'|'hinglish'): stri
 // Updates the chat bubble AND the VA transcript live.
 
 async function streamGroqResponse(
-  promptOrMessages: string | Array<{ role: 'system'|'user'; content: string }>,
+  promptOrMessages: string | Array<{ role: 'system'|'user'|'assistant'; content: string }>,
   onToken: (token: string, full: string) => void,
   onDone:  (full: string) => void,
   maxTokens = 250,
@@ -5367,6 +5403,74 @@ const CMDS: Cmd[] = [
   { re: /open.*answer.*log|answer.*log.*open|mains.*log.*open/i,                             action: () => { void import('./answer-log').then(m=>m.showAnswerLog(()=>{})) }, reply: '' },
   { re: /open.*settings|settings.*open|settings.*kholao/i,                                   action: () => { void import('./settings').then(m=>m.showSettings(()=>{})) }, reply: '' },
 
+  // ── SMART READING MODE (Phase 4.1) ──────────────────────────────────────
+  { re: /read.*my.*analytics|read.*my.*stats|read.*performance|analytics.*sunao|stats.*padho/i,
+    action: () => { addMsg('user', _lastUserQuery); scr('intel'); respond(buildStatusReport()) }, reply: '' },
+  { re: /read.*today.*plan|read.*my.*plan|plan.*sunao|aaj.*ka.*plan.*padho/i,
+    action: () => { addMsg('user', _lastUserQuery); scr('plan'); respond(buildTodayReport()) }, reply: '' },
+  { re: /read.*my.*mistakes|recent.*mistakes.*sunao|galtiyan.*padho|show.*recent.*mistakes/i,
+    action: () => {
+      void import('../data/repositories/mistakes').then(async ({ listMistakes }) => {
+        try {
+          const all = await listMistakes()
+          if (!all.length) { respond('No mistakes logged yet. Add some via the Mistake Notebook.'); return }
+          const recent = all.slice(-5).reverse()
+          const lang = detectResponseLang('')
+          const summary = recent.map((m, i) => `${i+1}. ${m.subject ? m.subject + ': ' : ''}${m.question?.slice(0,80) ?? 'No question text'}`).join('. ')
+          respond(lang === 'hi' ? `हाल की ${recent.length} गलतियाँ: ${summary}` : `Recent ${recent.length} mistakes: ${summary}`)
+        } catch { respond('Could not load mistakes — check your connection.') }
+      })
+    }, reply: '' },
+
+  // ── REMINDER MANAGEMENT (Phase 4.2) ──────────────────────────────────────
+  { re: /list.*all.*reminder|show.*all.*reminder|all.*active.*reminder|list.*reminder/i,
+    action: () => {
+      if (!_reminders.length) { respond('No active reminders.'); return }
+      const lang = detectResponseLang('')
+      const items = _reminders.map((r, i) => {
+        const eta = Math.max(0, Math.round((r.at - Date.now()) / 60_000))
+        return `${i+1}. "${r.msg}" — in ${eta} min`
+      }).join('; ')
+      respond(L(lang, `${_reminders.length} active reminder${_reminders.length>1?'s':''}: ${items}`, `${_reminders.length} reminder${_reminders.length>1?'s':''}: ${items}`, `${_reminders.length} reminder${_reminders.length>1?'s':''}: ${items}`))
+    }, reply: '' },
+  { re: /cancel.*reminder.*for\s+(.+)|delete.*reminder.*for\s+(.+)|remove.*reminder.*for\s+(.+)|reminder.*hatao.*(.+)/i,
+    action: () => {
+      const m = _lastUserQuery.match(/(?:cancel|delete|remove) reminder (?:for|about)\s+(.+)|reminder (?:hatao|cancel)\s+(.+)/i)
+      const topic = (m?.[1] ?? m?.[2] ?? '').trim().toLowerCase()
+      if (!topic) { respond('Which reminder? Say "cancel reminder for [topic]"'); return }
+      const before = _reminders.length
+      for (let i = _reminders.length - 1; i >= 0; i--) {
+        if (_reminders[i].msg.toLowerCase().includes(topic)) _reminders.splice(i, 1)
+      }
+      const cancelled = before - _reminders.length
+      const lang = detectResponseLang('')
+      respond(cancelled > 0
+        ? L(lang, `Cancelled ${cancelled} reminder${cancelled>1?'s':''} for "${topic}".`, `"${topic}" का reminder cancel किया।`, `"${topic}" ka reminder cancel kar diya.`)
+        : L(lang, `No reminder found matching "${topic}".`, `"${topic}" का कोई reminder नहीं मिला।`, `"${topic}" ka koi reminder nahi mila.`))
+    }, reply: '' },
+
+  // ── VOICE NOTE SEARCH (Phase 4.3) ────────────────────────────────────────
+  { re: /what.*notes.*on\s+(.+)|notes.*on\s+(.+)|search.*notes.*for\s+(.+)|notes.*about\s+(.+)|(.+).*ke.*notes\b/i,
+    action: () => {
+      const m = _lastUserQuery.match(/(?:what notes|notes) (?:on|about)|search notes (?:for)|(.+) ke notes/i)
+      const raw = _lastUserQuery.replace(/what.*notes.*(?:on|about)|notes.*(?:on|about|for)|search.*notes.*for|ke.*notes.*/i, '').trim()
+      const topic = raw.length > 2 ? raw : ''
+      if (!topic) { respond('Which topic? Say "notes on [topic]"'); return }
+      const lang = detectResponseLang('')
+      void import('../data/repositories/notes').then(async ({ listNotes }) => {
+        try {
+          const all = await listNotes()
+          const hits = all.filter(n => n.body.toLowerCase().includes(topic.toLowerCase()))
+          if (!hits.length) {
+            respond(L(lang, `No notes found for "${topic}".`, `"${topic}" के बारे में कोई note नहीं।`, `"${topic}" ke baare mein koi note nahi mila.`))
+            return
+          }
+          const preview = hits.slice(0, 3).map((n, i) => `${i+1}. ${n.body.slice(0, 100)}`).join('. ')
+          respond(L(lang, `${hits.length} note${hits.length>1?'s':''} on "${topic}": ${preview}`, `"${topic}" के ${hits.length} notes मिले: ${preview}`, `"${topic}" ke ${hits.length} notes mile: ${preview}`))
+        } catch { respond('Could not search notes — check your connection.') }
+      })
+    }, reply: '' },
+
   // ════════════════════════════════════════════════════════════════════════════
   // COMMAND BANK v7 — 200+ Integration, Sync & Advanced Commands
   // ════════════════════════════════════════════════════════════════════════════
@@ -5566,6 +5670,24 @@ async function handleQuizAnswer(chosen: string): Promise<void> {
       lang === 'hi'       ? `नहीं, सही उत्तर ${item.ans} है। ${item.exp}` :
       lang === 'hinglish' ? `Nahi, sahi jawab ${item.ans} hai. ${item.exp}` :
                             `Not quite. The answer is ${item.ans}. ${item.exp}`
+    // SRS: try to schedule a revision for this topic (best-effort, never blocks UI)
+    if (_quizTopic) {
+      const _todayStr = todayIST()
+      void import('../data/repositories/lectures').then(async ({ listLectures }) => {
+        try {
+          const lectures = await listLectures()
+          const topic = _quizTopic.toLowerCase()
+          const match = lectures.find(l =>
+            (l.title ?? '').toLowerCase().includes(topic) ||
+            topic.includes((l.title ?? '').toLowerCase().split(' ').slice(0, 2).join(' '))
+          )
+          if (match) {
+            const { createRevisionSchedule } = await import('../data/repositories/revisions')
+            await createRevisionSchedule(match.id, _todayStr)
+          }
+        } catch { /* offline or no matching lecture — weak topic flagged in memory at quiz end */ }
+      })
+    }
   }
   addMsg('assistant', reply)
   _quizPhase = 'revealed'

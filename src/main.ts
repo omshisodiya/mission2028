@@ -34,6 +34,9 @@ import { injectGoalsToMenu } from './features/goals'
 import { injectCalendarToMenu } from './features/calendar-view'
 import { injectWeeklyReviewToMenu } from './features/weekly-review'
 import { showSettings } from './features/settings'
+import {
+  isOwnerEmail, isTrustedDevice, setTrustedDevice, storeOwnerUID, getOwnerUID,
+} from './features/auth-master'
 // checkStartupLock already imported at the top
 
 // UI shells mount synchronously so sections are always visible.
@@ -77,11 +80,33 @@ async function init(): Promise<void> {
   function handleSession(sess: Session, isFreshLogin: boolean): void {
     if (handled) return
     handled = true
+
+    const email = sess.user.email ?? ''
+
+    // Always persist the owner UID so master key boot works even after session expires
+    if (isOwnerEmail(email)) storeOwnerUID(sess.user.id)
+
     if (isFreshLogin && !hasPIN()) {
-      showPINSetup(() => boot(sess.user.id))
+      showPINSetup(() => {
+        // Mark device as trusted after first PIN setup for the owner
+        if (isOwnerEmail(email)) setTrustedDevice()
+        boot(sess.user.id)
+      })
     } else if (hasPIN() && !isFreshLogin) {
-      showPINEntry(() => boot(sess.user.id), () => { clearPIN(); showAuthGate() })
+      // Owner on a trusted device — skip PIN entirely
+      if (isOwnerEmail(email) && isTrustedDevice()) {
+        boot(sess.user.id)
+        return
+      }
+      showPINEntry(
+        () => {
+          if (isOwnerEmail(email)) setTrustedDevice()
+          boot(sess.user.id)
+        },
+        () => { clearPIN(); showAuthGate() },
+      )
     } else {
+      if (isOwnerEmail(email)) setTrustedDevice()
       boot(sess.user.id)
     }
   }
@@ -415,5 +440,20 @@ function injectAddScoreToMenu(): void {
   })
   grid.appendChild(card)
 }
+
+// ── Master key boot (from auth gate when Supabase session is gone) ────────────
+// Master key was verified; boot with the stored owner UID (offline/cached mode).
+window.addEventListener('auth:master-key-boot', () => {
+  const uid = getOwnerUID()
+  if (!uid) {
+    window.dispatchEvent(new CustomEvent('app:toast', {
+      detail: { msg: 'No cached session — complete one full sign-in first.', type: 'warn' },
+    }))
+    return
+  }
+  hideAuthGate()
+  setTrustedDevice()
+  boot(uid)
+})
 
 init()

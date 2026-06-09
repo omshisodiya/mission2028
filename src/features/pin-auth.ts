@@ -1,4 +1,5 @@
 import './pin-auth.css'
+import { showMasterKeyOverlay } from './auth-master'
 
 const PIN_KEY   = 'm2028_pin'
 const PIN_SALT  = 'mission2028:Om:2028'
@@ -95,6 +96,7 @@ export function showPINEntry(
       <p class="pin-msg" id="pin-entry-msg"></p>
       <div class="pin-btn-row">
         <button class="pin-link" id="pin-forgot">Forgot PIN? Send magic link instead</button>
+        <button class="pin-link" id="pin-master" style="color:var(--accent);opacity:.7;">Use master key →</button>
       </div>
     </div>
   `
@@ -128,6 +130,13 @@ export function showPINEntry(
     clearPIN()           // reset so magic link re-triggers PIN setup
     hidePINEntry()
     onForgot()
+  })
+
+  document.getElementById('pin-master')?.addEventListener('click', () => {
+    showMasterKeyOverlay(() => {
+      hidePINEntry()
+      onSuccess()
+    })
   })
 }
 

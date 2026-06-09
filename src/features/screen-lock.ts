@@ -5,6 +5,7 @@
  * screen appears before the app is interactive.
  */
 import { hasPIN, verifyPIN } from './pin-auth'
+import { showMasterKeyOverlay } from './auth-master'
 
 const LOCK_KEY = 'mission2028_screen_locked'
 
@@ -101,11 +102,18 @@ function showLockScreen(): void {
     <p id="lock-err" style="font-family:var(--font-mono);font-size:12.5px;
        color:var(--bad);min-height:18px;margin:0;text-align:center;"></p>
 
-    <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">
-      Forgot PIN?
-      <button id="lock-signout" style="background:none;border:none;color:var(--accent);
-        font-family:var(--font-mono);font-size:11px;cursor:pointer;text-decoration:underline;">
-        Sign out &amp; reset
+    <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div>
+        Forgot PIN?
+        <button id="lock-signout" style="background:none;border:none;color:var(--accent);
+          font-family:var(--font-mono);font-size:11px;cursor:pointer;text-decoration:underline;">
+          Sign out &amp; reset
+        </button>
+      </div>
+      <button id="lock-master" style="background:none;border:none;color:var(--accent);opacity:.65;
+        font-family:var(--font-mono);font-size:11px;cursor:pointer;text-decoration:underline;
+        letter-spacing:.04em;transition:opacity .15s;">
+        Use master key →
       </button>
     </div>
   `
@@ -156,6 +164,14 @@ function showLockScreen(): void {
     import('../data/supabase').then(({ supabase }) =>
       supabase.auth.signOut().then(() => window.location.reload())
     )
+  })
+
+  document.getElementById('lock-master')?.addEventListener('click', () => {
+    showMasterKeyOverlay(() => {
+      localStorage.removeItem(LOCK_KEY)
+      _lockEl?.remove()
+      _lockEl = null
+    })
   })
 
   setTimeout(() => { inp.focus(); refresh() }, 80)

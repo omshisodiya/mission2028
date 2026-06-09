@@ -1,5 +1,6 @@
 import { supabase } from '../data/supabase'
 import './auth.css'
+import { showMasterKeyOverlay } from './auth-master'
 
 let _el: HTMLElement | null = null
 
@@ -21,6 +22,16 @@ export function showAuthGate(): void {
         <button class="btn primary ag-btn" type="submit">Send magic link</button>
       </form>
       <p id="ag-msg" class="ag-msg"></p>
+      <div style="margin-top:20px;border-top:1px solid var(--line-2);padding-top:16px;">
+        <button id="ag-master"
+          style="background:none;border:none;color:var(--muted);font-family:var(--font-mono);
+                 font-size:11.5px;cursor:pointer;text-decoration:underline;
+                 text-underline-offset:3px;letter-spacing:.04em;transition:color .15s;"
+          onmouseover="this.style.color='var(--accent)'"
+          onmouseout="this.style.color='var(--muted)'">
+          Use master key instead →
+        </button>
+      </div>
     </div>
   `
   document.body.appendChild(_el)
@@ -28,6 +39,13 @@ export function showAuthGate(): void {
   const form = _el.querySelector('#ag-form') as HTMLFormElement
   const msg  = _el.querySelector('#ag-msg') as HTMLElement
   const btn  = _el.querySelector('.ag-btn') as HTMLButtonElement
+
+  _el.querySelector('#ag-master')?.addEventListener('click', () => {
+    showMasterKeyOverlay(() => {
+      // Signal main.ts to boot with the stored owner UID
+      window.dispatchEvent(new CustomEvent('auth:master-key-boot'))
+    })
+  })
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault()

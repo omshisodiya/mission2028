@@ -64,6 +64,11 @@ import {
   cleanGroqAnswer, resolveSectionId,
 } from './jarvis-system-brain'
 import { trySmartAnswer } from './jarvis-smart-answers'
+import {
+  initQuiz, getQuizPhase, setQuizPhaseOff, getQuizScore,
+  startQuiz, handleQuizAnswer, nextQuizQuestion, parseQuizAnswer,
+  type QuizPhase, type MCQItem,
+} from './jarvis-quiz'
 import { getSessionStats } from './jarvis-session'
 import {
   startSession as startSessionRecord, endSession as endSessionRecord,
@@ -93,10 +98,9 @@ function isGroqOnline(): boolean {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type JState    = 'idle' | 'listening' | 'thinking' | 'speaking'
-type QuizPhase = 'off' | 'asking' | 'revealed'
+// QuizPhase + MCQItem imported from jarvis-quiz.ts
 
 interface Msg      { role: 'user' | 'assistant'; content: string }
-interface MCQItem  { q: string; opts: string[]; ans: string; exp: string }
 interface Reminder { id: number; msg: string; at: number }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -106,13 +110,6 @@ let _open   = false
 let _rafId  = 0
 let _isSpeaking  = false
 let _clapEnabled = true
-
-// Quiz
-let _quizPhase: QuizPhase = 'off'
-let _quizItems: MCQItem[] = []
-let _quizIdx  = 0
-let _quizHits = 0
-let _quizTopic = ''   // tracked for SRS integration + memory
 
 // Reminders
 const _reminders: Reminder[] = []
@@ -749,6 +746,15 @@ export function initJarvis(): void {
     }, 15_000)
   }, 2000)
 
+  // Wire quiz callbacks (dependency injection — avoids circular import)
+  initQuiz({
+    speak, respond, addMsg, setState: setState as (s: string) => void, setStatus,
+    detectResponseLang,
+    saveMem,
+    L,
+    getMem: () => _mem as { weakTopics: string[]; quizScores: Record<string, number[]>; strongTopics: string[] },
+  })
+
   // V6: init command bar with Ctrl+Space / Ctrl+/ shortcut
   initCommandBar(processQuery)
 
@@ -1299,7 +1305,7 @@ function wakeAndListen(tries = 0): void {
 function closePanel(): void {
   _open = false
   stopListening(); _synth.cancel()
-  _quizPhase = 'off'
+  setQuizPhaseOff()
   VA.setState('idle')
   cancelAnimationFrame(_rafId)
   document.getElementById('jarvis-panel')?.remove()
@@ -1742,14 +1748,15 @@ async function processQuery(text: string): Promise<void> {
   }
 
   // 1. Quiz answer while in quiz mode
-  if (_quizPhase === 'asking') {
+  if (getQuizPhase() === 'asking') {
     const ans = parseQuizAnswer(tl)
     if (ans) { addMsg('user', text); void handleQuizAnswer(ans); return }
     // "quit quiz / exit quiz"
     if (/quit|exit|band|khatam.*quiz|quiz.*khatam/i.test(tl)) {
-      _quizPhase = 'off'
+      setQuizPhaseOff()
       addMsg('user', text)
-      respond(`Quiz ended. Score so far: ${_quizHits} out of ${_quizIdx}.`)
+      const { hits, idx } = getQuizScore()
+      respond(`Quiz ended. Score so far: ${hits} out of ${idx}.`)
       return
     }
   }
@@ -1996,7 +2003,7 @@ async function processQuery(text: string): Promise<void> {
   }
 
   // 15. Next quiz question (explicit)
-  if (_quizPhase !== 'off' && /next|aage|skip.*question|next.*question/i.test(tl)) {
+  if (getQuizPhase() !== 'off' && /next|aage|skip.*question|next.*question/i.test(tl)) {
     addMsg('user', text); void nextQuizQuestion(); return
   }
 
@@ -3252,7 +3259,7 @@ function buildGroqMessages(
 
   // Inject last 6 history turns (3 pairs) as context — skip during quiz to avoid state leakage
   const historyMsgs: Array<{ role: 'user'|'assistant'; content: string }> = []
-  if (_quizPhase === 'off' && _history.length > 1) {
+  if (getQuizPhase() === 'off' && _history.length > 1) {
     const recent = _history.slice(-6)
     // Don't include the very last entry if it's the current user turn (not yet answered)
     const turns = recent[recent.length - 1]?.role === 'user' ? recent.slice(0, -1) : recent
@@ -4925,7 +4932,7 @@ const CMDS: Cmd[] = [
 
   // ── JARVIS META COMMANDS ─────────────────────────────────────────────────
   { re: /how.*does.*jarvis.*work|jarvis.*kaise.*kaam.*karta|architecture/i,       action: () => respond('JARVIS runs 3 tiers: instant local pattern matching (560 patterns, zero latency), Groq Llama-8B for intent classification (under 500ms), and Llama-70B for deep UPSC answers. Vision uses Llama-4-Scout. Everything is offline-capable.'), reply: '' },
-  { re: /reset.*jarvis|jarvis.*reset|fresh.*start.*jarvis/i,                      action: () => { _history.length=0; _quizPhase='off'; _sessionSubject=''; renderChat(); respond('JARVIS reset. Fresh start.') }, reply: '' },
+  { re: /reset.*jarvis|jarvis.*reset|fresh.*start.*jarvis/i,                      action: () => { _history.length=0; setQuizPhaseOff(); _sessionSubject=''; renderChat(); respond('JARVIS reset. Fresh start.') }, reply: '' },
   { re: /save.*settings|jarvis.*settings.*save/i,                                 action: () => { localStorage.setItem('jarvis_speed', _ttsSpeed); localStorage.setItem('jarvis_continuous', String(_continuousMode)); respond('Settings saved — speed and conversation mode persisted.') }, reply: '' },
   { re: /what.*features.*new|new.*features.*jarvis|latest.*update/i,              action: () => respond('Latest JARVIS features: Continuous conversation mode, TTS speed control (fast/slow/normal), Command chaining, Emergency cram mode, EMA adaptive clap detection, Advanced vision (score scan, CA headlines, CSAT solver), Smart dictation, Session subject tracking.'), reply: '' },
   { re: /test.*clap|clap.*test|check.*clap.*detection/i,                          action: () => { respond('Clap detection test: Double-clap now. If JARVIS panel opens or mic activates, it is working correctly.') }, reply: '' },
@@ -5555,194 +5562,9 @@ const CMDS: Cmd[] = [
 // Filter out inline-handled entries (empty reply delegates to respond() inside action)
 const FILTERED_CMDS = CMDS
 
-// ── Quiz System ───────────────────────────────────────────────────────────────
-async function startQuiz(topic: string): Promise<void> {
-  const lang = detectResponseLang('')
-  if (!GROQ_KEY) {
-    respond(lang === 'hi' ? 'Quiz के लिए VITE_GROQ_API_KEY add करो।' : 'Add VITE_GROQ_API_KEY to enable quiz mode.')
-    return
-  }
-  _quizTopic = topic   // store for SRS + memory
-  setState('thinking')
-  setStatus(lang === 'hi' ? 'Quiz तैयार हो रहा है…' : 'Preparing quiz…')
-  // If user has a weak topic list, bias the prompt towards commonly missed areas
-  const _hasWeakBias = _mem.weakTopics.length > 0 && !topic.includes(' ')
-  const topicWithBias = _hasWeakBias ? `${topic} — focus on commonly missed areas` : topic
-  respond(
-    lang === 'hi'       ? `${topic} पर 5 MCQs तैयार हो रहे हैं। तैयार हो जाओ।` :
-    lang === 'hinglish' ? `${topic} par 5 MCQs aa rahe hain. Taiyar ho jao.` :
-                          `Preparing 5 MCQs on ${topic}. Get ready.`
-  )
-
-  try {
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [{
-          role: 'user',
-          content: `Generate exactly 5 UPSC Prelims-style MCQs on the topic: "${topic}".
-Format each question EXACTLY like this (no extra text):
-Q: [question text]
-A) [option]
-B) [option]
-C) [option]
-D) [option]
-ANS: [letter A/B/C/D]
-EXP: [one-sentence explanation]
----`,
-        }],
-        max_tokens: 1200, temperature: 0.4, stream: false,
-      }),
-    })
-    if (!res.ok) throw new Error('quiz fetch failed')
-    const d = await res.json() as { choices: { message: { content: string } }[] }
-    _quizItems = parseQuizResponse(d.choices[0].message.content)
-    if (_quizItems.length === 0) { respond('Could not parse quiz questions. Try a different topic.'); return }
-    _quizIdx = 0; _quizHits = 0; _quizPhase = 'asking'
-    void askQuizQuestion()
-  } catch { respond('Quiz fetch failed. Check your connection.') }
-}
-
-function parseQuizResponse(raw: string): MCQItem[] {
-  // Split by separator or blank line before Q:
-  const blocks = raw.split(/---+|\n\n(?=Q[:.])/g).map(b => b.trim()).filter(Boolean)
-  const items: MCQItem[] = []
-
-  for (const b of blocks) {
-    // Question — handles "Q:" / "Q." / "Question N:" / "Q1:" / numbered "1."
-    const qMatch = b.match(/(?:Q[:.\d\s]*|Question\s*\d*[:.])\s*(.+)/i)
-    const q = qMatch?.[1]?.trim() ?? ''
-
-    // Options — handles "A)" / "A." / "(A)" / "a)" / "Option A:"
-    const optA = b.match(/(?:\(A\)|A[).]|option\s*A:?)\s*(.+)/i)?.[1]?.trim() ?? ''
-    const optB = b.match(/(?:\(B\)|B[).]|option\s*B:?)\s*(.+)/i)?.[1]?.trim() ?? ''
-    const optC = b.match(/(?:\(C\)|C[).]|option\s*C:?)\s*(.+)/i)?.[1]?.trim() ?? ''
-    const optD = b.match(/(?:\(D\)|D[).]|option\s*D:?)\s*(.+)/i)?.[1]?.trim() ?? ''
-
-    // Answer — "ANS:" / "Answer:" / "Correct:" / "Key:" + letter
-    const ans = (
-      b.match(/(?:ANS|Answer|Correct\s*Answer|Key):\s*\(?([A-D])\)?/i) ??
-      b.match(/\bThe\s+(?:correct\s+)?answer\s+is\s+\(?([A-D])\)?/i) ??
-      b.match(/\(([A-D])\)\s*(?:is correct|✓)/i)
-    )?.[1]?.toUpperCase() ?? ''
-
-    // Explanation
-    const exp = b.match(/(?:EXP(?:LANATION)?|Reason|Note):\s*(.+)/i)?.[1]?.trim() ?? ''
-
-    if (q && (optA || optB) && ans) {
-      items.push({ q, opts:[optA,optB,optC,optD].map(o => o || '—'), ans, exp })
-    }
-  }
-  return items.slice(0, 5)
-}
-
-async function askQuizQuestion(): Promise<void> {
-  if (_quizIdx >= _quizItems.length) { void finishQuiz(); return }
-  const item = _quizItems[_quizIdx]
-  const qText = `Question ${_quizIdx+1} of ${_quizItems.length}. ${item.q}. Option A: ${item.opts[0]}. Option B: ${item.opts[1]}. Option C: ${item.opts[2]}. Option D: ${item.opts[3]}. Your answer?`
-  addMsg('assistant', `**Q${_quizIdx+1}:** ${item.q}\n\nA) ${item.opts[0]}\nB) ${item.opts[1]}\nC) ${item.opts[2]}\nD) ${item.opts[3]}`)
-  speak(qText)
-}
-
-function parseQuizAnswer(t: string): string | null {
-  if (/\boption a\b|\banswer a\b|\bthe answer is a\b|^a$|^\(a\)$/i.test(t)) return 'A'
-  if (/\boption b\b|\banswer b\b|\bthe answer is b\b|^b$|^\(b\)$/i.test(t)) return 'B'
-  if (/\boption c\b|\banswer c\b|\bthe answer is c\b|^c$|^\(c\)$/i.test(t)) return 'C'
-  if (/\boption d\b|\banswer d\b|\bthe answer is d\b|^d$|^\(d\)$/i.test(t)) return 'D'
-  return null
-}
-
-async function handleQuizAnswer(chosen: string): Promise<void> {
-  const item = _quizItems[_quizIdx]
-  const lang = detectResponseLang('')
-  _quizIdx++
-  let reply = ''
-  if (chosen === item.ans) {
-    _quizHits++
-    reply =
-      lang === 'hi'       ? `बिल्कुल सही! ${item.exp}` :
-      lang === 'hinglish' ? `Bilkul sahi! ${item.exp}` :
-                            `Correct! ${item.exp}`
-  } else {
-    reply =
-      lang === 'hi'       ? `नहीं, सही उत्तर ${item.ans} है। ${item.exp}` :
-      lang === 'hinglish' ? `Nahi, sahi jawab ${item.ans} hai. ${item.exp}` :
-                            `Not quite. The answer is ${item.ans}. ${item.exp}`
-    // SRS: try to schedule a revision for this topic (best-effort, never blocks UI)
-    if (_quizTopic) {
-      const _todayStr = todayIST()
-      void import('../data/repositories/lectures').then(async ({ listLectures }) => {
-        try {
-          const lectures = await listLectures()
-          const topic = _quizTopic.toLowerCase()
-          const match = lectures.find(l =>
-            (l.title ?? '').toLowerCase().includes(topic) ||
-            topic.includes((l.title ?? '').toLowerCase().split(' ').slice(0, 2).join(' '))
-          )
-          if (match) {
-            const { createRevisionSchedule } = await import('../data/repositories/revisions')
-            await createRevisionSchedule(match.id, _todayStr)
-          }
-        } catch { /* offline or no matching lecture — weak topic flagged in memory at quiz end */ }
-      })
-    }
-  }
-  addMsg('assistant', reply)
-  _quizPhase = 'revealed'
-  speak(reply)
-  setTimeout(() => {
-    if (_quizIdx < _quizItems.length) {
-      _quizPhase = 'asking'
-      void askQuizQuestion()
-    } else {
-      void finishQuiz()
-    }
-  }, 5000)
-}
-
-async function nextQuizQuestion(): Promise<void> {
-  if (_quizIdx >= _quizItems.length) { void finishQuiz(); return }
-  _quizPhase = 'asking'; void askQuizQuestion()
-}
-
-function finishQuiz(): void {
-  _quizPhase = 'off'
-  const pct  = Math.round((_quizHits / _quizItems.length) * 100)
-  const lang = detectResponseLang('')
-
-  // Persist quiz score to memory for trend tracking
-  if (_quizTopic) {
-    if (!_mem.quizScores[_quizTopic]) _mem.quizScores[_quizTopic] = []
-    _mem.quizScores[_quizTopic].push(pct)
-    // Keep only last 5 scores per topic
-    if (_mem.quizScores[_quizTopic].length > 5) _mem.quizScores[_quizTopic].shift()
-    // Auto-flag as weak if score < 60%
-    if (pct < 60 && !_mem.weakTopics.includes(_quizTopic)) {
-      _mem.weakTopics.push(_quizTopic)
-      if (_mem.weakTopics.length > 20) _mem.weakTopics.shift()
-    }
-    // Auto-flag as strong if score >= 90%
-    if (pct >= 90 && !_mem.strongTopics.includes(_quizTopic)) {
-      _mem.strongTopics.push(_quizTopic)
-    }
-    saveMem()
-  }
-
-  const followUp = pct < 60 ? L(lang, ` ${_quizTopic} added to your weak topics list for targeted revision.`, ` ${_quizTopic} weak topics में add हो गया।`, ` ${_quizTopic} weak topics mein add ho gaya.`) : pct >= 90 ? L(lang, ` ${_quizTopic} flagged as a strong area.`, ` ${_quizTopic} strong area में flag हुआ।`, ` ${_quizTopic} strong area mein flag hua.`) : ''
-
-  if (lang === 'hi') {
-    const v = pct >= 80 ? 'शानदार प्रदर्शन!' : pct >= 60 ? 'अच्छा प्रयास।' : 'इस topic को और revise करो।'
-    respond(`Quiz पूरा! ${_quizHits} out of ${_quizItems.length} — ${pct}%. ${v}${followUp}`)
-  } else if (lang === 'hinglish') {
-    const v = pct >= 80 ? 'Zabardast!' : pct >= 60 ? 'Acha effort.' : 'Revise karo is topic ko.'
-    respond(`Quiz khatam! ${_quizHits}/${_quizItems.length} — ${pct}%. ${v}${followUp}`)
-  } else {
-    const v = pct >= 80 ? 'Excellent!' : pct >= 60 ? 'Good effort.' : 'This topic needs more revision.'
-    respond(`Quiz complete! ${_quizHits}/${_quizItems.length} — ${pct}%. ${v}${followUp}`)
-  }
-}
+// ── Quiz System — extracted to jarvis-quiz.ts ────────────────────────────────
+// startQuiz, handleQuizAnswer, nextQuizQuestion, parseQuizAnswer are imported.
+// initQuiz() is called in boot() below to wire the shared callbacks.
 
 // ── Report generators — language-aware ───────────────────────────────────────
 function buildStatusReport(): string {

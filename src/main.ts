@@ -74,6 +74,8 @@ if ('serviceWorker' in navigator) {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+let _masterKeyBooted = false
+
 async function init(): Promise<void> {
   let handled = false
 
@@ -120,7 +122,7 @@ async function init(): Promise<void> {
 
   supabase.auth.onAuthStateChange((evt, sess) => {
     if (sess) handleSession(sess, evt === 'SIGNED_IN')
-    else requireLogin()
+    else if (!_masterKeyBooted) requireLogin()
   })
 
   const { data: { session } } = await supabase.auth.getSession()
@@ -451,6 +453,7 @@ window.addEventListener('auth:master-key-boot', () => {
     }))
     return
   }
+  _masterKeyBooted = true
   hideAuthGate()
   setTrustedDevice()
   boot(uid)

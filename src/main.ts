@@ -74,7 +74,8 @@ if ('serviceWorker' in navigator) {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-let _masterKeyBooted = false
+// Holds the unsubscribe fn so master key boot can kill the auth listener entirely
+let _authUnsubscribe: (() => void) | null = null
 
 async function init(): Promise<void> {
   let handled = false
@@ -90,7 +91,6 @@ async function init(): Promise<void> {
 
     if (isFreshLogin && !hasPIN()) {
       showPINSetup(() => {
-        // Mark device as trusted after first PIN setup for the owner
         if (isOwnerEmail(email)) setTrustedDevice()
         boot(sess.user.id)
       })
@@ -120,10 +120,11 @@ async function init(): Promise<void> {
     showAuthGate()
   }
 
-  supabase.auth.onAuthStateChange((evt, sess) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((evt, sess) => {
     if (sess) handleSession(sess, evt === 'SIGNED_IN')
-    else if (!_masterKeyBooted) requireLogin()
+    else requireLogin()
   })
+  _authUnsubscribe = () => subscription.unsubscribe()
 
   const { data: { session } } = await supabase.auth.getSession()
   if (session) handleSession(session, false)
@@ -453,7 +454,9 @@ window.addEventListener('auth:master-key-boot', () => {
     }))
     return
   }
-  _masterKeyBooted = true
+  // Unsubscribe from Supabase auth events so no future state change can re-show the gate
+  _authUnsubscribe?.()
+  _authUnsubscribe = null
   hideAuthGate()
   setTrustedDevice()
   boot(uid)

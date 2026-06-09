@@ -447,19 +447,32 @@ function injectAddScoreToMenu(): void {
 // ── Master key boot (from auth gate when Supabase session is gone) ────────────
 // Master key was verified; boot with the stored owner UID (offline/cached mode).
 window.addEventListener('auth:master-key-boot', () => {
-  const uid = getOwnerUID()
-  if (!uid) {
-    window.dispatchEvent(new CustomEvent('app:toast', {
-      detail: { msg: 'No cached session — complete one full sign-in first.', type: 'warn' },
-    }))
-    return
-  }
-  // Unsubscribe from Supabase auth events so no future state change can re-show the gate
-  _authUnsubscribe?.()
-  _authUnsubscribe = null
-  hideAuthGate()
-  setTrustedDevice()
-  boot(uid)
+  void (async () => {
+    // 1. Try our own cached UID
+    let uid = getOwnerUID()
+
+    // 2. Try Supabase's own session cache (works even with expired tokens)
+    if (!uid) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) {
+          uid = session.user.id
+          storeOwnerUID(uid)
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 3. Last resort — boot in offline/local-cache mode
+    if (!uid) uid = 'offline'
+
+    // Kill the Supabase auth listener so it can never re-show the gate
+    _authUnsubscribe?.()
+    _authUnsubscribe = null
+
+    hideAuthGate()
+    setTrustedDevice()
+    boot(uid)
+  })()
 })
 
 init()

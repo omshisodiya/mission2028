@@ -10,7 +10,9 @@
 
 export const OWNER_EMAIL     = 'omshisodiya2603@gmail.com'
 const MASTER_PASSCODE        = '170207'
-const MASTER_EMAIL           = 'princee.aditisingh@gmail.com'
+export const SECONDARY_EMAIL = 'princee.aditisingh@gmail.com'
+/** @deprecated use SECONDARY_EMAIL */
+const MASTER_EMAIL           = SECONDARY_EMAIL
 
 const TRUSTED_KEY   = 'm2028_trusted'
 const OWNER_UID_KEY = 'm2028_owner_uid'
@@ -24,6 +26,16 @@ export function isMasterKey(input: string): boolean {
 
 export function isOwnerEmail(email: string): boolean {
   return email.trim().toLowerCase() === OWNER_EMAIL.toLowerCase()
+}
+
+export function isSecondaryEmail(email: string): boolean {
+  return email.trim().toLowerCase() === SECONDARY_EMAIL.toLowerCase()
+}
+
+/** Returns true for either authorized email (owner or secondary). */
+export function isAuthorizedEmail(email: string): boolean {
+  const e = email.trim().toLowerCase()
+  return e === OWNER_EMAIL.toLowerCase() || e === SECONDARY_EMAIL.toLowerCase()
 }
 
 // ── Trusted device ────────────────────────────────────────────────────────────

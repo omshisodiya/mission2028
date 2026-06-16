@@ -36,8 +36,10 @@ import { injectCalendarToMenu } from './features/calendar-view'
 import { injectWeeklyReviewToMenu } from './features/weekly-review'
 import { showSettings } from './features/settings'
 import {
-  OWNER_EMAIL, isOwnerEmail, isTrustedDevice, setTrustedDevice, storeOwnerUID, getOwnerUID,
+  OWNER_EMAIL, isOwnerEmail, isSecondaryEmail, isAuthorizedEmail,
+  isTrustedDevice, setTrustedDevice, storeOwnerUID, getOwnerUID,
 } from './features/auth-master'
+import { prewarmEffectiveUID } from './data/effective-uid'
 import { initRealtimeSync } from './sync/realtime'
 // checkStartupLock already imported at the top
 
@@ -90,31 +92,50 @@ async function init(): Promise<void> {
 
     const email = sess.user.email ?? ''
 
-    // Always persist the owner UID so master key boot works even after session expires
+    // Owner email: cache their UID for offline/master-key boot
     if (isOwnerEmail(email)) storeOwnerUID(sess.user.id)
 
-    if (isFreshLogin && !hasPIN()) {
-      showPINSetup(() => {
-        if (isOwnerEmail(email)) setTrustedDevice()
-        boot(sess.user.id)
-      })
-    } else if (hasPIN() && !isFreshLogin) {
-      // Owner on a trusted device — skip PIN entirely
-      if (isOwnerEmail(email) && isTrustedDevice()) {
-        boot(sess.user.id)
-        return
+    void (async () => {
+      // For secondary email, resolve the owner's UID so all data operations
+      // target the owner's rows.  prewarmEffectiveUID() calls owner_uid() RPC
+      // (security-definer, can read auth.users) and caches the result.
+      let effectiveId = sess.user.id
+      if (isSecondaryEmail(email)) {
+        try {
+          const ownerUID = await prewarmEffectiveUID()
+          if (ownerUID) {
+            effectiveId = ownerUID
+            storeOwnerUID(ownerUID)   // cache so offline boot also works
+          }
+        } catch { /* proceed with secondary's own UID — DB policy still allows reads */ }
       }
-      showPINEntry(
-        () => {
-          if (isOwnerEmail(email)) setTrustedDevice()
-          boot(sess.user.id)
-        },
-        () => { clearPIN(); showAuthGate() },
-      )
-    } else {
-      if (isOwnerEmail(email)) setTrustedDevice()
-      boot(sess.user.id)
-    }
+
+      // Both authorized emails skip PIN and are marked trusted
+      const isAuthorized = isAuthorizedEmail(email)
+
+      if (isFreshLogin && !hasPIN()) {
+        showPINSetup(() => {
+          if (isAuthorized) setTrustedDevice()
+          boot(effectiveId)
+        })
+      } else if (hasPIN() && !isFreshLogin) {
+        // Authorized email on a trusted device — skip PIN entirely
+        if (isAuthorized && isTrustedDevice()) {
+          boot(effectiveId)
+          return
+        }
+        showPINEntry(
+          () => {
+            if (isAuthorized) setTrustedDevice()
+            boot(effectiveId)
+          },
+          () => { clearPIN(); showAuthGate() },
+        )
+      } else {
+        if (isAuthorized) setTrustedDevice()
+        boot(effectiveId)
+      }
+    })()
   }
 
   function requireLogin(): void {

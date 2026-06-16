@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { effectiveUID } from '../effective-uid'
 
 export interface CAEntry {
   id?:       string
@@ -10,11 +11,7 @@ export interface CAEntry {
   gs_paper?: string | null  // GS1 | GS2 | GS3 | GS4 | CSAT | General
 }
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 export async function listCurrentAffairs(limit = 20): Promise<CAEntry[]> {
   const { data, error } = await supabase

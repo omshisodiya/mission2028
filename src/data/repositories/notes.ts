@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { effectiveUID } from '../effective-uid'
 
 export interface Note {
   id: string
@@ -13,11 +14,10 @@ export async function saveNote(
   lectureId?: string | null,
   topicId?: string | null,
 ): Promise<Note> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('not authenticated')
+  const userId = await effectiveUID()
   const { data, error } = await supabase
     .from('notes')
-    .insert({ body, lecture_id: lectureId ?? null, topic_id: topicId ?? null, user_id: user.id })
+    .insert({ body, lecture_id: lectureId ?? null, topic_id: topicId ?? null, user_id: userId })
     .select()
     .single()
   if (error) throw error

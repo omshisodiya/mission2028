@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { effectiveUID } from '../effective-uid'
 
 export interface AnswerEntry {
   id?:         string
@@ -9,11 +10,7 @@ export interface AnswerEntry {
   written_on:  string   // YYYY-MM-DD
 }
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 export async function listAnswerEntries(limit = 50): Promise<AnswerEntry[]> {
   const { data, error } = await supabase

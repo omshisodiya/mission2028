@@ -1,5 +1,6 @@
 import { supabase } from '../supabase'
 import { todayIST } from '../../services/core'
+import { effectiveUID } from '../effective-uid'
 
 export interface Mistake {
   id: string
@@ -14,11 +15,10 @@ export interface Mistake {
 export async function saveMistake(
   m: Pick<Mistake, 'subject' | 'question' | 'my_answer' | 'correct_note' | 'source'>
 ): Promise<Mistake> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('not authenticated')
+  const userId = await effectiveUID()
   const { data, error } = await supabase
     .from('mistakes')
-    .insert({ ...m, user_id: user.id })
+    .insert({ ...m, user_id: userId })
     .select()
     .single()
   if (error) throw error

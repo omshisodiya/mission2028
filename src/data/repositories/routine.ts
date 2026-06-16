@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { effectiveUID } from '../effective-uid'
 
 export interface RoutineDay {
   day: string           // YYYY-MM-DD in IST
@@ -12,11 +13,7 @@ export interface RoutineDay {
   updated_at?: string
 }
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 export async function listRoutineDays(): Promise<RoutineDay[]> {
   const { data, error } = await supabase

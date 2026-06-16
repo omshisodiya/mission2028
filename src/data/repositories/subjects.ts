@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { effectiveUID } from '../effective-uid'
 
 export interface Subject {
   id: string
@@ -7,11 +8,7 @@ export interface Subject {
   weightage: number
 }
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 /** Upsert subjects by name; returns a map of name (lowercased) → id. */
 export async function upsertByNames(names: string[]): Promise<Map<string, string>> {

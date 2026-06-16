@@ -1,11 +1,8 @@
 import { supabase } from '../supabase'
 import { buildInitialRevisions, updateAfterReview, type RevisionRow, type Recall } from '../../services/srs'
+import { effectiveUID } from '../effective-uid'
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 /** Insert revision schedule rows when a lecture is first completed. */
 export async function createRevisionSchedule(lectureId: string, today: string): Promise<void> {

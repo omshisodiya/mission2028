@@ -345,6 +345,61 @@ begin
 end $$;
 
 -- ============================================================
+-- SECONDARY EMAIL ACCESS — run this AFTER the owner (omshisodiya2603@gmail.com)
+-- has signed in at least once so their UID exists in auth.users.
+--
+-- Allows princee.aditisingh@gmail.com to read/write the owner's data on any
+-- device.  Uses a security-definer function to look up the owner UID from
+-- auth.users (not accessible with the anon key directly).
+-- ============================================================
+
+-- Function: returns the owner's UUID by email lookup (security definer = runs as DB owner)
+create or replace function public.owner_uid()
+returns uuid
+security definer
+set search_path = public
+language sql
+as $$
+  select id from auth.users
+  where email = 'omshisodiya2603@gmail.com'
+  limit 1;
+$$;
+
+-- Allow authenticated clients to call this function
+grant execute on function public.owner_uid() to anon, authenticated;
+
+-- Add secondary-email access policy on every user-data table.
+-- The policy allows princee.aditisingh@gmail.com to SELECT/INSERT/UPDATE/DELETE
+-- rows whose user_id equals the owner's UID.
+-- Safe to re-run — drops and recreates each policy.
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'app_state', 'subjects', 'topics', 'lectures', 'study_sessions',
+    'revisions', 'mock_tests', 'mock_results', 'answer_practice',
+    'current_affairs', 'plan_days', 'plan_blocks', 'resources',
+    'routine_days', 'scores', 'mistakes', 'notes'
+  ] loop
+    execute format('drop policy if exists secondary_access on public.%I', t);
+    -- Using: row's user_id = owner_uid() AND caller is the secondary email
+    -- With check: same — inserts/updates must carry the owner's user_id
+    execute format($f$
+      create policy secondary_access on public.%I
+        for all
+        using (
+          user_id = public.owner_uid()
+          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
+        )
+        with check (
+          user_id = public.owner_uid()
+          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
+        )
+    $f$, t);
+  end loop;
+end $$;
+
+-- ============================================================
 -- DONE. Next: enable magic-link auth in Authentication → Providers,
 -- then create a Storage bucket named "resources" (private) for Phase 6.
 -- ============================================================

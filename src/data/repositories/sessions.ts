@@ -1,11 +1,8 @@
 import { supabase } from '../supabase'
 import type { SessionDay } from '../../services/core'
+import { effectiveUID } from '../effective-uid'
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 /** Returns total session minutes aggregated per day. */
 export async function listSessionDays(): Promise<SessionDay[]> {

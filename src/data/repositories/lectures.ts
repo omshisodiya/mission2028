@@ -1,6 +1,7 @@
 import { supabase } from '../supabase'
 import { upsertByNames } from './subjects'
 import { todayIST } from '../../services/core'
+import { effectiveUID } from '../effective-uid'
 
 export type LectureStatus = 'backlog' | 'upcoming' | 'today' | 'done'
 
@@ -39,11 +40,7 @@ export interface LectureInsert {
   status?: LectureStatus
 }
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 const STATUS_ORDER: Record<string, number> = { today: 0, backlog: 1, upcoming: 2, done: 3 }
 

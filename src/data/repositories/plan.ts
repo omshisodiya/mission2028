@@ -1,11 +1,8 @@
 import { supabase } from '../supabase'
 import type { PlanDay, PlanBlock } from '../../services/planner'
+import { effectiveUID } from '../effective-uid'
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 /** Upsert plan_days + plan_blocks for a computed plan. Replaces future days only. */
 export async function savePlan(days: PlanDay[], today: string): Promise<void> {

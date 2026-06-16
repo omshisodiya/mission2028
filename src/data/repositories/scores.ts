@@ -1,11 +1,8 @@
 import { supabase } from '../supabase'
 import type { ScoreRow } from '../../services/core'
+import { effectiveUID } from '../effective-uid'
 
-async function uid(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Not authenticated')
-  return session.user.id
-}
+const uid = effectiveUID
 
 export async function listScores(): Promise<ScoreRow[]> {
   const { data, error } = await supabase

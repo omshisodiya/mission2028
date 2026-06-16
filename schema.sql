@@ -354,13 +354,12 @@ end $$;
 -- ============================================================
 
 -- ONE BLOCK — paste the entire do $SEC$ ... $SEC$; into SQL Editor and run it.
--- Step 1: creates owner_uid() function, Step 2: grants, Step 3: policies.
--- Safe to re-run at any time.
+-- Uses auth.uid() (not JWT email parsing) — far more reliable.
+-- Safe to re-run. Run AFTER omshisodiya2603@gmail.com has signed in at least once.
 do $SEC$
 declare t text;
 begin
-  -- 1. Create (or replace) the security-definer helper.
-  --    Uses $FN$ tags so the inner body's single quotes don't conflict.
+  -- 1a. owner_uid(): returns primary owner's UUID by email lookup
   execute $FN$
     create or replace function public.owner_uid()
     returns uuid
@@ -374,11 +373,27 @@ begin
     $SQL$
   $FN$;
 
-  -- 2. Grant so the anon/authenticated roles can call it.
-  execute 'grant execute on function public.owner_uid() to anon, authenticated';
+  -- 1b. secondary_uid(): returns secondary user's UUID by email lookup
+  execute $FN2$
+    create or replace function public.secondary_uid()
+    returns uuid
+    security definer
+    set search_path = public
+    language sql
+    as $SQL2$
+      select id from auth.users
+      where email = 'princee.aditisingh@gmail.com'
+      limit 1;
+    $SQL2$
+  $FN2$;
 
-  -- 3. Add secondary-email access policy on every user-data table.
-  --    Allows princee.aditisingh@gmail.com to read/write the owner''s rows.
+  -- 2. Grant both functions to authenticated clients
+  execute 'grant execute on function public.owner_uid()    to anon, authenticated';
+  execute 'grant execute on function public.secondary_uid() to anon, authenticated';
+
+  -- 3. Add secondary-access policy on every user-data table.
+  --    Uses auth.uid() = secondary_uid() — no JWT email parsing needed.
+  --    Allows the secondary account to read/write the owner's rows.
   foreach t in array array[
     'app_state', 'subjects', 'topics', 'lectures', 'study_sessions',
     'revisions', 'mock_tests', 'mock_results', 'answer_practice',
@@ -389,14 +404,8 @@ begin
     execute format($f$
       create policy secondary_access on public.%I
         for all
-        using (
-          user_id = public.owner_uid()
-          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
-        )
-        with check (
-          user_id = public.owner_uid()
-          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
-        )
+        using  (user_id = public.owner_uid() AND auth.uid() = public.secondary_uid())
+        with check (user_id = public.owner_uid() AND auth.uid() = public.secondary_uid())
     $f$, t);
   end loop;
 end $SEC$;

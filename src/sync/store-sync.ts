@@ -11,6 +11,11 @@ let _queue: Record<string, unknown> = JSON.parse(localStorage.getItem(QUEUE_KEY)
 let _retries = parseInt(localStorage.getItem(RETRY_KEY) || '0')
 let _timer:  ReturnType<typeof setTimeout> | null = null
 
+/** Re-pull using the cached uid (call from visibilitychange / sync triggers). */
+export async function pullAgain(): Promise<void> {
+  if (_uid) await pull(_uid)
+}
+
 /** Pull app_state from Supabase and hydrate localStorage before engine boots. */
 export async function pull(uid: string): Promise<void> {
   _uid = uid

@@ -322,12 +322,15 @@ create index if not exists lectures_planned_date_idx
   where done = false;
 
 -- ============================================================
--- REALTIME SYNC — cross-device lecture tick sync
--- Run this ONCE in Supabase SQL Editor to enable Realtime for the
--- lectures table so that ticking a lecture on Device A instantly
+-- REALTIME SYNC — cross-device sync for lectures, routine & sessions
+-- Run this block ONCE in Supabase SQL Editor.
+-- Ticking a lecture / logging study hours on Device A instantly
 -- appears on Device B without a manual refresh.
+-- Safe to re-run — Postgres ignores duplicate publication entries.
 -- ============================================================
 alter publication supabase_realtime add table public.lectures;
+alter publication supabase_realtime add table public.routine_days;
+alter publication supabase_realtime add table public.study_sessions;
 
 -- ============================================================
 -- DONE. Next: enable magic-link auth in Authentication → Providers,

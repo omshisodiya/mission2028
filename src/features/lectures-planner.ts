@@ -10,7 +10,7 @@ type Filter = 'all' | 'today' | 'backlog' | 'done'
 const PAGE_SIZE = 25
 
 let _cache: LectureWithSubject[] = []
-let _filter: Filter = 'all'
+let _filter: Filter = 'today'   // default to today's subject view
 let _page = 1                        // how many pages of PAGE_SIZE to show
 // Set by core-engine after CoreState is computed — no import needed
 let _subjectKws: string[]  = []
@@ -54,8 +54,8 @@ export function mountPlannerUI(): void {
       toolbar.id = 'lp-toolbar'
       toolbar.innerHTML = `
         <div class="lp-filters">
-          <button class="lp-filter active" data-f="all">All</button>
-          <button class="lp-filter" data-f="today">Today</button>
+          <button class="lp-filter" data-f="all">All</button>
+          <button class="lp-filter active" data-f="today">Today</button>
           <button class="lp-filter" data-f="backlog">Backlog</button>
           <button class="lp-filter" data-f="done">Done</button>
         </div>
@@ -159,16 +159,40 @@ export async function loadLectures(): Promise<void> {
     }
   })
 
-  // Supabase Realtime: push updates to this device instantly when any lecture
-  // changes on another device. Requires "lectures" table to have Realtime
-  // enabled in Supabase Dashboard → Database → Replication → lectures.
+  // Supabase Realtime: push lecture changes to this device instantly.
+  // Requires: `alter publication supabase_realtime add table public.lectures;`
+  // run in Supabase SQL Editor (already in schema.sql).
+  // Auto-retries if the channel goes to ERROR state (e.g. on reconnect).
+  function subscribeRealtime(): void {
+    supabase
+      .channel('lectures-rt-' + Date.now())   // unique name avoids stale-channel collisions
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'lectures' },
+        () => { void refresh() },
+      )
+      .subscribe(status => {
+        if (status === 'CHANNEL_ERROR') {
+          // Back off 5 s then re-subscribe
+          setTimeout(subscribeRealtime, 5_000)
+        }
+      })
+  }
+  subscribeRealtime()
+
+  // Also subscribe to routine_days and study_sessions for full cross-device sync
   supabase
-    .channel('lectures-realtime')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'lectures' },
-      () => { void refresh() },
-    )
+    .channel('routine-rt-' + Date.now())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'routine_days' }, () => {
+      // Dispatch a custom event that core-engine picks up via recompute()
+      window.dispatchEvent(new CustomEvent('app:sync-needed'))
+    })
+    .subscribe()
+  supabase
+    .channel('sessions-rt-' + Date.now())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'study_sessions' }, () => {
+      window.dispatchEvent(new CustomEvent('app:sync-needed'))
+    })
     .subscribe()
 }
 
@@ -228,27 +252,37 @@ function render(): void {
 
   const today = todayIST()
 
-  // For "today" filter: pick lectures assigned to today (by planned_date or status)
-  // plus the first undone lecture from each subject keyword
+  // Build a broad keyword set from both the mapped keywords AND every meaningful
+  // word in the full subject string (so "Medieval History + Mathematics" matches
+  // lectures titled "Medieval Hist. L1" or subject-named "History" or "Maths").
+  const subjectWordKws = todaySubject
+    .replace(/[+·()\[\]]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 3)
+    .map(w => w.toLowerCase())
+  const allMatchKws = [...new Set([...subjectKws.map(k => k.toLowerCase()), ...subjectWordKws])]
+
+  // For "today" filter: collect ALL lectures that belong to today.
+  // Priority order:
+  //   1. Explicitly assigned via planned_date = today
+  //   2. Legacy status='today' with no planned_date
+  //   3. ALL undone lectures whose subject name or title matches any subject keyword
   const todayPickIds = new Set<string>()
   if (_filter === 'today') {
-    // Explicitly assigned to today via planned_date
+    // 1. Explicitly date-assigned
     _cache.filter(l => !l.done && l.planned_date === today).forEach(l => todayPickIds.add(l.id))
-    // Legacy: status='today' with no planned_date
+    // 2. Legacy today status
     _cache.filter(l => !l.done && l.status === 'today' && !l.planned_date).forEach(l => todayPickIds.add(l.id))
-    // Subject-keyword picks (first undone lecture per keyword, sorted by sequence)
-    if (subjectKws.length) {
-      const bySeq = [..._cache].sort((a, b) => (a.sequence ?? 9999) - (b.sequence ?? 9999))
-      for (const kw of subjectKws) {
-        const kwL = kw.toLowerCase()
-        const pick = bySeq.find(l => {
-          if (l.done) return false
-          const name  = (l.subjects?.name ?? '').toLowerCase()
-          const title = l.title.toLowerCase()
-          return name.includes(kwL) || title.includes(kwL)
-        })
-        if (pick) todayPickIds.add(pick.id)
-      }
+    // 3. ALL keyword-matching undone lectures (not just first per keyword)
+    if (allMatchKws.length) {
+      _cache.forEach(l => {
+        if (l.done) return
+        const name  = (l.subjects?.name ?? '').toLowerCase()
+        const title = l.title.toLowerCase()
+        if (allMatchKws.some(kw => name.includes(kw) || title.includes(kw))) {
+          todayPickIds.add(l.id)
+        }
+      })
     }
   }
 
@@ -270,11 +304,22 @@ function render(): void {
     })
 
   if (visible.length === 0) {
-    const emptyMsg = _filter === 'today' && subjectKws.length === 0
-      ? '<p class="lp-empty mono muted">Log today\'s routine to see recommended lectures here.</p>'
-      : total === 0
-        ? '<p class="lp-empty mono muted">No lectures yet — click <b>Import Excel</b> or <b>+ Add</b> above.</p>'
-        : '<p class="lp-empty mono muted">No lectures in this filter.</p>'
+    let emptyMsg: string
+    if (total === 0) {
+      emptyMsg = '<p class="lp-empty mono muted">No lectures yet — click <b>Import Excel</b> or <b>+ Add</b> above.</p>'
+    } else if (_filter === 'today' && allMatchKws.length === 0) {
+      // Subject context hasn't arrived yet from core-engine — show gentle prompt
+      emptyMsg = '<p class="lp-empty mono muted">Loading today\'s subject… if this persists, log study hours in the Routine card above.</p>'
+    } else if (_filter === 'today') {
+      // Keywords exist but no lecture names/titles match — guide the user
+      emptyMsg = `<p class="lp-empty mono muted">No lectures found for today's subject (<b>${esc(todaySubject)}</b>).<br>
+        Make sure imported lecture titles or subject names contain a word from today's subject,<br>
+        or switch to <b>All</b> to see all lectures with today's priority at the top.</p>`
+    } else if (_filter === 'done') {
+      emptyMsg = '<p class="lp-empty mono muted">No lectures completed yet — tick one to mark it done.</p>'
+    } else {
+      emptyMsg = '<p class="lp-empty mono muted">No lectures in this filter.</p>'
+    }
     container.innerHTML = emptyMsg
     return
   }

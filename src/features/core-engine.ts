@@ -20,6 +20,7 @@ import { bindCAFeed } from './ca-log'
 import { loadSettings, showSettings } from './settings'
 import { setPlannerSubjectContext } from './lectures-planner'
 import { setLectureCompletionDates } from './routine-ui'
+import { pullAgain } from '../sync/store-sync'
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
@@ -49,10 +50,27 @@ export async function loadAndBind(): Promise<void> {
   // Guard ensures only one listener is ever registered even if loadAndBind() reruns.
   if (!_visListenerAttached) {
     _visListenerAttached = true
+
+    // Realtime sync signal from lectures-planner (routine_days / study_sessions changed)
+    window.addEventListener('app:sync-needed', () => { recompute() })
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return
       if (_visTimer) clearTimeout(_visTimer)
-      _visTimer = setTimeout(() => { recompute() }, 600)
+      _visTimer = setTimeout(async () => {
+        // 1. Re-pull KV state (todos, settings, focus log) from Supabase
+        await pullAgain().catch(() => {})
+        // Re-apply pulled KV into the in-memory store so widgets see it instantly
+        const mission = (window as {
+          MISSION?: { store: { data: Record<string, unknown> } }
+        }).MISSION
+        if (mission?.store) {
+          const remote = JSON.parse(localStorage.getItem('mission2028') || '{}') as Record<string, unknown>
+          Object.assign(mission.store.data, remote)
+        }
+        // 2. Re-fetch all relational data and re-bind every widget
+        recompute()
+      }, 600)
     })
   }
 }

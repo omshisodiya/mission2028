@@ -41,9 +41,11 @@ export function showAuthGate(): void {
   const btn  = _el.querySelector('.ag-btn') as HTMLButtonElement
 
   _el.querySelector('#ag-master')?.addEventListener('click', () => {
-    showMasterKeyOverlay(() => {
-      // Signal main.ts to boot with the stored owner UID
-      window.dispatchEvent(new CustomEvent('auth:master-key-boot'))
+    showMasterKeyOverlay((enteredEmail?: string) => {
+      // Pass whichever email was typed so main.ts sends the OTP to the right address
+      window.dispatchEvent(new CustomEvent('auth:master-key-boot', {
+        detail: { email: enteredEmail },
+      }))
     })
   })
 

@@ -488,7 +488,10 @@ function injectAddScoreToMenu(): void {
 
 // ── Master key boot (from auth gate when Supabase session is gone) ────────────
 // Master key was verified; boot with the stored owner UID (offline/cached mode).
-window.addEventListener('auth:master-key-boot', () => {
+window.addEventListener('auth:master-key-boot', (evt: Event) => {
+  // email = the address the user typed if they used an email as the master key;
+  // undefined if they used the numeric passcode (falls back to OWNER_EMAIL)
+  const _enteredEmail = (evt as CustomEvent<{ email?: string }>).detail?.email
   // Synchronously block & hide BEFORE any await — prevents onAuthStateChange
   // from re-showing the gate during the async UID lookup below.
   _masterBooted = true
@@ -528,17 +531,19 @@ window.addEventListener('auth:master-key-boot', () => {
     // 3. No valid session on this device — auto-dispatch magic link so the user
     //    can click it (from their email) to authenticate this device and have all
     //    data sync.  App still boots in offline/cache mode in the meantime.
+    //    Use whichever email the user typed; fall back to OWNER_EMAIL for passcode.
     if (!sessionReady) {
+      const otpTarget = _enteredEmail ?? OWNER_EMAIL
       try {
         await supabase.auth.signInWithOtp({
-          email:   OWNER_EMAIL,
+          email:   otpTarget,
           options: { emailRedirectTo: window.location.origin },
         })
         // Toast system may not be mounted yet — give it 1.5 s
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent('app:toast', {
             detail: {
-              msg:  `📧 Magic link sent to ${OWNER_EMAIL} — click it to sync all your data to this device.`,
+              msg:  `📧 Magic link sent to ${otpTarget} — click it to sync all your data to this device.`,
               type: 'info',
             },
           }))

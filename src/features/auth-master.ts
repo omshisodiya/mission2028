@@ -9,7 +9,7 @@
  */
 
 export const OWNER_EMAIL     = 'omshisodiya2603@gmail.com'
-const MASTER_PASSCODE        = '17022007'
+const MASTER_PASSCODE        = '170207'
 const MASTER_EMAIL           = 'princee.aditisingh@gmail.com'
 
 const TRUSTED_KEY   = 'm2028_trusted'
@@ -56,7 +56,9 @@ export function getOwnerUID(): string | null {
 
 let _mkEl: HTMLElement | null = null
 
-export function showMasterKeyOverlay(onSuccess: () => void): void {
+/** Called with the email the user typed (if they entered an email), or undefined
+ *  (if they entered the passcode). The caller uses this to know where to send the OTP. */
+export function showMasterKeyOverlay(onSuccess: (enteredEmail?: string) => void): void {
   if (_mkEl) return
   _mkEl = document.createElement('div')
   _mkEl.style.cssText = [
@@ -120,7 +122,9 @@ export function showMasterKeyOverlay(onSuccess: () => void): void {
     if (isMasterKey(inp.value)) {
       _mkEl?.remove()
       _mkEl = null
-      onSuccess()
+      // Pass the email if the user typed an email address; undefined for passcode
+      const v = inp.value.trim()
+      onSuccess(v.includes('@') ? v : undefined)
     } else {
       err.textContent = 'Invalid master credentials — try again.'
       inp.style.borderColor = 'var(--bad,#e05555)'

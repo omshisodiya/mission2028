@@ -15,7 +15,7 @@ import { supabase } from './data/supabase'
 import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
 import { hasPIN, showPINEntry, hidePINEntry, showPINSetup, clearPIN } from './features/pin-auth'
-import { mountPlannerUI, loadLectures } from './features/lectures-planner'
+import { mountPlannerUI, loadLectures, setOfflineMode } from './features/lectures-planner'
 import { rolloverUndoneToday } from './data/repositories/lectures'
 import { mountRoutineSection, initRoutine } from './features/routine-ui'
 import { loadAndBind, recompute, onSessionComplete } from './features/core-engine'
@@ -149,6 +149,7 @@ async function init(): Promise<void> {
       if (cachedUID) {
         handled = true
         hideAuthGate()
+        setOfflineMode(true)   // no live session — planner shows sign-in prompt until auth
         boot(cachedUID)
         return
       }
@@ -552,6 +553,7 @@ window.addEventListener('auth:master-key-boot', (evt: Event) => {
     }
 
     if (!uid) uid = 'offline'
+    if (!sessionReady) setOfflineMode(true)   // planner shows sign-in prompt until auth
     boot(uid)
   })()
 })

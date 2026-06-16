@@ -34,6 +34,15 @@ export function setPlannerSubjectContext(
 }
 let _mounted = false
 let _authed = false
+// true when the app booted without a valid Supabase session (master key offline mode
+// or trusted device with expired session). Shows a sign-in prompt in the planner.
+let _offlineMode = false
+
+/** Called from main.ts when boot completes without a valid Supabase session. */
+export function setOfflineMode(v: boolean): void {
+  _offlineMode = v
+  if (_authed) render()   // re-render immediately if already mounted
+}
 
 /**
  * Step 1 — call immediately after engine boots (synchronous, no auth needed).
@@ -144,6 +153,7 @@ let _syncSetup = false
  * Also sets up cross-device sync: tab-visibility refresh + Supabase Realtime.
  */
 export async function loadLectures(): Promise<void> {
+  _offlineMode = false   // real auth confirmed — clear offline prompt
   _authed = true
   const container = document.getElementById('planner')
   if (container) container.innerHTML = '<p class="lp-empty mono muted">Loading lectures…</p>'
@@ -312,17 +322,39 @@ function render(): void {
     })
 
   if (visible.length === 0) {
-    let emptyMsg: string
-    if (total === 0) {
-      emptyMsg = '<p class="lp-empty mono muted">No lectures yet — click <b>Import Excel</b> or <b>+ Add</b> above.</p>'
-    } else if (_filter === 'done') {
-      emptyMsg = '<p class="lp-empty mono muted">No lectures completed yet — tick one to mark it done.</p>'
-    } else if (_filter === 'today') {
-      emptyMsg = '<p class="lp-empty mono muted">All lectures done! 🎉</p>'
+    if (total === 0 && _offlineMode) {
+      // No session — show a clear sign-in prompt so the user knows why the list is empty
+      container.innerHTML = `
+        <div id="lp-offline-signin" style="padding:24px 12px;text-align:center;">
+          <div style="font-size:28px;margin-bottom:10px;">🔐</div>
+          <p style="font-family:var(--font-mono);font-size:13px;color:var(--ink);margin-bottom:6px;font-weight:600;">
+            Sign in to see and track your lectures
+          </p>
+          <p style="font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin-bottom:18px;line-height:1.7;">
+            Your lecture progress, schedule, and history<br>are saved to your account.
+          </p>
+          <button class="btn primary" id="lp-offline-signin-btn"
+            style="font-size:13px;padding:9px 26px;letter-spacing:.04em;">
+            Sign in with Gmail →
+          </button>
+        </div>`
+      document.getElementById('lp-offline-signin-btn')?.addEventListener('click', async () => {
+        const { showAuthGate } = await import('./auth')
+        showAuthGate()
+      })
     } else {
-      emptyMsg = '<p class="lp-empty mono muted">No lectures in this filter.</p>'
+      let emptyMsg: string
+      if (total === 0) {
+        emptyMsg = '<p class="lp-empty mono muted">No lectures yet — click <b>Import Excel</b> or <b>+ Add</b> above.</p>'
+      } else if (_filter === 'done') {
+        emptyMsg = '<p class="lp-empty mono muted">No lectures completed yet — tick one to mark it done.</p>'
+      } else if (_filter === 'today') {
+        emptyMsg = '<p class="lp-empty mono muted">All lectures done! 🎉</p>'
+      } else {
+        emptyMsg = '<p class="lp-empty mono muted">No lectures in this filter.</p>'
+      }
+      container.innerHTML = emptyMsg
     }
-    container.innerHTML = emptyMsg
     return
   }
 

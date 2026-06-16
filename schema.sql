@@ -391,11 +391,11 @@ begin
         for all
         using (
           user_id = public.owner_uid()
-          AND (auth.jwt() ->> ''email'') = ''princee.aditisingh@gmail.com''
+          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
         )
         with check (
           user_id = public.owner_uid()
-          AND (auth.jwt() ->> ''email'') = ''princee.aditisingh@gmail.com''
+          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
         )
     $f$, t);
   end loop;

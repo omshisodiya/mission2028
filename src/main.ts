@@ -120,19 +120,8 @@ async function init(): Promise<void> {
   function requireLogin(): void {
     // Never re-show the gate after a master key boot
     if (_masterBooted) return
-
-    // Trusted device with a cached owner UID — boot silently without the auth gate.
-    // This handles the common case where the Supabase JWT expired but the device
-    // was already verified.  The app boots from local cache / offline Supabase.
-    if (!handled && isTrustedDevice()) {
-      const cachedUID = getOwnerUID()
-      if (cachedUID) {
-        handled = true
-        boot(cachedUID)
-        return
-      }
-    }
-
+    // Do NOT auto-boot here — onAuthStateChange fires before token refresh
+    // completes.  Trusted-device auto-boot lives below, after getSession().
     handled = false
     hidePINEntry()
     hideAuthGate()
@@ -145,9 +134,27 @@ async function init(): Promise<void> {
   })
   _authUnsubscribe = () => subscription.unsubscribe()
 
+  // getSession() waits for any pending token refresh to complete before resolving.
+  // TOKEN_REFRESHED may fire and call handleSession() before we get here — that's fine.
   const { data: { session } } = await supabase.auth.getSession()
-  if (session) handleSession(session, false)
-  else if (!handled) requireLogin()
+  if (session) {
+    handleSession(session, false)
+  } else if (!handled) {
+    // Trusted device with no valid session — hide the gate and boot from local cache.
+    // We are now past the token-refresh wait, so a real session would have appeared
+    // above if the refresh token was valid.  This path covers expired refresh tokens
+    // and fresh devices (master key entered, no session ever on this device).
+    if (isTrustedDevice()) {
+      const cachedUID = getOwnerUID()
+      if (cachedUID) {
+        handled = true
+        hideAuthGate()
+        boot(cachedUID)
+        return
+      }
+    }
+    requireLogin()
+  }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -492,10 +499,20 @@ window.addEventListener('auth:master-key-boot', () => {
   setTrustedDevice()
 
   void (async () => {
-    // 1. Try our own cached UID
     let uid = getOwnerUID()
 
-    // 2. Try Supabase's own session cache (works even with expired tokens)
+    // 1. Try to refresh the Supabase session using the stored refresh token.
+    //    If this succeeds, subsequent Supabase queries will carry the new JWT
+    //    and RLS policies will work — so lectures / routine / all data loads.
+    try {
+      const { data: { session } } = await supabase.auth.refreshSession()
+      if (session?.user?.id) {
+        uid = session.user.id
+        storeOwnerUID(uid)
+      }
+    } catch { /* ignore */ }
+
+    // 2. Fallback: read whatever session the client currently has
     if (!uid) {
       try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -506,7 +523,7 @@ window.addEventListener('auth:master-key-boot', () => {
       } catch { /* ignore */ }
     }
 
-    // 3. Last resort — boot in offline/local-cache mode
+    // 3. Last resort — boot in offline / local-cache mode
     if (!uid) uid = 'offline'
 
     boot(uid)

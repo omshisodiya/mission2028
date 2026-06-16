@@ -78,6 +78,8 @@ if ('serviceWorker' in navigator) {
 
 // Holds the unsubscribe fn so master key boot can kill the auth listener entirely
 let _authUnsubscribe: (() => void) | null = null
+// Set to true the moment master key is accepted — permanently blocks requireLogin()
+let _masterBooted = false
 
 async function init(): Promise<void> {
   let handled = false
@@ -116,6 +118,21 @@ async function init(): Promise<void> {
   }
 
   function requireLogin(): void {
+    // Never re-show the gate after a master key boot
+    if (_masterBooted) return
+
+    // Trusted device with a cached owner UID — boot silently without the auth gate.
+    // This handles the common case where the Supabase JWT expired but the device
+    // was already verified.  The app boots from local cache / offline Supabase.
+    if (!handled && isTrustedDevice()) {
+      const cachedUID = getOwnerUID()
+      if (cachedUID) {
+        handled = true
+        boot(cachedUID)
+        return
+      }
+    }
+
     handled = false
     hidePINEntry()
     hideAuthGate()
@@ -465,6 +482,15 @@ function injectAddScoreToMenu(): void {
 // ── Master key boot (from auth gate when Supabase session is gone) ────────────
 // Master key was verified; boot with the stored owner UID (offline/cached mode).
 window.addEventListener('auth:master-key-boot', () => {
+  // Synchronously block & hide BEFORE any await — prevents onAuthStateChange
+  // from re-showing the gate during the async UID lookup below.
+  _masterBooted = true
+  _authUnsubscribe?.()
+  _authUnsubscribe = null
+  hideAuthGate()
+  hidePINEntry()
+  setTrustedDevice()
+
   void (async () => {
     // 1. Try our own cached UID
     let uid = getOwnerUID()
@@ -483,12 +509,6 @@ window.addEventListener('auth:master-key-boot', () => {
     // 3. Last resort — boot in offline/local-cache mode
     if (!uid) uid = 'offline'
 
-    // Kill the Supabase auth listener so it can never re-show the gate
-    _authUnsubscribe?.()
-    _authUnsubscribe = null
-
-    hideAuthGate()
-    setTrustedDevice()
     boot(uid)
   })()
 })

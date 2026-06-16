@@ -353,28 +353,32 @@ end $$;
 -- auth.users (not accessible with the anon key directly).
 -- ============================================================
 
--- Function: returns the owner's UUID by email lookup (security definer = runs as DB owner)
-create or replace function public.owner_uid()
-returns uuid
-security definer
-set search_path = public
-language sql
-as $$
-  select id from auth.users
-  where email = 'omshisodiya2603@gmail.com'
-  limit 1;
-$$;
-
--- Allow authenticated clients to call this function
-grant execute on function public.owner_uid() to anon, authenticated;
-
--- Add secondary-email access policy on every user-data table.
--- The policy allows princee.aditisingh@gmail.com to SELECT/INSERT/UPDATE/DELETE
--- rows whose user_id equals the owner's UID.
--- Safe to re-run — drops and recreates each policy.
-do $$
+-- ONE BLOCK — paste the entire do $SEC$ ... $SEC$; into SQL Editor and run it.
+-- Step 1: creates owner_uid() function, Step 2: grants, Step 3: policies.
+-- Safe to re-run at any time.
+do $SEC$
 declare t text;
 begin
+  -- 1. Create (or replace) the security-definer helper.
+  --    Uses $FN$ tags so the inner body's single quotes don't conflict.
+  execute $FN$
+    create or replace function public.owner_uid()
+    returns uuid
+    security definer
+    set search_path = public
+    language sql
+    as $SQL$
+      select id from auth.users
+      where email = 'omshisodiya2603@gmail.com'
+      limit 1;
+    $SQL$
+  $FN$;
+
+  -- 2. Grant so the anon/authenticated roles can call it.
+  execute 'grant execute on function public.owner_uid() to anon, authenticated';
+
+  -- 3. Add secondary-email access policy on every user-data table.
+  --    Allows princee.aditisingh@gmail.com to read/write the owner''s rows.
   foreach t in array array[
     'app_state', 'subjects', 'topics', 'lectures', 'study_sessions',
     'revisions', 'mock_tests', 'mock_results', 'answer_practice',
@@ -382,22 +386,20 @@ begin
     'routine_days', 'scores', 'mistakes', 'notes'
   ] loop
     execute format('drop policy if exists secondary_access on public.%I', t);
-    -- Using: row's user_id = owner_uid() AND caller is the secondary email
-    -- With check: same — inserts/updates must carry the owner's user_id
     execute format($f$
       create policy secondary_access on public.%I
         for all
         using (
           user_id = public.owner_uid()
-          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
+          AND (auth.jwt() ->> ''email'') = ''princee.aditisingh@gmail.com''
         )
         with check (
           user_id = public.owner_uid()
-          AND (auth.jwt() ->> 'email') = 'princee.aditisingh@gmail.com'
+          AND (auth.jwt() ->> ''email'') = ''princee.aditisingh@gmail.com''
         )
     $f$, t);
   end loop;
-end $$;
+end $SEC$;
 
 -- ============================================================
 -- DONE. Next: enable magic-link auth in Authentication → Providers,

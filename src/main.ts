@@ -529,27 +529,38 @@ window.addEventListener('auth:master-key-boot', (evt: Event) => {
       } catch { /* ignore */ }
     }
 
-    // 3. No valid session on this device — auto-dispatch magic link so the user
-    //    can click it (from their email) to authenticate this device and have all
-    //    data sync.  App still boots in offline/cache mode in the meantime.
-    //    Use whichever email the user typed; fall back to OWNER_EMAIL for passcode.
+    // 3. No valid session on this device.
+    //    • If the user typed their email as the master key → auto-send OTP to that address.
+    //    • If the user used the numeric passcode → do NOT auto-send; ask them to sign in
+    //      via the "Sign in with Gmail" button that appears in the Lectures section.
     if (!sessionReady) {
-      const otpTarget = _enteredEmail ?? OWNER_EMAIL
-      try {
-        await supabase.auth.signInWithOtp({
-          email:   otpTarget,
-          options: { emailRedirectTo: window.location.origin },
-        })
-        // Toast system may not be mounted yet — give it 1.5 s
+      if (_enteredEmail) {
+        // Email was explicitly entered — send OTP silently to that address
+        try {
+          await supabase.auth.signInWithOtp({
+            email:   _enteredEmail,
+            options: { emailRedirectTo: window.location.origin },
+          })
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('app:toast', {
+              detail: {
+                msg:  `📧 Magic link sent to ${_enteredEmail} — click it to sync your data.`,
+                type: 'info',
+              },
+            }))
+          }, 1500)
+        } catch { /* ignore — offline or rate-limited */ }
+      } else {
+        // Passcode used — nudge the user to sign in themselves so they can choose their Gmail
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent('app:toast', {
             detail: {
-              msg:  `📧 Magic link sent to ${otpTarget} — click it to sync all your data to this device.`,
+              msg:  '📴 Offline mode — scroll to Lectures and tap "Sign in with Gmail" to sync your data.',
               type: 'info',
             },
           }))
         }, 1500)
-      } catch { /* ignore — offline or rate-limited */ }
+      }
     }
 
     if (!uid) uid = 'offline'

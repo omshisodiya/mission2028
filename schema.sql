@@ -322,15 +322,27 @@ create index if not exists lectures_planned_date_idx
   where done = false;
 
 -- ============================================================
--- REALTIME SYNC — cross-device sync for lectures, routine & sessions
--- Run this block ONCE in Supabase SQL Editor.
--- Ticking a lecture / logging study hours on Device A instantly
+-- REALTIME SYNC — cross-device sync for ALL user tables
+-- Safe to re-run — exception handler skips tables already in the publication.
+-- Ticking a lecture / adding a score / rating a revision on Device A instantly
 -- appears on Device B without a manual refresh.
--- Safe to re-run — Postgres ignores duplicate publication entries.
 -- ============================================================
-alter publication supabase_realtime add table public.lectures;
-alter publication supabase_realtime add table public.routine_days;
-alter publication supabase_realtime add table public.study_sessions;
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'lectures', 'routine_days', 'study_sessions',
+    'scores', 'revisions', 'answer_practice', 'current_affairs',
+    'mistakes', 'notes', 'app_state'
+  ] loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when others then
+      -- error 42710 = duplicate_object (already a member) — safe to ignore
+      null;
+    end;
+  end loop;
+end $$;
 
 -- ============================================================
 -- DONE. Next: enable magic-link auth in Authentication → Providers,

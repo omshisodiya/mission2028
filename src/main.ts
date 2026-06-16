@@ -38,6 +38,7 @@ import { showSettings } from './features/settings'
 import {
   isOwnerEmail, isTrustedDevice, setTrustedDevice, storeOwnerUID, getOwnerUID,
 } from './features/auth-master'
+import { initRealtimeSync } from './sync/realtime'
 // checkStartupLock already imported at the top
 
 // UI shells mount synchronously so sections are always visible.
@@ -196,6 +197,9 @@ async function syncAndBoot(userId: string): Promise<void> {
 
   // 3. Load all inputs → computeCoreState → bind every widget
   await loadAndBind().catch(e => console.error('[main] loadAndBind failed:', e))
+
+  // 4. Realtime sync for scores, revisions, answer_practice, current_affairs, mistakes, notes, app_state
+  initRealtimeSync()
 
   // Phase 5-6: inject command menu actions
   injectAddScoreToMenu()

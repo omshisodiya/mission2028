@@ -286,9 +286,17 @@ function render(): void {
     }
   }
 
+  // Whether today's filter used specific picks (planned_date / status / keyword)
+  // or is falling back to "show everything undone".
+  const todayUsedFallback = _filter === 'today' && todayPickIds.size === 0
+
   const visible = _cache
     .filter(l => {
-      if (_filter === 'today')   return todayPickIds.size ? todayPickIds.has(l.id) : (l.status === 'today' && !l.done)
+      if (_filter === 'today') {
+        // Specific picks found (planned_date, status='today', or keyword match) → use them.
+        // Fallback: show ALL undone lectures so the tab is never blank when lectures exist.
+        return todayPickIds.size ? todayPickIds.has(l.id) : !l.done
+      }
       if (_filter === 'backlog') return l.status === 'backlog' && !l.done
       if (_filter === 'done')    return l.done
       return true
@@ -307,16 +315,10 @@ function render(): void {
     let emptyMsg: string
     if (total === 0) {
       emptyMsg = '<p class="lp-empty mono muted">No lectures yet — click <b>Import Excel</b> or <b>+ Add</b> above.</p>'
-    } else if (_filter === 'today' && allMatchKws.length === 0) {
-      // Subject context hasn't arrived yet from core-engine — show gentle prompt
-      emptyMsg = '<p class="lp-empty mono muted">Loading today\'s subject… if this persists, log study hours in the Routine card above.</p>'
-    } else if (_filter === 'today') {
-      // Keywords exist but no lecture names/titles match — guide the user
-      emptyMsg = `<p class="lp-empty mono muted">No lectures found for today's subject (<b>${esc(todaySubject)}</b>).<br>
-        Make sure imported lecture titles or subject names contain a word from today's subject,<br>
-        or switch to <b>All</b> to see all lectures with today's priority at the top.</p>`
     } else if (_filter === 'done') {
       emptyMsg = '<p class="lp-empty mono muted">No lectures completed yet — tick one to mark it done.</p>'
+    } else if (_filter === 'today') {
+      emptyMsg = '<p class="lp-empty mono muted">All lectures done! 🎉</p>'
     } else {
       emptyMsg = '<p class="lp-empty mono muted">No lectures in this filter.</p>'
     }
@@ -338,7 +340,14 @@ function render(): void {
   const carriedNote = carriedCount > 0
     ? ` · <span style="color:var(--warn);">${carriedCount} lecture${carriedCount > 1 ? 's' : ''} carried forward</span>`
     : ''
-  const banner = todaySubject && subjectKws.length
+  // When fallback mode (no subject picks), prefix a soft notice so user knows why
+  const fallbackNotice = _filter === 'today' && todayUsedFallback
+    ? `<div class="lp-subject-banner" style="border-left-color:var(--muted);opacity:.75;">
+        <span class="mono muted" style="font-size:10px;letter-spacing:.12em;">ALL PENDING LECTURES — subject filter loading…</span>
+       </div>`
+    : ''
+
+  const banner = todayUsedFallback ? fallbackNotice : todaySubject && subjectKws.length
     ? _autoAdvanced
       ? isCatchup
         ? `<div class="lp-subject-banner" style="border-left-color:var(--warn);">

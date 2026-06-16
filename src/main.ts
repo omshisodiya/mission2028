@@ -36,7 +36,7 @@ import { injectCalendarToMenu } from './features/calendar-view'
 import { injectWeeklyReviewToMenu } from './features/weekly-review'
 import { showSettings } from './features/settings'
 import {
-  isOwnerEmail, isTrustedDevice, setTrustedDevice, storeOwnerUID, getOwnerUID,
+  OWNER_EMAIL, isOwnerEmail, isTrustedDevice, setTrustedDevice, storeOwnerUID, getOwnerUID,
 } from './features/auth-master'
 import { initRealtimeSync } from './sync/realtime'
 // checkStartupLock already imported at the top
@@ -499,33 +499,54 @@ window.addEventListener('auth:master-key-boot', () => {
   setTrustedDevice()
 
   void (async () => {
-    let uid = getOwnerUID()
+    let uid          = getOwnerUID()
+    let sessionReady = false
 
-    // 1. Try to refresh the Supabase session using the stored refresh token.
-    //    If this succeeds, subsequent Supabase queries will carry the new JWT
-    //    and RLS policies will work — so lectures / routine / all data loads.
+    // 1. Try session refresh (exchanges stored refresh token for a fresh JWT).
+    //    If this succeeds, all Supabase RLS queries will work and data loads.
     try {
       const { data: { session } } = await supabase.auth.refreshSession()
       if (session?.user?.id) {
-        uid = session.user.id
+        uid          = session.user.id
+        sessionReady = true
         storeOwnerUID(uid)
       }
     } catch { /* ignore */ }
 
-    // 2. Fallback: read whatever session the client currently has
-    if (!uid) {
+    // 2. Fallback: read whatever live session the client already has
+    if (!sessionReady) {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user?.id) {
-          uid = session.user.id
+          uid          = session.user.id
+          sessionReady = true
           storeOwnerUID(uid)
         }
       } catch { /* ignore */ }
     }
 
-    // 3. Last resort — boot in offline / local-cache mode
-    if (!uid) uid = 'offline'
+    // 3. No valid session on this device — auto-dispatch magic link so the user
+    //    can click it (from their email) to authenticate this device and have all
+    //    data sync.  App still boots in offline/cache mode in the meantime.
+    if (!sessionReady) {
+      try {
+        await supabase.auth.signInWithOtp({
+          email:   OWNER_EMAIL,
+          options: { emailRedirectTo: window.location.origin },
+        })
+        // Toast system may not be mounted yet — give it 1.5 s
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('app:toast', {
+            detail: {
+              msg:  `📧 Magic link sent to ${OWNER_EMAIL} — click it to sync all your data to this device.`,
+              type: 'info',
+            },
+          }))
+        }, 1500)
+      } catch { /* ignore — offline or rate-limited */ }
+    }
 
+    if (!uid) uid = 'offline'
     boot(uid)
   })()
 })

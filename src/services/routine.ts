@@ -250,3 +250,58 @@ export function lastNTestAccuracies(allDays: RoutineDay[], n = 8): number[] {
 }
 
 export const disclaimer = cfg.disclaimer
+
+// ── Routine date carry-forward (missed-day cascade) ───────────────────────────
+
+/**
+ * Returns the calendar date whose subject should be shown today.
+ *
+ * A day is "productive" when EITHER:
+ *   • study_hours > 0 in routine_days, OR
+ *   • at least one lecture was marked done (lectureCompletionDates contains the date)
+ *
+ * Rule: walk backwards from yesterday in consecutive steps. Every day that
+ * was NOT productive is a "missed" day. Stop at the first productive day.
+ * The oldest missed day in that chain becomes the effective date.
+ *
+ * Example:
+ *   Productive: June 14. Missed: June 15, 16. Today: June 17 (not yet logged).
+ *   → chain = [June 16, June 15] → effectiveDate = June 15.
+ *   → Show June 15's subject on June 17.
+ *
+ * After completing a lecture on June 17, tomorrow's chain will be:
+ *   i=1 (June 17: productive via lecture) → break → effectiveDate = June 18.
+ *
+ * maxLookback caps the search (30 days covers any realistic backlog).
+ */
+export function getEffectiveSubjectDate(
+  today: string,
+  routineDays: RoutineDay[],
+  lectureCompletionDates: string[] = [],
+  maxLookback = 30,
+): { effectiveDate: string; missedDays: number } {
+  // Days productive via study hours logged in the routine
+  const studiedViaHours = new Set(
+    routineDays.filter(d => (d.study_hours ?? 0) > 0).map(d => d.day),
+  )
+  // Days productive via at least one lecture completed (IST dates)
+  const studiedViaLectures = new Set(lectureCompletionDates)
+
+  // Union: either signal marks the day as done
+  const productive = new Set([...studiedViaHours, ...studiedViaLectures])
+
+  const [ty, tm, td] = today.split('-').map(Number)
+  const todayMs = Date.UTC(ty, tm - 1, td)
+
+  let missedDays = 0
+  for (let i = 1; i <= maxLookback; i++) {
+    const ms = todayMs - i * 86_400_000
+    const d  = new Date(ms).toISOString().slice(0, 10)
+    if (productive.has(d)) break   // consecutive chain broken — stop
+    missedDays++
+  }
+
+  const effectiveMs   = todayMs - missedDays * 86_400_000
+  const effectiveDate = new Date(effectiveMs).toISOString().slice(0, 10)
+  return { effectiveDate, missedDays }
+}

@@ -9,7 +9,7 @@ import {
   computeAggregates, computeSelectionProbability,
   getRankProjection, getApproxRank,
   buildHeatSeed, subjectAccuracy, lastNTestAccuracies,
-  disclaimer,
+  disclaimer, getEffectiveSubjectDate,
 } from '../services/routine'
 import './routine-ui.css'
 
@@ -20,6 +20,11 @@ let _today      = ''
 let _activeDate = ''   // date being shown in Today card (normally = _today, can be skipped to tomorrow)
 let _saveTimer: ReturnType<typeof setTimeout> | null = null
 let _todayRow: RoutineDay = makeDefault('')
+// Carry-forward: oldest consecutive missed day before today
+let _effectiveDate = ''
+let _missedDays    = 0
+// Lecture completion dates (IST) fed in by core-engine to refine carry-forward signal
+let _lectureCompletionDates: string[] = []
 
 /** Called by the planner's "Skip today →" button to advance the routine card. */
 export function advanceRoutineToDate(dateStr: string): void {
@@ -81,6 +86,11 @@ export async function initRoutine(): Promise<void> {
     return
   }
 
+  // Compute carry-forward effective date before rendering
+  // (_lectureCompletionDates may already be set if core-engine ran first)
+  ;({ effectiveDate: _effectiveDate, missedDays: _missedDays } =
+    getEffectiveSubjectDate(_today, _allDays, _lectureCompletionDates))
+
   // Auto-create today's row if not yet stored
   const existing = _allDays.find(d => d.day === _today)
   if (!existing) {
@@ -93,6 +103,24 @@ export async function initRoutine(): Promise<void> {
 
   renderAll()
   bindEvents()
+}
+
+/** Read by core-engine after initRoutine() so it can feed the same effective
+ *  date into the lecture planner without recomputing. */
+export function getRoutineEffectiveDate(): { effectiveDate: string; missedDays: number } {
+  return { effectiveDate: _effectiveDate || _today, missedDays: _missedDays }
+}
+
+/**
+ * Called by core-engine after it loads lectures, to refine the "productive day"
+ * signal with lecture completion dates. Re-computes effective date and re-renders.
+ */
+export function setLectureCompletionDates(dates: string[]): void {
+  _lectureCompletionDates = dates
+  if (!_today) return   // initRoutine() hasn't run yet — no-op
+  ;({ effectiveDate: _effectiveDate, missedDays: _missedDays } =
+    getEffectiveSubjectDate(_today, _allDays, _lectureCompletionDates))
+  renderTodayCard()
 }
 
 // ── DOM injection ─────────────────────────────────────────────────────────────
@@ -273,13 +301,24 @@ function renderAll(): void {
 
 function renderTodayCard(): void {
   const row = _todayRow
-  const subject = getSubject(row.day)
+
+  // Use effective date's subject (carry-forward from missed days), not raw today
+  const effectiveDateForSubject = _effectiveDate && _effectiveDate < _today
+    ? _effectiveDate
+    : row.day
+  const subject = getSubject(effectiveDateForSubject)
   const sched   = getSchedule(row.day_type)
 
   const isSkipped = row.day !== _today
-  elText('rtn-today-label', isSkipped
-    ? `${fullDayName(row.day)} · (skipped today)`
-    : fullDayName(row.day))
+  if (isSkipped) {
+    elText('rtn-today-label', `${fullDayName(row.day)} · (skipped today)`)
+  } else if (_missedDays > 0) {
+    // Show carry-forward warning in the label
+    elText('rtn-today-label',
+      `${fullDayName(row.day)} · ⚠ Carrying forward ${_missedDays} missed day${_missedDays > 1 ? 's' : ''}`)
+  } else {
+    elText('rtn-today-label', fullDayName(row.day))
+  }
   elText('rtn-today-date', formatDateDisplay(row.day))
 
   // Day-type select
@@ -295,12 +334,21 @@ function renderTodayCard(): void {
     ].join('')
   }
 
-  // Plan summary
-  elText('rtn-subject',      subject)
-  elText('rtn-topic',        getTopicLabel(row.day, subject, _allDays.filter(d => d.day < row.day)))
+  // Plan summary — use carry-forward effective date for subject context
+  const subjectLabel = _missedDays > 0
+    ? `${subject} (from ${effectiveDateForSubject.slice(5)})`
+    : subject
+  elText('rtn-subject',      subjectLabel)
+  elText('rtn-topic',        getTopicLabel(effectiveDateForSubject, subject, _allDays.filter(d => d.day < effectiveDateForSubject)))
   elText('rtn-target',       `${getTargetQuestions(subject, row.day_type)} questions`)
   elText('rtn-mains-target', `${getMainsTarget(row.day_type)} answer${getMainsTarget(row.day_type) > 1 ? 's' : ''}`)
   elText('rtn-component',    getComponentText(subject, row.day_type))
+
+  // Carry-forward save-status hint (only when no hours logged yet)
+  if (_missedDays > 0 && (row.study_hours ?? 0) === 0) {
+    elText('rtn-save-status',
+      `Showing ${_missedDays === 1 ? 'yesterday' : _effectiveDate.slice(5)}'s content — log hours to advance schedule`)
+  }
 
   // Inputs
   setVal('rtn-study-hours', row.study_hours)
@@ -513,6 +561,12 @@ function bindEvents(): void {
         // Sync _allDays in-memory so aggregates update live
         const idx = _allDays.findIndex(d => d.day === _today)
         if (idx >= 0) _allDays[idx] = { ..._todayRow }
+
+        // Re-check effective date: logging hours today removes carry-forward
+        if (id === 'rtn-study-hours') {
+          ;({ effectiveDate: _effectiveDate, missedDays: _missedDays } =
+            getEffectiveSubjectDate(_today, _allDays, _lectureCompletionDates))
+        }
 
         renderLiveMetrics()
         renderAggregates()

@@ -4,7 +4,8 @@
  * No widget computes its own numbers. All reads go through CoreState.
  */
 import { computeCoreState, todayIST, type CoreState, type CoreInputs } from '../services/core'
-import { getSubject as getSubjectForDate } from '../services/routine'
+import { getSubject as getSubjectForDate, getEffectiveSubjectDate } from '../services/routine'
+import type { RoutineDay } from '../data/repositories/routine'
 import { computePlan, DEFAULT_SETTINGS, type PlannerLecture } from '../services/planner'
 import { listRoutineDays } from '../data/repositories/routine'
 import { listScores } from '../data/repositories/scores'
@@ -18,11 +19,16 @@ import { bindAnswerTracker } from './answer-log'
 import { bindCAFeed } from './ca-log'
 import { loadSettings, showSettings } from './settings'
 import { setPlannerSubjectContext } from './lectures-planner'
+import { setLectureCompletionDates } from './routine-ui'
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
 let _state: CoreState | null = null
 let _recomputeTimer: ReturnType<typeof setTimeout> | null = null
+let _visTimer: ReturnType<typeof setTimeout> | null = null
+let _visListenerAttached = false
+let _lastRoutineDays: RoutineDay[] = []          // kept in sync with each fetchInputs()
+let _lastLectureCompletionDates: string[] = []   // IST dates where ≥1 lecture was completed
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -36,9 +42,19 @@ export async function loadAndBind(): Promise<void> {
   safeRun('revisions',     () => { void loadAndBindRevisions() })
   safeRun('answerTracker', () => { void bindAnswerTracker() })
   safeRun('caFeed',        () => { void bindCAFeed() })
-  // Engine's count-up animation runs for ~900ms after elements enter viewport.
-  // Re-apply count-up values after 1200ms so real data wins over the animation.
-  // bindCountUps now uses its own internal interval — no external delay needed
+
+  // Global visibility-change sync: recompute routine/scores/sessions/lectures
+  // whenever the user switches back to this tab (cross-device sync catch-up).
+  // Debounced 600ms so rapid focus/blur events don't fire multiple requests.
+  // Guard ensures only one listener is ever registered even if loadAndBind() reruns.
+  if (!_visListenerAttached) {
+    _visListenerAttached = true
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return
+      if (_visTimer) clearTimeout(_visTimer)
+      _visTimer = setTimeout(() => { recompute() }, 600)
+    })
+  }
 }
 
 /** Re-run after any input write. Debounced 400ms so rapid inputs don't thrash. */
@@ -128,6 +144,17 @@ async function fetchInputs(): Promise<CoreInputs> {
     listSessionDays().catch(() => []),
     listLectures().catch(() => []),
   ])
+  _lastRoutineDays = routineDays   // cache for plannerCtx effective-date lookup
+
+  // Build IST dates for every day a lecture was completed
+  // Used as the "productive day" signal for subject-date carry-forward
+  _lastLectureCompletionDates = lectures
+    .filter(l => l.done && l.done_at)
+    .map(l => new Date(l.done_at!).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }))
+
+  // Push completion dates to routine-ui so its today card uses the same signal
+  setLectureCompletionDates(_lastLectureCompletionDates)
+
   const lecturesDone  = lectures.filter(l => l.done).length
   const lecturesTotal = lectures.length
   return { routineDays, scores, sessionDays, lecturesDone, lecturesTotal, today }
@@ -164,22 +191,17 @@ function bindWidgets(s: CoreState): void {
   safeRun('autoTodos',    () => bindAutoTodos(s))
   safeRun('aiUpgrade',    () => upgradeAIPlannerInput(s))
   safeRun('plannerCtx',   () => {
-    const hoursToday    = s.hours.byDay[s.today.date] ?? 0
-    const hasRoutineToday = !!s.today.subject   // routine row exists for today
-    // Only advance to next-day view when the user has NO routine logged at all
-    // AND no study hours yet.  If the routine is logged (subject set) but hours
-    // are still 0, the day has just started — show TODAY's lectures, not tomorrow's.
-    if (hoursToday === 0 && !hasRoutineToday) {
-      // Nothing logged at all today — pre-show the NEXT day's schedule
-      const [y, m, d] = s.today.date.split('-').map(Number)
-      const nextDate   = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
-      const nextSubj   = nextDaySubject(nextDate)
-      const nextKws    = subjectToKeywords(nextSubj)
-      const label      = new Date(Date.UTC(y, m - 1, d + 1))
-        .toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' })
-      setPlannerSubjectContext(nextSubj, nextKws, true, label)
+    // Derive the carry-forward effective date from the cached routineDays.
+    // If missed days exist, show the oldest missed day's subject in the planner.
+    const { effectiveDate, missedDays } = getEffectiveSubjectDate(s.today.date, _lastRoutineDays, _lastLectureCompletionDates)
+
+    if (missedDays > 0) {
+      // Carry-forward: show oldest un-studied day's subject
+      const effectiveSubj = getSubjectForDate(effectiveDate)
+      const effectiveKws  = subjectToKeywords(effectiveSubj)
+      setPlannerSubjectContext(effectiveSubj, effectiveKws, true, effectiveDate)
     } else {
-      // Routine is logged (or study hours already exist) — always show today
+      // No misses — always show today's subject regardless of hours logged
       setPlannerSubjectContext(s.today.subject, todaySubjectKeywords(), false, '')
     }
   })

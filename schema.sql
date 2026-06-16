@@ -308,6 +308,28 @@ create policy owner_all on public.notes
   using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ============================================================
+-- LECTURE PLANNED DATE — per-lecture date assignment for rollover
+-- Allows explicit date-pinning of "today" lectures so they cascade
+-- to the next day automatically if not completed by midnight IST.
+-- Run this in SQL Editor if you haven't yet.
+-- ============================================================
+alter table public.lectures
+  add column if not exists planned_date date;
+
+-- Index for fast rollover queries
+create index if not exists lectures_planned_date_idx
+  on public.lectures(user_id, planned_date)
+  where done = false;
+
+-- ============================================================
+-- REALTIME SYNC — cross-device lecture tick sync
+-- Run this ONCE in Supabase SQL Editor to enable Realtime for the
+-- lectures table so that ticking a lecture on Device A instantly
+-- appears on Device B without a manual refresh.
+-- ============================================================
+alter publication supabase_realtime add table public.lectures;
+
+-- ============================================================
 -- DONE. Next: enable magic-link auth in Authentication → Providers,
 -- then create a Storage bucket named "resources" (private) for Phase 6.
 -- ============================================================

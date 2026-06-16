@@ -16,6 +16,7 @@ import { pull, queuePush } from './sync/store-sync'
 import { showAuthGate, hideAuthGate } from './features/auth'
 import { hasPIN, showPINEntry, hidePINEntry, showPINSetup, clearPIN } from './features/pin-auth'
 import { mountPlannerUI, loadLectures } from './features/lectures-planner'
+import { rolloverUndoneToday } from './data/repositories/lectures'
 import { mountRoutineSection, initRoutine } from './features/routine-ui'
 import { loadAndBind, recompute, onSessionComplete } from './features/core-engine'
 import { insertSession } from './data/repositories/sessions'
@@ -142,6 +143,16 @@ function boot(userId: string): void {
   syncAndBoot(userId).catch(err => console.error('[main] boot failed:', err))
 }
 
+/** Run once per calendar day to cascade undone lectures forward to today's date. */
+async function rolloverIfNewDay(): Promise<void> {
+  const today = todayIST()
+  const LAST_DATE_KEY = 'm2028_last_active_date'
+  const lastDate = localStorage.getItem(LAST_DATE_KEY)
+  if (lastDate === today) return   // already ran today — skip
+  await rolloverUndoneToday(today)
+  localStorage.setItem(LAST_DATE_KEY, today)
+}
+
 async function syncAndBoot(userId: string): Promise<void> {
   // 1. Pull KV state from Supabase → hydrate engine's store
   try { await pull(userId) } catch { /* proceed from cache */ }
@@ -176,7 +187,10 @@ async function syncAndBoot(userId: string): Promise<void> {
     }
   }
 
-  // 2. Load lectures + routine UI (existing features)
+  // 2a. Rollover undone "today" lectures to today's date if it's a new calendar day
+  await rolloverIfNewDay().catch(e => console.warn('[main] rollover failed:', e))
+
+  // 2b. Load lectures + routine UI (existing features)
   await loadLectures().catch(e => console.error('[main] loadLectures failed:', e))
   await initRoutine().catch(e => console.error('[main] initRoutine failed:', e))
 
